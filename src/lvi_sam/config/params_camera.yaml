@@ -1,7 +1,8 @@
 /**:
    ros__parameters:
       # 注意：PROJECT_NAME 决定 VIS 发布话题前缀，即 /lvi_sam/vins/...
-      #       LIS(fork) 话题固定带 "lio_sam/" 前缀，故下方 lidar 相关话题需写绝对路径
+      #       LIS(fork) 话题：激光深度用绝对 /lio_sam/deskew/cloud_deskewed；
+      #       里程计先验 odomTopic 在 params.yaml 设为相对 "odometry/imu"，estimator 同话题订阅，无需 remap。
       PROJECT_NAME: "lvi_sam"
       # VIS 需要 sensor_msgs/Imu 标准消息；fork 的 /IMU_data 是 livox CustomMsg，
       # 需指向 livox_ros_driver2 发布的标准 IMU 话题(如 /livox/imu)，或加 CustomMsg→Imu 转换节点。

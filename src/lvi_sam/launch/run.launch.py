@@ -2,7 +2,7 @@
 # 启动：LIS(激光, 2 节点) + VIS(视觉, 3 节点)，并通过话题接线完成"话题级松耦合"。
 #
 # 接线要点（已源码核对）：
-#   ① LIS→VIS 位姿/尺度先验：estimator 订阅 odometry/imu → remap 到 /lio_sam/odometry/imu
+#   ① LIS→VIS 位姿/尺度先验：estimator 订阅相对 odometry/imu；fork 经 odomTopic(=odometry/imu, 见 params.yaml) 同话题发布，无需 remap
 #   ② LIS→VIS 激光深度：feature_tracker 订阅 POINT_CLOUD_TOPIC(= /lio_sam/deskew/cloud_deskewed，yaml 配)
 #   ③b VIS→LIS 视觉回环候选：loop 发布 /lvi_sam/vins/loop/match_frame
 #                              → mapOptimization 订阅 lio_loop/loop_closure_detection 经 remap 接收
@@ -106,8 +106,9 @@ def generate_launch_description():
             name='visual_estimator_node',
             output='screen',
             parameters=[camera_params],
-            # ①：LIS 发布的里程计先验（带 lio_sam/ 前缀）
-            remappings=[('odometry/imu', '/lio_sam/odometry/imu')]))
+            # ① LIS→VIS 里程计先验：fork(imuPreintegration) 经 odomTopic="odometry/imu" 发布，
+            #    estimator 同话题订阅 odometry/imu，二者均解析为 /odometry/imu，无需 remap
+            remappings=[]))
 
         nodes.append(Node(
             package='lvi_sam',
