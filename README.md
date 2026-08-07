@@ -67,11 +67,13 @@ LVI-SAM-ROS2-Enhanced/                 # colcon 工作区根（即本仓库根�
 |------|------|
 | ROS 2 | **Humble Hawksbill**（其余发行版未验证） |
 | Livox Lidar SDK | **必须预装到 `/usr/local`**：克隆 [Livox-SDK2](https://github.com/Livox-SDK/Livox-SDK2)，`cmake -> make -> sudo make install`。`livox_ros_driver2` 的 CMake 通过 `/usr/local/lib` 与头文件查找它。 |
-| apt 包 | `ros-humble-desktop`（或至少 `ros-humble-rclcpp`）、`ros-humble-pcl-*`、`ros-humble-tf2*`、`ros-humble-robot-state-publisher`、`ros-humble-xacro`；以及 `libpcl-dev`、`libopencv-dev`、`libeigen3-dev`、`libboost-all-dev`、`libgtsam-dev`、`libceres-dev` 等 |
-| Python | `opencv-python`、`numpy`、`pyyaml`（VIS / 脚本使用） |
+| apt 包 | `ros-humble-desktop`（或至少 `ros-humble-rclcpp`）、`ros-humble-pcl-*`、`ros-humble-tf2*`、`ros-humble-robot-state-publisher`、`ros-humble-xacro`；以及 `libpcl-dev`、`libopencv-dev`、`libeigen3-dev`、`libboost-all-dev`、`libceres-dev` 等 |
+| 源码编译 | **GTSAM（无 apt 包，须源码编译，详见 [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md)）**；**Livox Lidar SDK（须预装到 `/usr/local`）** |
+| Python | `opencv-python`、`numpy`、`pyyaml`（VIS / 脚本使用）；以及 `python3-rosdep`、`python3-colcon-common-extensions` |
 
-其余 ROS 依赖（rclcpp、sensor_msgs、nav_msgs、geometry_msgs、tf2、PCL、OpenCV、GTSAM、Eigen、
-livox_ros_driver2 等）已在 `src/lvi_sam/package.xml` 声明，可用 `rosdep` 一键安装（见第 4 节）。
+> ⚠️ **Ubuntu 22.04 / ROS 2 Humble 下没有 `libgtsam-dev` apt 包**，GTSAM 必须从源码编译（推荐 tag `4.0.3`）。
+> 本仓库提供的 [`scripts/install_deps.sh`](scripts/install_deps.sh) 会自动完成 GTSAM 与 Livox-SDK2 的源码编译安装，
+> 并对 `rosdep` 跳过 `gtsam` 键（因为它由脚本手动安装，非 ROS 包）。
 
 ### 3.2 工作区依赖（子模块）
 
@@ -92,27 +94,31 @@ livox_ros_driver2 等）已在 `src/lvi_sam/package.xml` 声明，可用 `rosdep
 
 ## 4. 构建
 
+**推荐（一键部署）**：见 [`scripts/`](scripts/) 与 [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md)。
+
 ```bash
-# 1) 克隆本仓库（含子模块）
+# 0) 克隆本仓库（含子模块）
 git clone --recursive <your-fork-url> LVI-SAM-ROS2-Enhanced
 cd LVI-SAM-ROS2-Enhanced
 
 # 若已 clone 但未带子模块：
 # git submodule update --init --recursive
 
-# 2) 预装 Livox Lidar SDK（一次性，系统级）
-# git clone https://github.com/Livox-SDK/Livox-SDK2
-# cd Livox-SDK2 && mkdir build && cd build
-# cmake .. && make -j && sudo make install
+# 1) 一键完成：子模块 → 系统依赖 → GTSAM/Livox-SDK2 源码编译 → rosdep → colcon 编译
+bash scripts/setup.sh
 
-# 3) 安装 ROS 依赖
+# 或分步：
+#   bash scripts/install_deps.sh   # apt + GTSAM(源码) + Livox-SDK2(源码) + rosdep
+#   bash scripts/build.sh          # colcon build（含 livox_ros_driver2 子模块）
+#   bash scripts/run.sh            # 启动 LIS + VIS
+```
+
+手动构建等价于上面的脚本化流程：
+
+```bash
 source /opt/ros/humble/setup.bash
-rosdep install --from-paths src --ignore-src -y
-
-# 4) 编译
-colcon build --symlink-install
-
-# 5) 环境
+rosdep install --from-paths src --ignore-src -y --skip-keys gtsam
+colcon build --symlink-install --packages-up-to lvi_sam
 source install/setup.bash
 ```
 
@@ -152,7 +158,21 @@ ros2 launch lvi_sam run.launch.py \
 
 ---
 
-## 7. 许可证与致谢
+## 7. 文档与部署脚本
+
+| 文件 | 用途 |
+|------|------|
+| [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) | **详细环境配置**：Ubuntu 22.04 + ROS 2 Humble、apt 依赖、GTSAM 源码编译、Livox-SDK2 安装、子模块、rosdep、Docker 替代方案、版本核验。 |
+| [`docs/USAGE.md`](docs/USAGE.md) | **详细使用说明**：构建、URDF/相机/IMU 准备、launch 参数、话题接线表、参数文件、最小验证闭环、排错与调参。 |
+| [`scripts/setup.sh`](scripts/setup.sh) | 一键编排：子模块初始化 → 依赖安装 → 编译。 |
+| [`scripts/install_deps.sh`](scripts/install_deps.sh) | 安装系统/ROS 依赖，并源码编译安装 GTSAM 与 Livox-SDK2（重跑安全）。 |
+| [`scripts/build.sh`](scripts/build.sh) | `colcon build --symlink-install --packages-up-to lvi_sam`（自动先编 `livox_ros_driver2`）。 |
+| [`scripts/run.sh`](scripts/run.sh) | source 环境并 `ros2 launch lvi_sam run.launch.py`，支持透传参数。 |
+| [`Dockerfile`](Dockerfile) / [`docker-compose.yml`](docker-compose.yml) | 可复现的容器化环境（ros:humble + 全部依赖 + 编译）。 |
+
+---
+
+## 8. 许可证与致谢
 
 - **本工程主体 `lvi_sam`**：BSD-3-Clause（继承自 LIO-SAM / LVI-SAM）。
 - **`livox_ros_driver2`（子模块）**：MIT，© Livox Tech。

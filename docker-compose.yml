@@ -1,0 +1,29 @@
+# docker-compose.yml — LVI-SAM-ROS2-Enhanced 便捷运行
+#
+# 用法：
+#   git submodule update --init --recursive
+#   docker compose build
+#   docker compose run --rm lvi-sam bash
+#
+# 说明：
+#   - network_mode: host   ：ROS 2 DDS 默认用主机网络，最省心
+#   - privileged + /dev    ：连接真实 MID360 等设备时需要；纯仿真可去掉
+#   - ./maps:/root/maps    ：持久化建图/先验地图目录
+#   - DISPLAY 转发         ：如需在容器内用 rviz2（可选）
+
+services:
+  lvi-sam:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: lvi-sam-ros2-enhanced:latest
+    network_mode: host
+    privileged: true
+    volumes:
+      - /dev:/dev
+      - ./maps:/root/maps
+    environment:
+      - DISPLAY=${DISPLAY:-}
+      - QT_X11_NO_MITSHM=1
+      - XAUTHORITY=/tmp/.docker.xauth
+    command: bash

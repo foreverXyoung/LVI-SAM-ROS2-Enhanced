@@ -34,7 +34,6 @@
   <depend>GTSAM</depend>
   <depend>Eigen</depend>
   <depend>livox_ros_driver2</depend>
-  <exec_depend>fairino_description</exec_depend>
   <exec_depend>robot_state_publisher</exec_depend>
   <exec_depend>xacro</exec_depend>
 

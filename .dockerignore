@@ -1,0 +1,12 @@
+# .dockerignore — 控制 docker build 上下文，排除大文件与产物
+build/
+install/
+log/
+.git/
+.gitmodules
+*.pcd
+*.scd
+*.log
+*.bag
+maps/
+# 保留 src/（含 livox_ros_driver2 子模块）与所有源码/配置
