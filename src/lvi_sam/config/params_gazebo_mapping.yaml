@@ -1,0 +1,90 @@
+/**:
+  ros__parameters:
+    Loc:
+      EnableFlag: false
+      loadPCDDirectory: "/home/lighter/Documents/return_station_ws/src/nav2_bringup/gazebo_map/"
+      surroundingKeyframeSearchRadius: 20.0
+      surroundingKeyframeSearchMaxNum: 10
+      useSCReLoc: true
+      init_guess: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+      useRviz: true
+
+    pointCloudTopic: "/livox/lidar"
+    imuTopic: "/IMU_data"
+    odomTopic: "odometry/imu"
+    gpsTopic: "/gps/unused"
+    useExternalPoseFactor: true
+    externalPoseOverride: true
+    externalPoseTopic: "/sim/local_odom"
+    externalPosePositionVariance: 1.0e-6
+    externalPoseRotationVariance: 1.0e-6
+    publishMappingOdomTF: false
+    publishFusedBaseTF: false
+    lidarFrame: "livox_frame"
+    baselinkFrame: "base_link"
+    odometryFrame: "odom"
+    mapFrame: "map"
+
+    useImuHeadingInitialization: false
+    useGpsElevation: false
+    useGpsFactor: false
+    gpsCovThreshold: 0.01
+    poseCovThreshold: 25.0
+    gpsFactorAlwaysUse: false
+    gpsInitialDistance: 0.0
+    gpsFactorDistance: 0.0
+    gpsVarianceFloor: 1.0e-6
+    savePCD: true
+    savePCDDirectory: "/home/lighter/Documents/return_station_ws/src/nav2_bringup/gazebo_map/"
+
+    sensor: livox
+    N_SCAN: 16
+    Horizon_SCAN: 1024
+    downsampleRate: 1
+    lidarMinRange: 0.5
+    lidarMaxRange: 40.0
+    selfFilterEnable: false
+
+    imuAccNoise: 4.0e-3
+    imuGyrNoise: 1.5e-3
+    imuAccBiasN: 6.4e-5
+    imuGyrBiasN: 3.6e-5
+    imuGravity: 9.80511
+    imuRPYWeight: 0.01
+
+    # IMU origin -> LiDAR origin, expressed in the Gazebo IMU axes.
+    extrinsicTrans: [0.194406, 0.005998, -0.015194]
+    # The generic GPU lidar and Gazebo IMU both use x-forward, z-up axes.
+    # Real MID360 axis conversion remains in the real-robot YAML files.
+    extrinsicRot: [1.0, 0.0, 0.0,
+                   0.0, 1.0, 0.0,
+                   0.0, 0.0, 1.0]
+    extrinsicRPY: [1.0, 0.0, 0.0,
+                   0.0, 1.0, 0.0,
+                   0.0, 0.0, 1.0]
+
+    edgeThreshold: 0.2
+    surfThreshold: 0.1
+    edgeFeatureMinValidNum: 0
+    surfFeatureMinValidNum: 40
+    odometrySurfLeafSize: 0.20
+    mappingCornerLeafSize: 0.15
+    mappingSurfLeafSize: 0.20
+    z_tollerance: 1.0
+    rotation_tollerance: 1.0
+    numberOfCores: 4
+    mappingProcessInterval: 0.10
+    surroundingkeyframeAddingDistThreshold: 0.20
+    surroundingkeyframeAddingAngleThreshold: 0.05
+    surroundingKeyframeDensity: 1.0
+    surroundingKeyframeSearchRadius: 30.0
+    loopClosureEnableFlag: true
+    loopClosureFrequency: 1.0
+    surroundingKeyframeSize: 20
+    historyKeyframeSearchRadius: 15.0
+    historyKeyframeSearchTimeDiff: 20.0
+    historyKeyframeSearchNum: 10
+    historyKeyframeFitnessScore: 0.4
+    globalMapVisualizationSearchRadius: 100.0
+    globalMapVisualizationPoseDensity: 5.0
+    globalMapVisualizationLeafSize: 0.5

@@ -1,0 +1,124 @@
+/**:
+  ros__parameters:
+
+    Loc:
+      EnableFlag: true
+      loadPCDDirectory: "/home/lighter/Documents/return_station_ws/src/lio_sam_enhanced/map/"  # msubmap
+      # surroundingKeyframeSearchRadius: 40.0 # 定位时使用的查找范围
+      # surroundingKeyframeSearchMaxNum: 10   # 最大取多少个最近帧进行匹
+ 
+      surroundingKeyframeSearchRadius: 80.0
+      surroundingKeyframeSearchMaxNum: 50
+ 
+      useSCReLoc: true
+      lostDetectionEnable: true
+      lostBadMatchThreshold: 5
+      init_guess: [0.00000000, 0.00000000, -1.88647982, 6.21380055, 2.69203917, 0.00000000]   # [roll,pitch,yaw,x,y,z], generated from GNSS map_geo.yaml
+      useRviz: true
+
+
+    # Topics
+    pointCloudTopic: "/livox/lidar"
+    imuTopic: "/IMU_data"                         # IMU data
+    odomTopic: "odometry/imu"                    # IMU pre-preintegration odometry, same frequency as IMU
+    gpsTopic: "/gps_disabled_for_collect_points"
+
+    # Frames
+    lidarFrame: "livox_frame"
+    baselinkFrame: "base_link"
+    odometryFrame: "odom"
+    mapFrame: "map"
+    publishMappingOdomTF: false
+    publishFusedBaseTF: true
+    requireFreshLidarOdomForTF: true
+    maxLidarOdomAge: 0.5
+    publishImuPredictedOdomWhenUnlocalized: false
+
+    # GPS Settings
+    useImuHeadingInitialization: false           # if using GPS data, set to "true"
+    useGpsElevation: false
+    gpsCovThreshold: 0.5
+    poseCovThreshold: 25.0
+
+    # Export settings
+    savePCD: false                               # https://github.com/TixiaoShan/LIO-SAM/issues/3
+    savePCDDirectory: "/home/lighter/Documents/return_station_ws/src/lio_sam_enhanced/map/"
+
+    # Sensor Settings
+    sensor: livox                               # lidar sensor type, either 'velodyne', 'ouster' or 'livox'
+    N_SCAN: 4                                   # number of lidar channels (i.e., Velodyne/Ouster: 16, 32, 64, 128, Livox Horizon: 6)
+    Horizon_SCAN: 4000                            # lidar horizontal resolution (Velodyne:1800, Ouster:512,1024,2048, Livox Horizon: 4000)
+    downsampleRate: 2
+    # points. i.e., 16 = 64 / 4, 16 = 16 / 1
+    lidarMinRange: 1.0
+    lidarMaxRange: 70.0
+    # Self-filter box in lidarFrame/livox_frame. Enable after tuning in RViz.
+    selfFilterEnable: false
+    selfFilterBoxMin: [-0.30, -0.30, -0.30]
+    selfFilterBoxMax: [ 0.60,  0.30,  0.40]
+
+    # IMU Settings
+    imuAccNoise: 3.9939570888238808e-03
+    imuGyrNoise: 1.5636343949698187e-03
+    imuAccBiasN: 6.4356659353532566e-05
+    imuGyrBiasN: 3.5640318696367613e-05
+
+    imuGravity: 9.80511
+    imuRPYWeight: 0.01
+
+    # LiDAR/IMU extrinsic aligned with the current mobile-base URDF and
+    # fast_lio/config/mid360.yaml.
+    # extrinsicTrans: IMU origin -> LiDAR origin, expressed in raw IMU axes.
+    # extrinsicRot: raw IMU axes -> LiDAR axes; preintegration also uses it to
+    # rotate extrinsicTrans before constructing the two inverse pose transforms.
+    # extrinsicRPY is the LiDAR orientation expressed in the IMU/base axes.
+    extrinsicTrans:  [0.201247, -0.024810, -0.029314]
+    extrinsicRot:    [ 0.861882, -0.007061, -0.507059,
+                      -0.001102,  0.999875, -0.015798,
+                       0.507107,  0.014175,  0.861766]
+    extrinsicRPY:    [ 0.861882, -0.001102,  0.507107,
+                      -0.007061,  0.999875,  0.014175,
+                      -0.507059, -0.015798,  0.861766]
+
+    # LOAM feature threshold
+    edgeThreshold: 1.0
+    surfThreshold: 0.1
+    edgeFeatureMinValidNum: 10
+    surfFeatureMinValidNum: 100
+
+    # voxel filter paprams
+    odometrySurfLeafSize: 0.25
+    mappingCornerLeafSize: 0.15
+    mappingSurfLeafSize: 0.25
+
+    # robot motion constraint (in case you are using a 2D robot)
+    z_tollerance: 1000.0                          # meters
+    rotation_tollerance: 1000.0                   # radians
+
+    # CPU Params
+    numberOfCores: 8                              # number of cores for mapping optimization
+    mappingProcessInterval: 0.10
+
+    # Surrounding map
+    surroundingkeyframeAddingDistThreshold: 0.2   # 2. meters, regulate keyframe adding threshold
+    surroundingkeyframeAddingAngleThreshold: 0.05  # 0.2 radians, regulate keyframe adding threshold
+    surroundingKeyframeDensity: 2.0               # meters, downsample surrounding keyframe poses   
+    surroundingKeyframeSearchRadius: 80.0
+    # (when loop closure disabled)
+
+    # Loop closure
+    loopClosureEnableFlag: false
+    loopClosureFrequency: 1.0                     # Hz, regulate loop closure constraint add frequency
+    surroundingKeyframeSize: 50
+    historyKeyframeSearchRadius: 15.0             # meters, key frame that is within n meters from
+    # current pose will be considerd for loop closure
+    historyKeyframeSearchTimeDiff: 30.0           # seconds, key frame that is n seconds older will be
+    # considered for loop closure
+    historyKeyframeSearchNum: 10                  # 25. number of hostory key frames will be fused into a
+    # submap for loop closure
+    historyKeyframeFitnessScore: 0.3              # icp threshold, the smaller the better alignment
+
+    # Visualization
+    globalMapVisualizationSearchRadius: 1000.0    # meters, global map visualization radius
+    globalMapVisualizationPoseDensity: 10.0       # meters, global map visualization keyframe density
+    globalMapVisualizationLeafSize: 1.0           # meters, global map visualization cloud density

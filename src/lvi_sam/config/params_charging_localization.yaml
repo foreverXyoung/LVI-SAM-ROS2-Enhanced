@@ -1,0 +1,142 @@
+/**:
+  ros__parameters:
+
+    Loc:
+      EnableFlag: true
+      # railway_navigation.launch.py overrides this with profile.pcd_directory.
+      loadPCDDirectory: "/data/return_station_ws/src/nav2_bringup/maps/501/"
+      surroundingKeyframeSearchRadius: 80.0
+      surroundingKeyframeSearchMaxNum: 50
+      useSCReLoc: true
+      # Prefer persisted, map-aligned RTK for initialization and use Scan
+      # Context automatically when RTK is absent or invalid.
+      useRTKAssist: true
+      useRTKInitialization: true
+      rtkPositionBlend: 0.20
+      rtkMaxInnovation: 3.0
+      lostDetectionEnable: true
+      lostBadMatchThreshold: 5
+
+      # 定位专用动态点过滤：仅影响当前帧参与 PCD 扫描匹配的角点和面点。
+      # 不修改 /lio_sam/deskew/cloud_deskewed，因此不会影响 GSeg3D、二维建图或 Nav2 障碍层。
+      dynamicFilterEnable: true
+      # 正常定位时，当前特征点在地图中找不到 0.80 m 内的同类近邻，就视为环境新增/动态点。
+      dynamicFilterMaxMapDistance: 0.80
+      # 定位刚初始化时位姿误差较大，前若干个成功过滤帧先使用更宽松的距离阈值。
+      dynamicFilterInitialMaxMapDistance: 1.50
+      dynamicFilterWarmupFrames: 10
+      # 保底条件：保留比例或特征数不足时，本帧自动退回未过滤特征，避免定位直接失效。
+      dynamicFilterMinKeepRatio: 0.25
+      # 当前优化器要求角点 > 10、面点 > 100，因此这里至少配置为 11/101。
+      dynamicFilterMinCornerPoints: 11
+      dynamicFilterMinSurfPoints: 101
+      # 发布保留点、剔除点和保留比例，便于在 RViz/命令行中检查效果；正式运行稳定后可关闭。
+      dynamicFilterPublishDebug: true
+
+      # [roll, pitch, yaw, x, y, z] in the LIO-SAM map/odom frame.
+      # Replace this after recording the charging scene start pose.
+      init_guess: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+      useRviz: true
+
+    # Topics
+    pointCloudTopic: "/livox/lidar"
+    imuTopic: "/IMU_data"
+    odomTopic: "odometry/imu"
+    gpsTopic: "/gps/lio_sam_odom"
+
+    # Frames
+    lidarFrame: "livox_frame"
+    baselinkFrame: "base_link"
+    odometryFrame: "odom"
+    mapFrame: "map"
+    # mapOptimization must not create a second lidar TF branch.
+    publishMappingOdomTF: false
+    # TransformFusion is the sole owner of odom -> base_link on the real robot.
+    publishFusedBaseTF: true
+    requireFreshLidarOdomForTF: true
+    maxLidarOdomAge: 0.5
+    publishImuPredictedOdomWhenUnlocalized: false
+
+    # GPS Settings
+    useImuHeadingInitialization: false
+    useGpsElevation: false
+    gpsCovThreshold: 0.5
+    poseCovThreshold: 25.0
+
+    # Export settings
+    savePCD: false
+    # Kept as a standalone-launch fallback; the navigation profile overrides it.
+    savePCDDirectory: "/data/return_station_ws/src/nav2_bringup/maps/501/"
+
+    # Sensor Settings
+    sensor: livox
+    N_SCAN: 4
+    Horizon_SCAN: 4000
+    downsampleRate: 2
+    lidarMinRange: 1.0
+    lidarMaxRange: 70.0
+    # Self-filter box in lidarFrame/livox_frame. Enable after tuning in RViz.
+    selfFilterEnable: true
+    selfFilterBoxMin: [-1.30, -0.50, -0.10]
+    selfFilterBoxMax: [ 0.1,  0.50,  1.2]
+
+    # IMU Settings
+    imuAccNoise: 3.9939570888238808e-03
+    imuGyrNoise: 1.5636343949698187e-03
+    imuAccBiasN: 6.4356659353532566e-05
+    imuGyrBiasN: 3.5640318696367613e-05
+    imuGravity: 9.80511
+    imuRPYWeight: 0.01
+
+    # LiDAR/IMU extrinsic aligned with the current mobile-base URDF and
+    # fast_lio/config/mid360.yaml.
+    # extrinsicTrans: IMU origin -> LiDAR origin, expressed in raw IMU axes.
+    # extrinsicRot: raw IMU axes -> LiDAR axes; preintegration also uses it to
+    # rotate extrinsicTrans before constructing the two inverse pose transforms.
+    # extrinsicRPY is the LiDAR orientation expressed in the IMU/base axes.
+    extrinsicTrans:  [0.201247, -0.024810, -0.029314]
+    extrinsicRot:    [ 0.861882, -0.007061, -0.507059,
+                      -0.001102,  0.999875, -0.015798,
+                       0.507107,  0.014175,  0.861766]
+    extrinsicRPY:    [ 0.861882, -0.001102,  0.507107,
+                      -0.007061,  0.999875,  0.014175,
+                      -0.507059, -0.015798,  0.861766]
+
+    # LOAM feature threshold
+    edgeThreshold: 1.0
+    surfThreshold: 0.1
+    edgeFeatureMinValidNum: 10
+    surfFeatureMinValidNum: 100
+
+    # Voxel filter params
+    odometrySurfLeafSize: 0.25
+    mappingCornerLeafSize: 0.15
+    mappingSurfLeafSize: 0.25
+
+    # Robot motion constraint
+    z_tollerance: 1000.0
+    rotation_tollerance: 1000.0
+
+    # CPU Params
+    numberOfCores: 8
+    mappingProcessInterval: 0.10
+
+    # Surrounding map
+    surroundingkeyframeAddingDistThreshold: 0.2
+    surroundingkeyframeAddingAngleThreshold: 0.05
+    surroundingKeyframeDensity: 2.0
+    surroundingKeyframeSearchRadius: 80.0
+
+    # Loop closure is disabled in localization; SC relocalization is controlled by Loc.useSCReLoc.
+    loopClosureEnableFlag: false
+    loopClosureFrequency: 1.0
+    surroundingKeyframeSize: 50
+    historyKeyframeSearchRadius: 15.0
+    historyKeyframeSearchTimeDiff: 30.0
+    historyKeyframeSearchNum: 10
+    historyKeyframeFitnessScore: 0.3
+
+    # Visualization
+    globalMapVisualizationSearchRadius: 1000.0
+    globalMapVisualizationPoseDensity: 10.0
+    globalMapVisualizationLeafSize: 1.0

@@ -1,0 +1,34 @@
+# ===== ROS 2 / colcon build artifacts =====
+build/
+install/
+log/
+*.colcon.*
+
+# ===== Compiled / Python caches =====
+*.o
+*.so
+*.a
+*.pyc
+__pycache__/
+*.egg-info/
+
+# ===== Large SLAM data & maps (DO NOT commit) =====
+*.pcd
+*.scd
+*.log
+*.bag
+*.db3
+maps/
+*.pcd/
+
+# ===== Editor / OS =====
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ===== Local param overrides / secrets =====
+*.local.yaml
+params.local.yaml
