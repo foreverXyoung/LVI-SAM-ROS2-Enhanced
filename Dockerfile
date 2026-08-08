@@ -1,15 +1,26 @@
 # LVI-SAM-ROS2-Enhanced — 可复现构建镜像
 #
-# 基础：ros:humble（Ubuntu 22.04 + ROS 2 Humble）
+# 基础镜像（按平台选择，通过 --build-arg BASE_IMAGE=... 覆盖）：
+#   x86_64 : ros:humble                         （默认，Ubuntu 22.04 + ROS 2 Humble）
+#   AGX Orin: nvcr.io/nvidia/l4t-ros2:humble-r36.4.0
+#             或社区免登录: dustynv/ros:humble-ros-base-l4t-r36.4
+#           ⚠️ 标签须与设备 L4T 版本一致（head -n1 /etc/nv_tegra_release）
+#           在 Orin 上切勿用 x86 的 ros:humble（架构不匹配，构建会失败）
+#
 # 流程：apt/ROS 依赖 → GTSAM(源码) → Livox-SDK2(源码) → rosdep → colcon build
 #
-# 用法：
-#   宿主机先初始化子模块（构建上下文需要它）：
-#     git submodule update --init --recursive
+# 用法（x86）：
+#   git submodule update --init --recursive
 #   docker build -t lvi-sam-ros2-enhanced .
 #   docker run -it --rm --net=host --privileged -v /dev:/dev lvi-sam-ros2-enhanced bash
 #
-FROM ros:humble
+# 用法（AGX Orin）：
+#   git submodule update --init --recursive
+#   docker build --build-arg BASE_IMAGE=nvcr.io/nvidia/l4t-ros2:humble-r36.4.0 -t lvi-sam-orin .
+#   docker run -it --rm --net=host --privileged -v /dev:/dev lvi-sam-orin bash
+#
+ARG BASE_IMAGE=ros:humble
+FROM ${BASE_IMAGE}
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG ROS_DISTRO=humble

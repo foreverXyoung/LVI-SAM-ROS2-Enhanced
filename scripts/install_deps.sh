@@ -52,7 +52,22 @@ $SUDO apt-get install -y --no-install-recommends \
 if [ -f /usr/local/lib/cmake/GTSAM/GTSAMConfig.cmake ]; then
   c_ok "GTSAM 已安装，跳过源码编译"
 else
-  c_info "源码编译安装 GTSAM 4.0.3 (约需数分钟) ..."
+  # ---- swap 检测：ARM/Jetson 上源码编译 GTSAM 极易 OOM，务必先确认 swap ----
+  _mem_kb="$(grep MemTotal /proc/meminfo | awk '{print $2}')"
+  _mem_gb="$(( _mem_kb / 1024 / 1024 ))"
+  _swap_kb="$(grep SwapTotal /proc/meminfo | awk '{print $2}')"
+  if [ "$_mem_gb" -lt 16 ] && [ "$_swap_kb" -eq 0 ]; then
+    c_err "物理内存 ${_mem_gb}GB 且无 swap：源码编译 GTSAM 极可能 OOM（尤其在 AGX Orin 上）。"
+    c_warn "建议先创建 32GB swap（一次性，需 root）："
+    echo "    sudo fallocate -l 32G /swapfile"
+    echo "    sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile"
+    echo "    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab"
+    c_warn "创建后重新运行本脚本。仍将尝试继续（可能失败）。"
+  elif [ "$_mem_gb" -lt 16 ]; then
+    c_warn "物理内存 ${_mem_gb}GB（已检测到 swap）。若编译 OOM，请扩大 swap 至 32GB 后重试。"
+  fi
+
+  c_info "源码编译安装 GTSAM 4.0.3 (约需数分钟~数十分钟，依平台而定) ..."
   GTSAM_VER="4.0.3"
   TMP="$(mktemp -d)"
   cd "$TMP"
