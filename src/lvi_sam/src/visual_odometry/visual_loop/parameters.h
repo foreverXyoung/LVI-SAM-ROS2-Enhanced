@@ -59,6 +59,8 @@
 #include <thread>
 #include <mutex>
 #include <cassert>
+#include <stdexcept>
+#include <memory>
 
 #include "ThirdParty/DBoW/DBoW2.h"
 #include "ThirdParty/DVision/DVision.h"

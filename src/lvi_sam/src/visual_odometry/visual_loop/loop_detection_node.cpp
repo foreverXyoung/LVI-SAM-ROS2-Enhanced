@@ -39,14 +39,13 @@ BriefExtractor briefExtractor;
 
 void new_sequence()
 {
-    m_buf.lock();
+    std::lock_guard<std::mutex> lock(m_buf);
     while(!image_buf.empty())
         image_buf.pop();
     while(!point_buf.empty())
         point_buf.pop();
     while(!pose_buf.empty())
         pose_buf.pop();
-    m_buf.unlock();
 }
 
 void image_callback(const sensor_msgs::msg::Image::ConstSharedPtr &image_msg)
@@ -56,9 +55,11 @@ void image_callback(const sensor_msgs::msg::Image::ConstSharedPtr &image_msg)
     if(!LOOP_CLOSURE)
         return;
 
-    m_buf.lock();
-    image_buf.push(image_msg);
-    m_buf.unlock();
+    {
+        std::lock_guard<std::mutex> lock(m_buf);
+        image_buf.push(image_msg);
+        while (image_buf.size() > 200) image_buf.pop();
+    }
 
     // detect unstable camera stream
     static double last_image_time = -1;
@@ -77,9 +78,9 @@ void point_callback(const sensor_msgs::msg::PointCloud::ConstSharedPtr &point_ms
     if(!LOOP_CLOSURE)
         return;
 
-    m_buf.lock();
+    std::lock_guard<std::mutex> lock(m_buf);
     point_buf.push(point_msg);
-    m_buf.unlock();
+    while (point_buf.size() > 200) point_buf.pop();
 }
 
 void pose_callback(const nav_msgs::msg::Odometry::ConstSharedPtr &pose_msg)
@@ -87,14 +88,14 @@ void pose_callback(const nav_msgs::msg::Odometry::ConstSharedPtr &pose_msg)
     if(!LOOP_CLOSURE)
         return;
 
-    m_buf.lock();
+    std::lock_guard<std::mutex> lock(m_buf);
     pose_buf.push(pose_msg);
-    m_buf.unlock();
+    while (pose_buf.size() > 200) pose_buf.pop();
 }
 
 void extrinsic_callback(const nav_msgs::msg::Odometry::ConstSharedPtr &pose_msg)
 {
-    m_process.lock();
+    std::lock_guard<std::mutex> lock(m_process);
     tic = Vector3d(pose_msg->pose.pose.position.x,
                    pose_msg->pose.pose.position.y,
                    pose_msg->pose.pose.position.z);
@@ -102,7 +103,6 @@ void extrinsic_callback(const nav_msgs::msg::Odometry::ConstSharedPtr &pose_msg)
                       pose_msg->pose.pose.orientation.x,
                       pose_msg->pose.pose.orientation.y,
                       pose_msg->pose.pose.orientation.z).toRotationMatrix();
-    m_process.unlock();
 }
 
 void process()
@@ -112,45 +112,50 @@ void process()
 
     while (rclcpp::ok())
     {
-        sensor_msgs::msg::Image::ConstSharedPtr image_msg = NULL;
-        sensor_msgs::msg::PointCloud::ConstSharedPtr point_msg = NULL;
-        nav_msgs::msg::Odometry::ConstSharedPtr pose_msg = NULL;
+        sensor_msgs::msg::Image::ConstSharedPtr image_msg = nullptr;
+        sensor_msgs::msg::PointCloud::ConstSharedPtr point_msg = nullptr;
+        nav_msgs::msg::Odometry::ConstSharedPtr pose_msg = nullptr;
 
         // find out the messages with same time stamp
-        m_buf.lock();
-        if(!image_buf.empty() && !point_buf.empty() && !pose_buf.empty())
         {
-            if (rclcpp::Time(image_buf.front()->header.stamp).seconds() > rclcpp::Time(pose_buf.front()->header.stamp).seconds())
+            std::lock_guard<std::mutex> lock(m_buf);
+            if(!image_buf.empty() && !point_buf.empty() && !pose_buf.empty())
             {
-                pose_buf.pop();
-                printf("throw pose at beginning\n");
-            }
-            else if (rclcpp::Time(image_buf.front()->header.stamp).seconds() > rclcpp::Time(point_buf.front()->header.stamp).seconds())
-            {
-                point_buf.pop();
-                printf("throw point at beginning\n");
-            }
-            else if (rclcpp::Time(image_buf.back()->header.stamp).seconds() >= rclcpp::Time(pose_buf.front()->header.stamp).seconds()
-                && rclcpp::Time(point_buf.back()->header.stamp).seconds() >= rclcpp::Time(pose_buf.front()->header.stamp).seconds())
-            {
-                pose_msg = pose_buf.front();
-                pose_buf.pop();
-                while (!pose_buf.empty())
+                if (rclcpp::Time(image_buf.front()->header.stamp).seconds() > rclcpp::Time(pose_buf.front()->header.stamp).seconds())
+                {
                     pose_buf.pop();
-                while (rclcpp::Time(image_buf.front()->header.stamp).seconds() < rclcpp::Time(pose_msg->header.stamp).seconds())
-                    image_buf.pop();
-                image_msg = image_buf.front();
-                image_buf.pop();
-
-                while (rclcpp::Time(point_buf.front()->header.stamp).seconds() < rclcpp::Time(pose_msg->header.stamp).seconds())
+                }
+                else if (rclcpp::Time(image_buf.front()->header.stamp).seconds() > rclcpp::Time(point_buf.front()->header.stamp).seconds())
+                {
                     point_buf.pop();
-                point_msg = point_buf.front();
-                point_buf.pop();
+                }
+                else if (rclcpp::Time(image_buf.back()->header.stamp).seconds() >= rclcpp::Time(pose_buf.front()->header.stamp).seconds()
+                    && rclcpp::Time(point_buf.back()->header.stamp).seconds() >= rclcpp::Time(pose_buf.front()->header.stamp).seconds())
+                {
+                    pose_msg = pose_buf.front();
+                    pose_buf.pop();
+                    while (!pose_buf.empty())
+                        pose_buf.pop();
+                    while (!image_buf.empty() && rclcpp::Time(image_buf.front()->header.stamp).seconds() < rclcpp::Time(pose_msg->header.stamp).seconds())
+                        image_buf.pop();
+                    while (!point_buf.empty() && rclcpp::Time(point_buf.front()->header.stamp).seconds() < rclcpp::Time(pose_msg->header.stamp).seconds())
+                        point_buf.pop();
+                    if (!image_buf.empty() && !point_buf.empty())
+                    {
+                        image_msg = image_buf.front();
+                        image_buf.pop();
+                        point_msg = point_buf.front();
+                        point_buf.pop();
+                    }
+                    else
+                    {
+                        pose_msg.reset();
+                    }
+                }
             }
         }
-        m_buf.unlock();
 
-        if (pose_msg != NULL)
+        if (pose_msg != nullptr)
         {
             // skip fisrt few
             static int skip_first_cnt = 0;
@@ -172,30 +177,53 @@ void process()
             Vector3d T = Vector3d(pose_msg->pose.pose.position.x,
                                   pose_msg->pose.pose.position.y,
                                   pose_msg->pose.pose.position.z);
-            Matrix3d R = Quaterniond(pose_msg->pose.pose.orientation.w,
-                                     pose_msg->pose.pose.orientation.x,
-                                     pose_msg->pose.pose.orientation.y,
-                                     pose_msg->pose.pose.orientation.z).toRotationMatrix();
+            Quaterniond poseQuaternion(
+                pose_msg->pose.pose.orientation.w,
+                pose_msg->pose.pose.orientation.x,
+                pose_msg->pose.pose.orientation.y,
+                pose_msg->pose.pose.orientation.z);
+            if (!T.allFinite() || !std::isfinite(poseQuaternion.norm()) ||
+                poseQuaternion.norm() < 1e-6)
+            {
+                RCLCPP_WARN(rclcpp::get_logger("visual_loop"),
+                            "Discarding a non-finite visual keyframe pose");
+                continue;
+            }
+            poseQuaternion.normalize();
+            Matrix3d R = poseQuaternion.toRotationMatrix();
 
             // add keyframe
             if((T - last_t).norm() > SKIP_DIST)
             {
                 // convert image
                 cv_bridge::CvImageConstPtr ptr;
-                if (image_msg->encoding == "8UC1")
+                try
                 {
-                    sensor_msgs::msg::Image img;
-                    img.header = image_msg->header;
-                    img.height = image_msg->height;
-                    img.width = image_msg->width;
-                    img.is_bigendian = image_msg->is_bigendian;
-                    img.step = image_msg->step;
-                    img.data = image_msg->data;
-                    img.encoding = "mono8";
-                    ptr = cv_bridge::toCvCopy(img, sensor_msgs::image_encodings::MONO8);
+                    if (image_msg->encoding == "8UC1")
+                    {
+                        sensor_msgs::msg::Image img;
+                        img.header = image_msg->header;
+                        img.height = image_msg->height;
+                        img.width = image_msg->width;
+                        img.is_bigendian = image_msg->is_bigendian;
+                        img.step = image_msg->step;
+                        img.data = image_msg->data;
+                        img.encoding = "mono8";
+                        ptr = cv_bridge::toCvCopy(img, sensor_msgs::image_encodings::MONO8);
+                    }
+                    else
+                    {
+                        ptr = cv_bridge::toCvCopy(
+                            image_msg, sensor_msgs::image_encodings::MONO8);
+                    }
                 }
-                else
-                    ptr = cv_bridge::toCvCopy(image_msg, sensor_msgs::image_encodings::MONO8);
+                catch (const cv_bridge::Exception& error)
+                {
+                    RCLCPP_WARN(rclcpp::get_logger("visual_loop"),
+                                "Discarding image that cv_bridge cannot convert: %s",
+                                error.what());
+                    continue;
+                }
                 
                 cv::Mat image = ptr->image;
 
@@ -204,8 +232,23 @@ void process()
                 vector<cv::Point2f> point_2d_normal;
                 vector<double> point_id;
 
+                if (point_msg->channels.size() < point_msg->points.size())
+                {
+                    RCLCPP_WARN(rclcpp::get_logger("visual_loop"),
+                                "Discarding keyframe: point/channel counts differ (%zu/%zu)",
+                                point_msg->points.size(), point_msg->channels.size());
+                    continue;
+                }
+
                 for (unsigned int i = 0; i < point_msg->points.size(); i++)
                 {
+                    if (point_msg->channels[i].values.size() < 5)
+                    {
+                        RCLCPP_WARN(rclcpp::get_logger("visual_loop"),
+                                    "Discarding keyframe: feature channel %u has fewer than 5 values", i);
+                        point_3d.clear();
+                        break;
+                    }
                     cv::Point3f p_3d;
                     p_3d.x = point_msg->points[i].x;
                     p_3d.y = point_msg->points[i].y;
@@ -223,18 +266,20 @@ void process()
                     point_2d_uv.push_back(p_2d_uv);
                     point_id.push_back(p_id);
                 }
+                if (point_3d.empty()) continue;
 
                 // new keyframe
                 static int global_frame_index = 0;
-                KeyFrame* keyframe = new KeyFrame(rclcpp::Time(pose_msg->header.stamp).seconds(), global_frame_index, 
-                                                  T, R, 
-                                                  image,
-                                                  point_3d, point_2d_uv, point_2d_normal, point_id);   
+                auto keyframe = std::make_unique<KeyFrame>(
+                    rclcpp::Time(pose_msg->header.stamp).seconds(),
+                    global_frame_index, T, R, image, point_3d,
+                    point_2d_uv, point_2d_normal, point_id);
 
                 // detect loop
-                m_process.lock();
-                loopDetector.addKeyFrame(keyframe, 1);
-                m_process.unlock();
+                {
+                    std::lock_guard<std::mutex> lock(m_process);
+                    loopDetector.addKeyFrame(std::move(keyframe), true);
+                }
 
                 loopDetector.visualizeKeyPoses(rclcpp::Time(pose_msg->header.stamp).seconds());
 
@@ -285,6 +330,10 @@ int main(int argc, char **argv)
     n->get_parameter("debug_image", DEBUG_IMAGE);
     n->declare_parameter("match_image_scale", 0.0);
     n->get_parameter("match_image_scale", MATCH_IMAGE_SCALE);
+    if (PROJECT_NAME.empty() || IMAGE_TOPIC.empty())
+        throw std::runtime_error("PROJECT_NAME and image_topic must not be empty");
+    if (MATCH_IMAGE_SCALE <= 0.0 || MATCH_IMAGE_SCALE > 1.0)
+        throw std::runtime_error("match_image_scale must be in (0, 1]");
     RCLCPP_INFO(n->get_logger(), "\033[1;32m----> Visual Loop Detection parameters declared.\033[0m");
     // fsSettings["project_name"] >> PROJECT_NAME;  
     // fsSettings["image_topic"]  >> IMAGE_TOPIC;  
@@ -318,8 +367,11 @@ int main(int argc, char **argv)
         briefExtractor = BriefExtractor(n, brief_pattern_file);
         RCLCPP_INFO(n->get_logger(), "\033[1;32m----> Visual Loop Detection BriefExtractor done.\033[0m");
 
-        // initialize camera model
-        // m_camera = camodocal::CameraFactory::instance()->generateCameraFromYamlFile(config_file.c_str());
+        // The prior ROS2 port left this disabled, but KeyFrame immediately
+        // needs the camera model to normalize FAST keypoints.
+        m_camera = camodocal::CameraFactory::instance()->generateCameraFromYamlFile(n, config_file);
+        if (!m_camera)
+            throw std::runtime_error("Failed to initialize the visual-loop camera model");
     }
 
     // ros::Subscriber sub_image     = n.subscribe(IMAGE_TOPIC, 30, image_callback);
@@ -328,7 +380,7 @@ int main(int argc, char **argv)
     // ros::Subscriber sub_extrinsic = n.subscribe(PROJECT_NAME + "/vins/odometry/extrinsic",      3, extrinsic_callback);
 
     auto sub_image = n->create_subscription<sensor_msgs::msg::Image>(
-        IMAGE_TOPIC, 30,
+        IMAGE_TOPIC, rclcpp::SensorDataQoS().keep_last(30),
         image_callback);
 
     auto sub_pose = n->create_subscription<nav_msgs::msg::Odometry>(

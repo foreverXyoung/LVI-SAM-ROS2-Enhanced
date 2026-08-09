@@ -59,7 +59,9 @@ git submodule update --init --recursive
 ```
 
 `livox_ros_driver2` 以 **git 子模块**引入并锁定上游 **v1.1.1**，提供 MID360 的
-`/livox/lidar`、`/livox/imu` 话题及其 `custom_msg` 类型定义。
+点云和 IMU 数据；点云为 `livox_ros_driver2/msg/CustomMsg`，IMU 必须以
+`sensor_msgs/Imu` 接入。默认统一接口是 `/IMU_data`，也可通过 launch 的
+`imu_topic:=/livox/imu` 同时覆盖 LIS 与 VIS。
 
 ---
 
@@ -157,7 +159,7 @@ pip3 install --break-system-packages opencv-python numpy pyyaml 2>/dev/null \
 
 ## 5. 编译
 
-推荐使用 [`scripts/build.sh`](scripts/build.sh)，其等价于：
+推荐使用 [`scripts/build.sh`](../scripts/build.sh)，其等价于：
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -212,7 +214,7 @@ ros2 pkg list | grep -E "lvi_sam|livox_ros_driver2"   # 两者都应列出
 
 ## 7. Docker 替代方案（推荐用于 CI / 干净部署）
 
-如果不想在宿主机装一堆系统库，直接用仓库根目录的 [`Dockerfile`](Dockerfile)：
+如果不想在宿主机装一堆系统库，直接用仓库根目录的 [`Dockerfile`](../Dockerfile)：
 
 ```bash
 # 宿主机先初始化子模块（Docker 构建上下文需要它）
@@ -228,7 +230,7 @@ docker run -it --rm --net=host \
 ```
 
 `docker-compose.yml` 提供更省心的默认（`--net=host` + 设备挂载 + 工作目录）。
-详见 [`docker-compose.yml`](docker-compose.yml) 注释。
+详见 [`docker-compose.yml`](../docker-compose.yml) 注释。
 
 ---
 

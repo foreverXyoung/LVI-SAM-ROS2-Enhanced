@@ -35,6 +35,7 @@
 #include <string>
 #include <thread>
 #include <mutex>
+#include <stdexcept>
 
 using namespace std;
 
@@ -93,6 +94,10 @@ public:
     bool gpsFactorAlwaysUse;
     float gpsCovThreshold, poseCovThreshold;
     float gpsInitialDistance, gpsFactorDistance, gpsVarianceFloor;
+    float gpsTimeTolerance, gpsInnovationThreshold, gpsRobustKernelScale;
+    bool gpsUseRobustNoise;
+    int gpsQueueSize;
+    string gpsExpectedFrame;
 
     // Optional non-GPS pose constraint, used by simulation odometry.
     bool useExternalPoseFactor;
@@ -155,6 +160,8 @@ public:
 
     // Loop closure
     bool loopClosureEnableFlag;
+    bool scanContextLoopEnableFlag;
+    float scanContextDistanceThreshold;
     float loopClosureFrequency;
     int surroundingKeyframeSize;
     float historyKeyframeSearchRadius;
@@ -167,7 +174,10 @@ public:
     float globalMapVisualizationPoseDensity;
     float globalMapVisualizationLeafSize;
 
-    ParamServer(std::string node_name) : Node(node_name) {
+    explicit ParamServer(
+        std::string node_name,
+        const rclcpp::NodeOptions& options = rclcpp::NodeOptions())
+        : Node(node_name, options) {
         declare_and_get_parameter<bool>("useRviz", useRviz, true);
 
         declare_and_get_parameter<std::string>("pointCloudTopic", pointCloudTopic, "points");
@@ -182,13 +192,21 @@ public:
 
         declare_and_get_parameter<bool>("useImuHeadingInitialization", useImuHeadingInitialization, false);
         declare_and_get_parameter<bool>("useGpsElevation", useGpsElevation, false);
-        declare_and_get_parameter<bool>("useGpsFactor", useGpsFactor, true);
+        // Global factors are opt-in: a wrong frame or overconfident RTK source
+        // can deform the whole pose graph.
+        declare_and_get_parameter<bool>("useGpsFactor", useGpsFactor, false);
         declare_and_get_parameter<float>("gpsCovThreshold", gpsCovThreshold, 2.0);
         declare_and_get_parameter<float>("poseCovThreshold", poseCovThreshold, 25.0);
         declare_and_get_parameter<bool>("gpsFactorAlwaysUse", gpsFactorAlwaysUse, false);
         declare_and_get_parameter<float>("gpsInitialDistance", gpsInitialDistance, 5.0);
         declare_and_get_parameter<float>("gpsFactorDistance", gpsFactorDistance, 5.0);
         declare_and_get_parameter<float>("gpsVarianceFloor", gpsVarianceFloor, 1.0);
+        declare_and_get_parameter<float>("gpsTimeTolerance", gpsTimeTolerance, 0.2);
+        declare_and_get_parameter<float>("gpsInnovationThreshold", gpsInnovationThreshold, 10.0);
+        declare_and_get_parameter<bool>("gpsUseRobustNoise", gpsUseRobustNoise, true);
+        declare_and_get_parameter<float>("gpsRobustKernelScale", gpsRobustKernelScale, 2.0);
+        declare_and_get_parameter<int>("gpsQueueSize", gpsQueueSize, 500);
+        declare_and_get_parameter<std::string>("gpsExpectedFrame", gpsExpectedFrame, "");
         declare_and_get_parameter<bool>("useExternalPoseFactor", useExternalPoseFactor, false);
         declare_and_get_parameter<bool>("externalPoseOverride", externalPoseOverride, false);
         declare_and_get_parameter<std::string>("externalPoseTopic", externalPoseTopic, "/sim/local_odom");
@@ -207,7 +225,7 @@ public:
 
         declare_and_get_parameter<bool>("savePCD", savePCD, false);
         declare_and_get_parameter<bool>("saveKeyframeMap", saveKeyframeMap, false);
-        declare_and_get_parameter<std::string>("savePCDDirectory", savePCDDirectory, "/Downloads/LOAM/");
+        declare_and_get_parameter<std::string>("savePCDDirectory", savePCDDirectory, "/tmp/lvi_sam_maps/");
 
         std::string sensorStr;
         declare_and_get_parameter<std::string>("sensor", sensorStr, "ouster");
@@ -218,8 +236,9 @@ public:
         } else if (sensorStr == "livox") {
             sensor = SensorType::LIVOX;
         } else {
-            RCLCPP_ERROR_STREAM(get_logger(), "Invalid sensor type (must be either 'velodyne' or 'ouster' or 'livox'): " << sensorStr);
-            rclcpp::shutdown();
+            throw std::runtime_error(
+                "Invalid sensor type '" + sensorStr +
+                "' (expected velodyne, ouster, or livox)");
         }
 
         declare_and_get_parameter<int>("N_SCAN", N_SCAN, 64);
@@ -231,8 +250,20 @@ public:
         declare_and_get_parameter<std::vector<double>>("selfFilterBoxMin", selfFilterBoxMin, std::vector<double>{-0.5, -0.5, -0.5});
         declare_and_get_parameter<std::vector<double>>("selfFilterBoxMax", selfFilterBoxMax, std::vector<double>{0.5, 0.5, 0.5});
         if (selfFilterBoxMin.size() != 3 || selfFilterBoxMax.size() != 3) {
-            RCLCPP_WARN(get_logger(), "selfFilterBoxMin/selfFilterBoxMax must contain 3 values, disabling self filter");
-            selfFilterEnable = false;
+            if (selfFilterEnable)
+                throw std::runtime_error(
+                    "enabled self filter requires three-value box min/max");
+            RCLCPP_WARN(get_logger(),
+                        "selfFilterBoxMin/selfFilterBoxMax should contain 3 values");
+        } else if (selfFilterEnable) {
+            for (std::size_t axis = 0; axis < 3; ++axis) {
+                if (!std::isfinite(selfFilterBoxMin[axis]) ||
+                    !std::isfinite(selfFilterBoxMax[axis]) ||
+                    selfFilterBoxMin[axis] >= selfFilterBoxMax[axis]) {
+                    throw std::runtime_error(
+                        "self-filter box must be finite and min < max on every axis");
+                }
+            }
         }
 
         declare_and_get_parameter<float>("imuAccNoise", imuAccNoise, 9e-4);
@@ -248,9 +279,32 @@ public:
         declare_and_get_parameter<std::vector<double>>("extrinsicRPY", extRPYV, id);
         declare_and_get_parameter<std::vector<double>>("extrinsicTrans", extTransV, {0.0, 0.0, 0.0});
 
+        if (extRotV.size() != 9 || extRPYV.size() != 9 ||
+            extTransV.size() != 3) {
+            throw std::runtime_error(
+                "extrinsicRot/extrinsicRPY/extrinsicTrans must contain "
+                "9/9/3 values respectively");
+        }
+
         extRot = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(extRotV.data(), 3, 3);
         extRPY = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(extRPYV.data(), 3, 3);
         extTrans = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(extTransV.data(), 3, 1);
+        const auto validateRotation = [](const Eigen::Matrix3d& rotation,
+                                         const char* parameterName) {
+            if (!rotation.allFinite() ||
+                !(rotation.transpose() * rotation)
+                     .isApprox(Eigen::Matrix3d::Identity(), 1e-3) ||
+                std::abs(rotation.determinant() - 1.0) > 1e-3) {
+                throw std::runtime_error(
+                    std::string(parameterName) +
+                    " must be a finite orthonormal 3x3 rotation matrix");
+            }
+        };
+        validateRotation(extRot, "extrinsicRot");
+        validateRotation(extRPY, "extrinsicRPY");
+        if (!extTrans.allFinite()) {
+            throw std::runtime_error("extrinsicTrans must contain finite values");
+        }
         extQRPY = Eigen::Quaterniond(extRPY);
 
         declare_and_get_parameter<float>("edgeThreshold", edgeThreshold, 1.0);
@@ -274,6 +328,8 @@ public:
         declare_and_get_parameter<float>("surroundingKeyframeSearchRadius", surroundingKeyframeSearchRadius, 50.0);
 
         declare_and_get_parameter<bool>("loopClosureEnableFlag", loopClosureEnableFlag, true);
+        declare_and_get_parameter<bool>("scanContextLoopEnableFlag", scanContextLoopEnableFlag, false);
+        declare_and_get_parameter<float>("scanContextDistanceThreshold", scanContextDistanceThreshold, 0.3);
         declare_and_get_parameter<float>("loopClosureFrequency", loopClosureFrequency, 1.0);
         declare_and_get_parameter<int>("surroundingKeyframeSize", surroundingKeyframeSize, 50);
         declare_and_get_parameter<float>("historyKeyframeSearchRadius", historyKeyframeSearchRadius, 15.0);
@@ -284,6 +340,51 @@ public:
         declare_and_get_parameter<float>("globalMapVisualizationSearchRadius", globalMapVisualizationSearchRadius, 1000.0);
         declare_and_get_parameter<float>("globalMapVisualizationPoseDensity", globalMapVisualizationPoseDensity, 10.0);
         declare_and_get_parameter<float>("globalMapVisualizationLeafSize", globalMapVisualizationLeafSize, 1.0);
+
+        if (N_SCAN <= 0 || Horizon_SCAN <= 0 || downsampleRate <= 0) {
+            throw std::runtime_error(
+                "N_SCAN, Horizon_SCAN, and downsampleRate must be positive");
+        }
+        if (lidarMinRange < 0.0f || lidarMaxRange <= lidarMinRange) {
+            throw std::runtime_error(
+                "lidarMaxRange must be greater than non-negative lidarMinRange");
+        }
+        if (imuAccNoise <= 0.0f || imuGyrNoise <= 0.0f ||
+            imuAccBiasN <= 0.0f || imuGyrBiasN <= 0.0f ||
+            imuGravity <= 0.0f) {
+            throw std::runtime_error(
+                "IMU noise, bias random walk, and gravity parameters must be positive");
+        }
+        if (odometrySurfLeafSize <= 0.0f || mappingCornerLeafSize <= 0.0f ||
+            mappingSurfLeafSize <= 0.0f) {
+            throw std::runtime_error("voxel leaf sizes must be positive");
+        }
+        if (numberOfCores <= 0 || mappingProcessInterval < 0.0) {
+            throw std::runtime_error(
+                "numberOfCores must be positive and mappingProcessInterval non-negative");
+        }
+        if (useExternalPoseFactor &&
+            (externalPosePositionVariance <= 0.0f ||
+             externalPoseRotationVariance <= 0.0f)) {
+            throw std::runtime_error(
+                "enabled external pose factors require positive variances");
+        }
+        if (maxLidarOdomAge <= 0.0) {
+            throw std::runtime_error("maxLidarOdomAge must be positive");
+        }
+        if (loopClosureEnableFlag &&
+            (loopClosureFrequency <= 0.0f || surroundingKeyframeSize <= 0 ||
+             historyKeyframeSearchRadius <= 0.0f ||
+             historyKeyframeSearchNum <= 0 ||
+             historyKeyframeFitnessScore <= 0.0f)) {
+            throw std::runtime_error(
+                "enabled loop closure requires positive frequency/search/fitness parameters");
+        }
+        if (scanContextDistanceThreshold <= 0.0f ||
+            scanContextDistanceThreshold >= 1.0f) {
+            throw std::runtime_error(
+                "scanContextDistanceThreshold must be in (0, 1)");
+        }
 
         usleep(100);
     }

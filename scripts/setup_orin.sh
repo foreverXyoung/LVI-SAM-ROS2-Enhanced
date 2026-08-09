@@ -93,7 +93,7 @@ if [ -n "$_cv_bridge_so" ] && [ -f "$_cv_bridge_so" ]; then
   c_info "cv_bridge 链接的 OpenCV: $_linked_cv"
   if [ "$_sys_cv" != "N/A" ] && [ "$_linked_cv" != "N/A" ] && [ "$_sys_cv" != "$_linked_cv" ]; then
     c_err "系统 OpenCV ($_sys_cv) 与 cv_bridge 链接的 ($_linked_cv) 主版本不一致！"
-    c_warn "请在 build.sh 设 OPENCV_DIR 指向系统 OpenCV（默认 KEEP_SYSTEM=1 会自动处理），详见 docs/DEPLOY_ORIN.md §3。"
+    c_warn "请在 build.sh 设 OpenCV_DIR 指向系统 OpenCV（默认 KEEP_SYSTEM=1 会自动处理），详见 docs/DEPLOY_ORIN.md §3。"
   else
     c_ok "OpenCV 版本一致，无需特殊处理。"
   fi

@@ -1,5 +1,7 @@
 #include "parameters.h"
 
+#include <stdexcept>
+
 std::string PROJECT_NAME;
 
 double INIT_DEPTH;
@@ -22,7 +24,7 @@ int ROLLING_SHUTTER;
 std::string EX_CALIB_RESULT_PATH;
 std::string IMU_TOPIC;
 int ROW, COL;
-int TD, TR;
+double TD, TR;
 
 int USE_LIDAR;
 int ALIGN_CAMERA_LIDAR_COORDINATE;
@@ -31,6 +33,7 @@ int ALIGN_CAMERA_LIDAR_COORDINATE;
 void readParameters(std::shared_ptr<rclcpp::Node> n)
 {
     std::string config_file;
+    n->declare_parameter("vins_config_file", "");
     n->get_parameter("vins_config_file", config_file);
     // cv::FileStorage fsSettings(config_file, cv::FileStorage::READ);
     // if(!fsSettings.isOpened())
@@ -51,6 +54,12 @@ void readParameters(std::shared_ptr<rclcpp::Node> n)
     n->get_parameter("use_lidar", USE_LIDAR);
     n->declare_parameter("align_camera_lidar_estimation", 1);
     n->get_parameter("align_camera_lidar_estimation", ALIGN_CAMERA_LIDAR_COORDINATE);
+    n->declare_parameter("lidar_to_cam_tx", 0.0);
+    n->declare_parameter("lidar_to_cam_ty", 0.0);
+    n->declare_parameter("lidar_to_cam_tz", 0.0);
+    n->declare_parameter("lidar_to_cam_rx", 0.0);
+    n->declare_parameter("lidar_to_cam_ry", 0.0);
+    n->declare_parameter("lidar_to_cam_rz", 0.0);
     // fsSettings["use_lidar"] >> USE_LIDAR;
     // fsSettings["align_camera_lidar_estimation"] >> ALIGN_CAMERA_LIDAR_COORDINATE;
 
@@ -110,13 +119,14 @@ void readParameters(std::shared_ptr<rclcpp::Node> n)
             RCLCPP_INFO(n->get_logger(), " Fix extrinsic param.");
 
         cv::Mat cv_R, cv_T;
-        std::vector<long int> cv_R_int;
         std::vector<double> cv_T_vec, cv_R_vec;
-        n->declare_parameter("extrinsicRotation", std::vector<long int>(9, 0.0));
-        n->get_parameter("extrinsicRotation", cv_R_int);
+        n->declare_parameter("extrinsicRotation", std::vector<double>(9, 0.0));
+        n->get_parameter("extrinsicRotation", cv_R_vec);
         n->declare_parameter("extrinsicTranslation", std::vector<double>(3, 0.0));
         n->get_parameter("extrinsicTranslation", cv_T_vec);
-        cv_R_vec.assign(cv_R_int.begin(), cv_R_int.end());
+        if (cv_R_vec.size() != 9 || cv_T_vec.size() != 3)
+            throw std::runtime_error(
+                "extrinsicRotation/extrinsicTranslation must contain 9/3 values");
         cv_R = cv::Mat(3, 3, CV_64F, cv_R_vec.data()).clone(); 
         cv_T = cv::Mat(3, 1, CV_64F, cv_T_vec.data()).clone(); 
         // fsSettings["extrinsicRotation"] >> cv_R;
@@ -125,6 +135,12 @@ void readParameters(std::shared_ptr<rclcpp::Node> n)
         Eigen::Vector3d eigen_T;
         cv::cv2eigen(cv_R, eigen_R);
         cv::cv2eigen(cv_T, eigen_T);
+        if (!eigen_R.allFinite() || !eigen_T.allFinite() ||
+            !(eigen_R.transpose() * eigen_R)
+                 .isApprox(Eigen::Matrix3d::Identity(), 1e-3) ||
+            std::abs(eigen_R.determinant() - 1.0) > 1e-3)
+            throw std::runtime_error(
+                "camera/IMU extrinsic must be a finite rigid transform");
         Eigen::Quaterniond Q(eigen_R);
         eigen_R = Q.normalized();
         RIC.push_back(eigen_R);
@@ -139,7 +155,7 @@ void readParameters(std::shared_ptr<rclcpp::Node> n)
     BIAS_GYR_THRESHOLD = 0.1;
 
     
-    n->declare_parameter("td", 1);
+    n->declare_parameter("td", 0.0);
     n->get_parameter("td", TD);
     n->declare_parameter("estimate_td", 1);
     n->get_parameter("estimate_td", ESTIMATE_TD);
@@ -156,7 +172,7 @@ void readParameters(std::shared_ptr<rclcpp::Node> n)
     if (ROLLING_SHUTTER)
     {
         // TR = fsSettings["rolling_shutter_tr"];
-        n->declare_parameter("rolling_shutter_tr", 1);
+        n->declare_parameter("rolling_shutter_tr", 0.0);
         n->get_parameter("rolling_shutter_tr", TR);
         RCLCPP_INFO_STREAM(n->get_logger(), "rolling shutter camera, read out time per line: " << TR);
     }

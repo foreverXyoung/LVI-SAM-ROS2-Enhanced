@@ -2,6 +2,7 @@
 import argparse
 import math
 import re
+import statistics
 import time
 from pathlib import Path
 
@@ -12,10 +13,11 @@ from rclpy.node import Node
 from sensor_msgs.msg import NavSatFix
 
 
-class GpsOnceReader(Node):
-    def __init__(self, topic: str):
+class GpsSampleReader(Node):
+    def __init__(self, topic: str, sample_count: int):
         super().__init__("gps_to_init_guess_once")
-        self.msg = None
+        self.sample_count = sample_count
+        self.messages = []
         self.sub = self.create_subscription(
             NavSatFix,
             topic,
@@ -24,7 +26,8 @@ class GpsOnceReader(Node):
         )
 
     def callback(self, msg: NavSatFix):
-        self.msg = msg
+        if len(self.messages) < self.sample_count:
+            self.messages.append(msg)
 
 
 def normalize_angle(angle: float) -> float:
@@ -37,13 +40,13 @@ def normalize_angle(angle: float) -> float:
 
 def gps_to_map_xy(lat: float, lon: float, geo: dict):
     """
-    GPS ¾­Î³¶È -> UTM -> LIO-SAM µØÍ¼×ø±ê x/y
+    GPS ç»çº¬åº¦ -> UTM -> LIO-SAM åœ°å›¾åæ ‡ x/y
 
-    map_geo.yaml Àï¶¨ÒåµÄÊÇ£º
+    map_geo.yaml é‡Œå®šä¹‰çš„æ˜¯ï¼š
 
         UTM = R(theta) * map + t
 
-    ËùÒÔ·´Ëã£º
+    æ‰€ä»¥åç®—ï¼š
 
         map = R(-theta) * (UTM - t)
     """
@@ -77,11 +80,11 @@ def make_init_guess_line(x: float, y: float, z: float, yaw: float, order: str, c
     yaw = normalize_angle(yaw)
 
     if order == "rpyxyz":
-        # ÄãµÄ LIO-SAM_SC_LOC_MID360_ROS2 µ±Ç°¸ñÊ½£º
+        # ä½ çš„ LIO-SAM_SC_LOC_MID360_ROS2 å½“å‰æ ¼å¼ï¼š
         # init_guess: [roll, pitch, yaw, x, y, z]
         values = f"[0.0, 0.0, {yaw:.6f}, {x:.6f}, {y:.6f}, {z:.6f}]"
     elif order == "xyzrpy":
-        # ±¸ÓÃ¸ñÊ½£º
+        # å¤‡ç”¨æ ¼å¼ï¼š
         # init_guess: [x, y, z, roll, pitch, yaw]
         values = f"[{x:.6f}, {y:.6f}, {z:.6f}, 0.0, 0.0, {yaw:.6f}]"
     else:
@@ -122,11 +125,11 @@ def update_init_guess(params_path: str, x: float, y: float, z: float, yaw: float
     for i, line in enumerate(lines):
         stripped = line.lstrip()
 
-        # Ìø¹ı×¢ÊÍĞĞ
+        # è·³è¿‡æ³¨é‡Šè¡Œ
         if stripped.startswith("#"):
             continue
 
-        # Ö»ĞŞ¸ÄÕæÕıÉúĞ§µÄ init_guess ĞĞ
+        # åªä¿®æ”¹çœŸæ­£ç”Ÿæ•ˆçš„ init_guess è¡Œ
         if stripped.startswith("init_guess:"):
             indent = line[:len(line) - len(stripped)]
 
@@ -151,26 +154,61 @@ def update_init_guess(params_path: str, x: float, y: float, z: float, yaw: float
     return new_line_text.strip(), backup_path
 
 
-def read_one_gps(gps_topic: str, timeout: float):
+def read_gps_samples(gps_topic: str, timeout: float, sample_count: int):
     rclpy.init()
-    node = GpsOnceReader(gps_topic)
+    node = GpsSampleReader(gps_topic, sample_count)
 
-    msg = None
     start_time = time.time()
 
     while time.time() - start_time < timeout:
         rclpy.spin_once(node, timeout_sec=0.2)
-        if node.msg is not None:
-            msg = node.msg
+        if len(node.messages) >= sample_count:
             break
 
+    messages = list(node.messages)
     node.destroy_node()
     rclpy.shutdown()
 
-    if msg is None:
-        raise RuntimeError(f"No GPS message received from {gps_topic} within {timeout} seconds")
+    if len(messages) < sample_count:
+        raise RuntimeError(
+            f"Only {len(messages)}/{sample_count} GPS samples received from "
+            f"{gps_topic} within {timeout} seconds"
+        )
 
-    return msg
+    return messages
+
+
+def validate_gps_sample(msg: NavSatFix, min_status: int,
+                        max_horizontal_std: float,
+                        allow_unknown_covariance: bool):
+    if not math.isfinite(msg.latitude) or not math.isfinite(msg.longitude):
+        raise RuntimeError("GPS contains a non-finite latitude/longitude")
+    if msg.latitude == 0.0 and msg.longitude == 0.0:
+        raise RuntimeError("Invalid GPS: latitude and longitude are both 0")
+    if msg.status.status < min_status:
+        raise RuntimeError(
+            f"GPS status too low: {msg.status.status}, required >= {min_status}"
+        )
+
+    if msg.position_covariance_type == NavSatFix.COVARIANCE_TYPE_UNKNOWN:
+        if not allow_unknown_covariance:
+            raise RuntimeError(
+                "GPS covariance is unknown; use --allow-unknown-covariance "
+                "only after checking the receiver contract"
+            )
+        return
+
+    variance_e = float(msg.position_covariance[0])
+    variance_n = float(msg.position_covariance[4])
+    if (not math.isfinite(variance_e) or not math.isfinite(variance_n)
+            or variance_e <= 0.0 or variance_n <= 0.0):
+        raise RuntimeError("GPS horizontal covariance is invalid")
+    horizontal_std = math.sqrt(max(variance_e, variance_n))
+    if horizontal_std > max_horizontal_std:
+        raise RuntimeError(
+            f"GPS horizontal std {horizontal_std:.3f} m exceeds "
+            f"{max_horizontal_std:.3f} m"
+        )
 
 
 def main():
@@ -240,7 +278,34 @@ def main():
         "--min-status",
         type=int,
         default=0,
-        help="Minimum acceptable NavSatFix status. Use 2 if you only want RTK fixed-like status."
+        help="Minimum acceptable NavSatFix status; RTK fix values are driver-specific."
+    )
+
+    parser.add_argument(
+        "--samples",
+        type=int,
+        default=5,
+        help="Number of consecutive GPS samples used for the robust median"
+    )
+
+    parser.add_argument(
+        "--max-horizontal-std",
+        type=float,
+        default=0.5,
+        help="Maximum accepted horizontal standard deviation in metres"
+    )
+
+    parser.add_argument(
+        "--max-sample-spread",
+        type=float,
+        default=0.75,
+        help="Maximum XY spread among accepted initialization samples in metres"
+    )
+
+    parser.add_argument(
+        "--allow-unknown-covariance",
+        action="store_true",
+        help="Allow NavSatFix with unknown covariance (not recommended)"
     )
 
     args = parser.parse_args()
@@ -253,20 +318,35 @@ def main():
     with geo_path.open("r") as f:
         geo = yaml.safe_load(f)
 
-    msg = read_one_gps(args.gps_topic, args.timeout)
+    if args.samples < 1:
+        raise ValueError("--samples must be at least 1")
+    if args.max_horizontal_std <= 0.0 or args.max_sample_spread < 0.0:
+        raise ValueError("GPS quality thresholds must be positive")
 
-    if msg.latitude == 0.0 and msg.longitude == 0.0:
-        raise RuntimeError("Invalid GPS: latitude and longitude are both 0")
-
-    if msg.status.status < args.min_status:
-        raise RuntimeError(
-            f"GPS status too low: {msg.status.status}, required >= {args.min_status}"
+    messages = read_gps_samples(args.gps_topic, args.timeout, args.samples)
+    for msg in messages:
+        validate_gps_sample(
+            msg, args.min_status, args.max_horizontal_std,
+            args.allow_unknown_covariance
         )
 
-    lat = float(msg.latitude)
-    lon = float(msg.longitude)
+    projected = [gps_to_map_xy(float(msg.latitude), float(msg.longitude), geo)
+                 for msg in messages]
+    x_values = [item[0] for item in projected]
+    y_values = [item[1] for item in projected]
+    x_map = statistics.median(x_values)
+    y_map = statistics.median(y_values)
+    max_spread = max(math.hypot(x - x_map, y - y_map)
+                     for x, y in zip(x_values, y_values))
+    if max_spread > args.max_sample_spread:
+        raise RuntimeError(
+            f"GPS sample spread {max_spread:.3f} m exceeds "
+            f"{args.max_sample_spread:.3f} m"
+        )
 
-    x_map, y_map, easting, northing = gps_to_map_xy(lat, lon, geo)
+    lat = statistics.median(float(msg.latitude) for msg in messages)
+    lon = statistics.median(float(msg.longitude) for msg in messages)
+    _, _, easting, northing = gps_to_map_xy(lat, lon, geo)
 
     new_line, backup_path = update_init_guess(
         args.params,
@@ -279,7 +359,9 @@ def main():
 
     print("========== GPS to LIO-SAM init_guess ==========")
     print(f"GPS topic      : {args.gps_topic}")
-    print(f"GPS status     : {msg.status.status}")
+    print(f"GPS samples    : {len(messages)}")
+    print(f"GPS status min : {min(msg.status.status for msg in messages)}")
+    print(f"Sample spread  : {max_spread:.3f} m")
     print(f"GPS lat/lon    : {lat:.12f}, {lon:.12f}")
     print(f"UTM E/N        : {easting:.3f}, {northing:.3f}")
     print(f"Map x/y        : {x_map:.3f}, {y_map:.3f}")

@@ -8,6 +8,7 @@
 #include <opencv2/calib3d/calib3d.hpp>
 #include <opencv2/core/eigen.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
+#include <boost/algorithm/string.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include "gpl.h"
@@ -178,7 +179,7 @@ CataCamera::Parameters::readFromYamlFile(std::shared_ptr<rclcpp::Node> node, con
         // modelType_temp >> sModelType;
         node->get_parameter("model_type", sModelType);
 
-        if (sModelType.compare("MEI") != 0)
+        if (!boost::iequals(sModelType, "mei"))
         {
             return false;
         }

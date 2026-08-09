@@ -11,6 +11,7 @@
 #include "tf2/LinearMath/Quaternion.h"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp" 
 #include "geometry_msgs/msg/quaternion.hpp"
+#include <pcl/common/transforms.h>
 
 using namespace Eigen;
 using namespace std;
@@ -79,15 +80,18 @@ class odometryRegister
 public:
 
     std::shared_ptr<rclcpp::Node> node;
-    tf2::Quaternion q_lidar_to_cam;
-    Eigen::Quaterniond q_lidar_to_cam_eigen;
+    Eigen::Affine3d camera_from_lidar = Eigen::Affine3d::Identity();
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_latest_odometry;
 
     odometryRegister(std::shared_ptr<rclcpp::Node> node)
     {
-        q_lidar_to_cam = tf2::Quaternion(0, 1, 0, 0); // rotate orientation // mark: camera - lidar
-        q_lidar_to_cam_eigen = Eigen::Quaterniond(0, 0, 0, 1); // rotate position by pi, (w, x, y, z) // mark: camera - lidar
-        // pub_latest_odometry = n.advertise<nav_msgs::msg::Odometry>("odometry/test", 1000);
+        const float tx = static_cast<float>(node->get_parameter("lidar_to_cam_tx").as_double());
+        const float ty = static_cast<float>(node->get_parameter("lidar_to_cam_ty").as_double());
+        const float tz = static_cast<float>(node->get_parameter("lidar_to_cam_tz").as_double());
+        const float rx = static_cast<float>(node->get_parameter("lidar_to_cam_rx").as_double());
+        const float ry = static_cast<float>(node->get_parameter("lidar_to_cam_ry").as_double());
+        const float rz = static_cast<float>(node->get_parameter("lidar_to_cam_rz").as_double());
+        camera_from_lidar = pcl::getTransformation(tx, ty, tz, rx, ry, rz).cast<double>();
     }
 
     // convert odometry from ROS Lidar frame to VINS camera frame
@@ -129,29 +133,39 @@ public:
             return odometry_channel;
         }
 
-        // convert odometry rotation from lidar ROS frame to VINS camera frame (only rotation, assume lidar, camera, and IMU are close enough)
-        tf2::Quaternion q_odom_lidar;
-        tf2::fromMsg(odomCur.pose.pose.orientation, q_odom_lidar);
+        // Apply the calibrated full SE(3) transform. camera_from_lidar maps
+        // lidar-frame points into the camera/body frame, so a camera pose is
+        // T_odom_lidar * inverse(T_camera_lidar).
+        Eigen::Quaterniond q_odom_lidar(
+            odomCur.pose.pose.orientation.w,
+            odomCur.pose.pose.orientation.x,
+            odomCur.pose.pose.orientation.y,
+            odomCur.pose.pose.orientation.z);
+        if (q_odom_lidar.norm() < 1e-9) return odometry_channel;
+        q_odom_lidar.normalize();
+        Eigen::Affine3d odom_from_lidar = Eigen::Affine3d::Identity();
+        odom_from_lidar.linear() = q_odom_lidar.toRotationMatrix();
+        odom_from_lidar.translation() = Eigen::Vector3d(
+            odomCur.pose.pose.position.x,
+            odomCur.pose.pose.position.y,
+            odomCur.pose.pose.position.z);
+        const Eigen::Affine3d odom_from_camera =
+            odom_from_lidar * camera_from_lidar.inverse();
+        const Eigen::Quaterniond q_odom_cam(odom_from_camera.rotation());
+        odomCur.pose.pose.orientation.x = q_odom_cam.x();
+        odomCur.pose.pose.orientation.y = q_odom_cam.y();
+        odomCur.pose.pose.orientation.z = q_odom_cam.z();
+        odomCur.pose.pose.orientation.w = q_odom_cam.w();
+        odomCur.pose.pose.position.x = odom_from_camera.translation().x();
+        odomCur.pose.pose.position.y = odom_from_camera.translation().y();
+        odomCur.pose.pose.position.z = odom_from_camera.translation().z();
 
-        tf2::Quaternion q_rot_pi;
-        q_rot_pi.setRPY(0, 0, M_PI);
-
-        tf2::Quaternion q_odom_cam = q_rot_pi * (q_odom_lidar * q_lidar_to_cam);
-        odomCur.pose.pose.orientation = tf2::toMsg(q_odom_cam);
-
-        // convert odometry position from lidar ROS frame to VINS camera frame
-        Eigen::Vector3d p_eigen(odomCur.pose.pose.position.x, odomCur.pose.pose.position.y, odomCur.pose.pose.position.z);
-        Eigen::Vector3d v_eigen(odomCur.twist.twist.linear.x, odomCur.twist.twist.linear.y, odomCur.twist.twist.linear.z);
-        Eigen::Vector3d p_eigen_new = q_lidar_to_cam_eigen * p_eigen;
-        Eigen::Vector3d v_eigen_new = q_lidar_to_cam_eigen * v_eigen;
-
-        odomCur.pose.pose.position.x = p_eigen_new.x();
-        odomCur.pose.pose.position.y = p_eigen_new.y();
-        odomCur.pose.pose.position.z = p_eigen_new.z();
-
-        odomCur.twist.twist.linear.x = v_eigen_new.x();
-        odomCur.twist.twist.linear.y = v_eigen_new.y();
-        odomCur.twist.twist.linear.z = v_eigen_new.z();
+        // imuPreintegration publishes currentState.velocity() in the odometry
+        // (world) frame.  Changing the child pose from lidar to camera must not
+        // rotate that world-frame velocity by the sensor extrinsic.  A lever-arm
+        // velocity correction would additionally require a consistently framed
+        // angular velocity; for the present tightly mounted sensors, retain the
+        // IMU/world velocity as the initialization prior.
 
         // odomCur.header.stamp = ros::Time().fromSec(img_time);
         // odomCur.header.frame_id = "vins_world";

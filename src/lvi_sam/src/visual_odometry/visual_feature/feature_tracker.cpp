@@ -1,5 +1,7 @@
 #include "feature_tracker.h"
 
+#include <stdexcept>
+
 int FeatureTracker::n_id = 0;
 
 bool inBorder(const cv::Point2f &pt)
@@ -217,6 +219,9 @@ void FeatureTracker::readIntrinsicParameter(std::shared_ptr<rclcpp::Node> n, con
 {
     // RCLCPP_INFO(this->get_logger(), "reading paramerter of camera %s", calib_file.c_str());
     m_camera = CameraFactory::instance()->generateCameraFromYamlFile(n, calib_file);
+    if (!m_camera)
+        throw std::runtime_error(
+            "Failed to initialize camera model; check model_type, image size, and intrinsics");
 }
 
 void FeatureTracker::showUndistortion(const string &name)

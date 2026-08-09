@@ -2,12 +2,14 @@
   ros__parameters:
     Loc:
       EnableFlag: true
-      loadPCDDirectory: "/home/lighter/Documents/return_station_ws/src/nav2_bringup/gazebo_map/"
+      loadPCDDirectory: "/tmp/lvi_sam_maps"
       surroundingKeyframeSearchRadius: 40.0
       surroundingKeyframeSearchMaxNum: 30
       useSCReLoc: true
       useRTKAssist: false
       useRTKInitialization: false
+      rtkUseHeading: false
+      rtkAdaptiveBlend: false
       rtkPositionBlend: 0.0
       rtkMaxInnovation: 3.0
       dynamicFilterEnable: false
@@ -44,7 +46,7 @@
     gpsFactorDistance: 0.0
     gpsVarianceFloor: 1.0e-6
     savePCD: false
-    savePCDDirectory: "/home/lighter/Documents/return_station_ws/src/nav2_bringup/gazebo_map/"
+    savePCDDirectory: "/tmp/lvi_sam_maps"
 
     sensor: livox
     N_SCAN: 16
@@ -88,6 +90,8 @@
     surroundingKeyframeDensity: 1.0
     surroundingKeyframeSearchRadius: 40.0
     loopClosureEnableFlag: false
+    scanContextLoopEnableFlag: false
+    scanContextDistanceThreshold: 0.3
     globalMapVisualizationSearchRadius: 100.0
     globalMapVisualizationPoseDensity: 5.0
     globalMapVisualizationLeafSize: 0.5

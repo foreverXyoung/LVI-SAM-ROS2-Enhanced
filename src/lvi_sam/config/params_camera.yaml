@@ -4,10 +4,8 @@
       #       LIS(fork) 话题：激光深度用绝对 /lio_sam/deskew/cloud_deskewed；
       #       里程计先验 odomTopic 在 params.yaml 设为相对 "odometry/imu"，estimator 同话题订阅，无需 remap。
       PROJECT_NAME: "lvi_sam"
-      # VIS 需要 sensor_msgs/Imu 标准消息；fork 的 /IMU_data 是 livox CustomMsg，
-      # 需指向 livox_ros_driver2 发布的标准 IMU 话题(如 /livox/imu)，或加 CustomMsg→Imu 转换节点。
-      # 在 Linux 环境确认实际标准 IMU 话题名后修改此处。
-      imu_topic: "/livox/imu"
+      # 与 LIS 共用同一条标准 sensor_msgs/Imu 数据，避免双 IMU 时间基准和噪声模型不一致。
+      imu_topic: "/IMU_data"
       image_topic: "/camera/image_raw"
       # 激光去畸变点云：对应 fork mapOptmization 发布的 /lio_sam/deskew/cloud_deskewed
       point_cloud_topic: "/lio_sam/deskew/cloud_deskewed"
@@ -17,7 +15,8 @@
       lidar_skip: 3                    # skip this amount of scans
       align_camera_lidar_estimation: 1 # align camera and lidar estimation for visualization
 
-      # lidar to camera extrinsic
+      # LiDAR -> camera/body full SE(3), shared by depth registration and
+      # LiDAR-odometry initialization. Replace with the robot's calibration.
       lidar_to_cam_tx: 0.05
       lidar_to_cam_ty: -0.07
       lidar_to_cam_tz: -0.07
@@ -53,12 +52,13 @@
       gyr_w: 4.0e-5       # gyroscope bias random work noise standard deviation.
       g_norm: 9.805       #
 
-      # Extrinsic parameter between IMU and Camera.
+      # Extrinsic parameter between IMU and Camera. The values below must also
+      # be replaced by the robot's calibrated camera/IMU transform.
       estimate_extrinsic: 0   # 0  Have an accurate extrinsic parameters. We will trust the following imu^R_cam, imu^T_cam, don't change it.
                               # 1  Have an initial guess about extrinsic parameters. We will optimize around your initial guess.
                               # 2  Don't know anything about extrinsic parameters. You don't need to give R,T. We will try to calibrate it. Do some rotation movement at beginning. 
       #Rotation from camera frame to imu frame, imu^R_cam
-      extrinsicRotation: [0, 0, -1, -1, 0, 0, 0, 1, 0]
+      extrinsicRotation: [0.0, 0.0, -1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 0.0]
 
       #Translation from camera frame to imu frame, imu^T_cam
       extrinsicTranslation: [0.006422381632411965, 0.019939800449065116, 0.03364235163589248]
@@ -79,11 +79,11 @@
 
       #unsynchronization parameters
       estimate_td: 0           # online estimate time offset between camera and imu
-      td: 0                    # initial value of time offset. unit: s. readed image clock + td = real image clock (IMU clock)
+      td: 0.0                  # initial value of time offset. unit: s. readed image clock + td = real image clock (IMU clock)
 
       #rolling shutter parameters
       rolling_shutter: 0       # 0: global shutter camera, 1: rolling shutter camera
-      rolling_shutter_tr: 0    # unit: s. rolling shutter read out time per frame (from data sheet). 
+      rolling_shutter_tr: 0.0  # unit: s. rolling shutter read out time per frame (from data sheet).
 
       #loop closure parameters
       loop_closure: 1                    # start loop closure

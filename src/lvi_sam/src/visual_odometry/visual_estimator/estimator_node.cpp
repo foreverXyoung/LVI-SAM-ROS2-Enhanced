@@ -341,12 +341,12 @@ int main(int argc, char **argv)
     // ros::Subscriber sub_restart = n.subscribe(PROJECT_NAME + "/vins/feature/restart", 1, restart_callback);
 
     auto sub_imu = node->create_subscription<sensor_msgs::msg::Imu>(
-        IMU_TOPIC, 5000,
+        IMU_TOPIC, rclcpp::SensorDataQoS().keep_last(5000),
         std::function<void(const sensor_msgs::msg::Imu::ConstSharedPtr&)>(
             std::bind(imu_callback, std::placeholders::_1, std::ref(estimator))));
 
     auto sub_odom = node->create_subscription<nav_msgs::msg::Odometry>(
-        "odometry/imu", 5000,
+        "odometry/imu", rclcpp::SensorDataQoS().keep_last(5000),
         odom_callback);
 
     auto sub_image = node->create_subscription<sensor_msgs::msg::PointCloud>(

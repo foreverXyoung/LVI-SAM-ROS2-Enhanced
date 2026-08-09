@@ -4,16 +4,24 @@
     Loc:
       EnableFlag: true
       # railway_navigation.launch.py overrides this with profile.pcd_directory.
-      loadPCDDirectory: "/data/return_station_ws/src/nav2_bringup/maps/501/"
+      loadPCDDirectory: "/tmp/lvi_sam_maps"
       surroundingKeyframeSearchRadius: 80.0
       surroundingKeyframeSearchMaxNum: 50
       useSCReLoc: true
-      # Prefer persisted, map-aligned RTK for initialization and use Scan
-      # Context automatically when RTK is absent or invalid.
+      # Prefer live RTK transformed by the persisted map alignment, and use
+      # Scan Context automatically when RTK is absent or invalid.
       useRTKAssist: true
       useRTKInitialization: true
+      rtkUseHeading: true
+      # Must match rtk_to_liosam_odom.py output_frame.
+      rtkExpectedFrame: "odom"
+      rtkInitializationMinSamples: 3
+      rtkInitializationMaxSpread: 0.50
+      rtkYawVarianceThreshold: 0.10
+      rtkAdaptiveBlend: true
       rtkPositionBlend: 0.20
       rtkMaxInnovation: 3.0
+      rtkMaxNormalizedInnovation: 5.0
       lostDetectionEnable: true
       lostBadMatchThreshold: 5
 
@@ -60,13 +68,20 @@
     # GPS Settings
     useImuHeadingInitialization: false
     useGpsElevation: false
+    useGpsFactor: false
     gpsCovThreshold: 0.5
     poseCovThreshold: 25.0
+    gpsVarianceFloor: 0.04
+    gpsTimeTolerance: 0.2
+    gpsInnovationThreshold: 5.0
+    gpsUseRobustNoise: true
+    gpsRobustKernelScale: 2.0
+    gpsQueueSize: 500
 
     # Export settings
     savePCD: false
     # Kept as a standalone-launch fallback; the navigation profile overrides it.
-    savePCDDirectory: "/data/return_station_ws/src/nav2_bringup/maps/501/"
+    savePCDDirectory: "/tmp/lvi_sam_maps"
 
     # Sensor Settings
     sensor: livox
@@ -129,6 +144,8 @@
 
     # Loop closure is disabled in localization; SC relocalization is controlled by Loc.useSCReLoc.
     loopClosureEnableFlag: false
+    scanContextLoopEnableFlag: false
+    scanContextDistanceThreshold: 0.3
     loopClosureFrequency: 1.0
     surroundingKeyframeSize: 50
     historyKeyframeSearchRadius: 15.0

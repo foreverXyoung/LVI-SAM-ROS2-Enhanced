@@ -6,20 +6,21 @@ LoopDetector::LoopDetector(){}
 
 void LoopDetector::loadVocabulary(std::string voc_path)
 {
-    voc = new BriefVocabulary(voc_path);
+    voc = std::make_unique<BriefVocabulary>(voc_path);
     db.setVocabulary(*voc, false, 0);
 }
 
-void LoopDetector::addKeyFrame(KeyFrame* cur_kf, bool flag_detect_loop)
+void LoopDetector::addKeyFrame(std::unique_ptr<KeyFrame> cur_kf, bool flag_detect_loop)
 {
+	KeyFrame* current = cur_kf.get();
 	int loop_index = -1;
     if (flag_detect_loop)
     {
-        loop_index = detectLoop(cur_kf, cur_kf->index);
+        loop_index = detectLoop(current, current->index);
     }
     else
     {
-        addKeyFrameIntoVoc(cur_kf);
+        addKeyFrameIntoVoc(current);
     }
 
     // check loop if valid using ransan and pnp
@@ -27,31 +28,31 @@ void LoopDetector::addKeyFrame(KeyFrame* cur_kf, bool flag_detect_loop)
 	{
         KeyFrame* old_kf = getKeyFrame(loop_index);
 
-        if (cur_kf->findConnection(old_kf))
+        if (old_kf != nullptr && current->findConnection(old_kf))
         {
             std_msgs::msg::Float64MultiArray match_msg;
-            match_msg.data.push_back(cur_kf->time_stamp);
+            match_msg.data.push_back(current->time_stamp);
             match_msg.data.push_back(old_kf->time_stamp);
             pub_match_msg->publish(match_msg);
         }
 	}
 
     // add keyframe
-	keyframelist.push_back(cur_kf);
+	keyframelist.push_back(std::move(cur_kf));
 }
 
 KeyFrame* LoopDetector::getKeyFrame(int index)
 {
-    list<KeyFrame*>::iterator it = keyframelist.begin();
+    auto it = keyframelist.begin();
     for (; it != keyframelist.end(); it++)   
     {
         if((*it)->index == index)
             break;
     }
     if (it != keyframelist.end())
-        return *it;
+        return it->get();
     else
-        return NULL;
+        return nullptr;
 }
 
 int LoopDetector::detectLoop(KeyFrame* keyframe, int frame_index)
@@ -176,7 +177,7 @@ void LoopDetector::visualizeKeyPoses(double time_cur)
     markerNode.color.r = 0; markerNode.color.g = 0.8; markerNode.color.b = 1;
     markerNode.color.a = 1;
 
-    for (list<KeyFrame*>::reverse_iterator rit = keyframelist.rbegin(); rit != keyframelist.rend(); ++rit)
+    for (auto rit = keyframelist.rbegin(); rit != keyframelist.rend(); ++rit)
     {
         if (count++ > count_lim)
             break;

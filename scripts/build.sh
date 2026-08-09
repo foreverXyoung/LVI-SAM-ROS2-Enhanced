@@ -21,6 +21,7 @@ if [ "$ARCH" = "aarch64" ]; then IS_ORIN=1; fi
 
 c_info(){ echo -e "\033[1;34m[INFO]\033[0m  $*"; }
 c_ok(){   echo -e "\033[1;32m[ OK ]\033[0m  $*"; }
+c_warn(){ echo -e "\033[1;33m[WARN]\033[0m  $*"; }
 
 if [ ! -f "/opt/ros/$ROS_DISTRO/setup.bash" ]; then
   echo "[ERR ] 未找到 ROS 2 ($ROS_DISTRO)，请先安装。" >&2
@@ -46,28 +47,36 @@ fi
 # JetPack 系统自带 CUDA 版 OpenCV（4.8/4.10），ros-humble 还会装 4.5.4，二者并存时
 # cv_bridge 与本项目节点可能因链接不同版本在运行期 ABI 崩溃。
 # 策略（默认 KEEP_SYSTEM=1，沿用系统 CUDA 版 OpenCV）：
-#   - 自动查找系统 opencv4 的 OpenCVConfig.cmake，导出 OPENCV_DIR 让 cv_bridge 与本项目一致；
-#   - 若自动查找失败或想改用 4.5.4，可设 OPENCV_DIR=/usr/lib/x86_64-linux-gnu/cmake/opencv4（x86）
+#   - 自动查找系统 opencv4 的 OpenCVConfig.cmake，并传递标准 CMake 变量 OpenCV_DIR；
+#   - 若自动查找失败或想改用 4.5.4，可设 OpenCV_DIR=/usr/lib/x86_64-linux-gnu/cmake/opencv4（x86）
 #     或 apt 版路径，或设 KEEP_SYSTEM=0 交给 apt 的 4.5.4。
 if [ "$IS_ORIN" -eq 1 ]; then
   KEEP_SYSTEM="${KEEP_SYSTEM:-1}"
-  if [ "$KEEP_SYSTEM" = "1" ] && [ -z "${OPENCV_DIR:-}" ]; then
-    _auto_cv="$(find /usr -name OpenCVConfig.cmake -path '*opencv4*' 2>/dev/null | head -n1)"
-    if [ -n "$_auto_cv" ]; then
-      export OPENCV_DIR="$(dirname "$_auto_cv")"
-      c_info "AGX Orin：使用系统 OpenCV（CUDA 版），OPENCV_DIR=$OPENCV_DIR"
+  if [ -n "${OPENCV_DIR:-}" ] && [ -z "${OpenCV_DIR:-}" ]; then
+    c_warn "OPENCV_DIR 已弃用，自动转换为标准变量 OpenCV_DIR。"
+    OpenCV_DIR="$OPENCV_DIR"
+  fi
+  if [ "$KEEP_SYSTEM" = "1" ] && [ -z "${OpenCV_DIR:-}" ]; then
+    _pkg_cv="$(pkg-config --variable=libdir opencv4 2>/dev/null || true)"
+    _auto_cv=""
+    if [ -n "$_pkg_cv" ] && [ -f "$_pkg_cv/cmake/opencv4/OpenCVConfig.cmake" ]; then
+      _auto_cv="$_pkg_cv/cmake/opencv4/OpenCVConfig.cmake"
     else
-      c_warn "AGX Orin：未自动找到系统 OpenCVConfig.cmake，保持默认查找；若运行期报 cv:: 符号错误，请手动设 OPENCV_DIR。"
+      _auto_cv="$(find /usr/local /opt /usr -name OpenCVConfig.cmake -path '*opencv4*' -print -quit 2>/dev/null || true)"
+    fi
+    if [ -n "$_auto_cv" ]; then
+      OpenCV_DIR="$(dirname "$_auto_cv")"
+      c_info "AGX Orin：使用 OpenCV_DIR=$OpenCV_DIR"
+    else
+      c_warn "AGX Orin：未自动找到 OpenCVConfig.cmake；若出现 ABI 问题，请手动设置 OpenCV_DIR。"
     fi
   else
-    c_info "AGX Orin：KEEP_SYSTEM=$KEEP_SYSTEM，OPENCV_DIR=${OPENCV_DIR:-（未设，使用 CMake 默认查找）}"
+    c_info "AGX Orin：KEEP_SYSTEM=$KEEP_SYSTEM，OpenCV_DIR=${OpenCV_DIR:-（未设，使用 CMake 默认查找）}"
   fi
 fi
 
 # ---------- ccache（加速重复编译，尤其 Orin） ----------
 if command -v ccache >/dev/null 2>&1; then
-  export CMAKE_C_COMPILER_LAUNCHER=ccache
-  export CMAKE_CXX_COMPILER_LAUNCHER=ccache
   c_info "已启用 ccache（编译器启动器）。"
 fi
 
@@ -79,8 +88,15 @@ if [ "$IS_ORIN" -eq 1 ]; then
 fi
 
 c_info "colcon build（packages-up-to lvi_sam）..."
+CMAKE_ARGS=(-DCMAKE_BUILD_TYPE=Release)
+if command -v ccache >/dev/null 2>&1; then
+  CMAKE_ARGS+=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
+fi
+if [ -n "${OpenCV_DIR:-}" ]; then
+  CMAKE_ARGS+=("-DOpenCV_DIR=$OpenCV_DIR")
+fi
 colcon build --symlink-install --packages-up-to lvi_sam \
   --parallel-workers "$COLCON_JOBS" \
-  --cmake-args -DCMAKE_BUILD_TYPE=Release
+  --cmake-args "${CMAKE_ARGS[@]}"
 
 c_ok "编译完成。source install/setup.bash 后即可运行：bash scripts/run.sh"

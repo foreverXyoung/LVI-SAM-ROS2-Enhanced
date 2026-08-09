@@ -4,7 +4,7 @@
     Loc:
       EnableFlag: true
       # 先验地图(prior map)目录；实际路径由 launch 的 pcd_directory 参数覆盖，这里仅为中性默认
-      loadPCDDirectory: "/tmp/lvi_sam_maps/pings/"  # msubmap
+      loadPCDDirectory: "/tmp/lvi_sam_maps"
       # surroundingKeyframeSearchRadius: 40.0 # 定位时使用的查找范围
       # surroundingKeyframeSearchMaxNum: 10   # 最大取多少个最近帧进行匹
  
@@ -33,13 +33,19 @@
     # GPS Settings
     useImuHeadingInitialization: false           # if using GPS data, set to "true"
     useGpsElevation: false
+    useGpsFactor: false
     gpsCovThreshold: 0.5
     poseCovThreshold: 25.0
+    gpsTimeTolerance: 0.2
+    gpsInnovationThreshold: 10.0
+    gpsUseRobustNoise: true
+    gpsRobustKernelScale: 2.0
+    gpsQueueSize: 500
 
     # Export settings
     savePCD: false                               # https://github.com/TixiaoShan/LIO-SAM/issues/3
     # 建图输出目录；实际路径由 launch 的 pcd_directory 参数覆盖，这里仅为中性默认
-    savePCDDirectory: "/tmp/lvi_sam_maps/temp/"
+    savePCDDirectory: "/tmp/lvi_sam_maps"
 
     # Sensor Settings
     sensor: livox                               # lidar sensor type, either 'velodyne', 'ouster' or 'livox'
@@ -105,6 +111,8 @@
 
     # Loop closure
     loopClosureEnableFlag: false
+    scanContextLoopEnableFlag: false            # Localization uses Loc.useSCReLoc instead
+    scanContextDistanceThreshold: 0.3
     loopClosureFrequency: 1.0                     # Hz, regulate loop closure constraint add frequency
     surroundingKeyframeSize: 50
     historyKeyframeSearchRadius: 15.0             # meters, key frame that is within n meters from

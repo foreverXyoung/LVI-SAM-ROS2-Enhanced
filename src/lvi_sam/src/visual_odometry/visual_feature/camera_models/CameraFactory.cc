@@ -14,6 +14,22 @@
 namespace camodocal
 {
 
+namespace
+{
+bool isUsableCamera(const CameraPtr& camera)
+{
+    if (!camera || camera->imageWidth() <= 0 || camera->imageHeight() <= 0)
+        return false;
+
+    Eigen::Vector3d ray;
+    camera->liftProjective(
+        Eigen::Vector2d(camera->imageWidth() * 0.5,
+                        camera->imageHeight() * 0.5),
+        ray);
+    return ray.allFinite() && ray.norm() > 1e-9;
+}
+}
+
 boost::shared_ptr<CameraFactory> CameraFactory::m_instance;
 
 CameraFactory::CameraFactory()
@@ -131,6 +147,15 @@ CameraFactory::generateCameraFromYamlFile(std::shared_ptr<rclcpp::Node> n, const
         }
     }
 
+    // ROS2 parameter overrides only become available after declaration.  The
+    // original port called get_parameter() for these fields without ever
+    // declaring them, leaving the camera size at zero on a default rclcpp
+    // node.  Declare them once here for every camera model.
+    if (!n->has_parameter("image_width"))
+        n->declare_parameter<int>("image_width", 0);
+    if (!n->has_parameter("image_height"))
+        n->declare_parameter<int>("image_height", 0);
+
     switch (modelType)
     {
     case Camera::KANNALA_BRANDT:
@@ -138,8 +163,9 @@ CameraFactory::generateCameraFromYamlFile(std::shared_ptr<rclcpp::Node> n, const
         EquidistantCameraPtr camera(new EquidistantCamera);
 
         EquidistantCamera::Parameters params = camera->getParameters();
-        params.readFromYamlFile(n, filename);
+        if (!params.readFromYamlFile(n, filename)) return CameraPtr();
         camera->setParameters(params);
+        if (!isUsableCamera(camera)) return CameraPtr();
         return camera;
     }
     case Camera::PINHOLE:
@@ -147,8 +173,9 @@ CameraFactory::generateCameraFromYamlFile(std::shared_ptr<rclcpp::Node> n, const
         PinholeCameraPtr camera(new PinholeCamera);
 
         PinholeCamera::Parameters params = camera->getParameters();
-        params.readFromYamlFile(n, filename);
+        if (!params.readFromYamlFile(n, filename)) return CameraPtr();
         camera->setParameters(params);
+        if (!isUsableCamera(camera)) return CameraPtr();
         return camera;
     }
     case Camera::SCARAMUZZA:
@@ -156,8 +183,9 @@ CameraFactory::generateCameraFromYamlFile(std::shared_ptr<rclcpp::Node> n, const
         OCAMCameraPtr camera(new OCAMCamera);
 
         OCAMCamera::Parameters params = camera->getParameters();
-        params.readFromYamlFile(n, filename);
+        if (!params.readFromYamlFile(n, filename)) return CameraPtr();
         camera->setParameters(params);
+        if (!isUsableCamera(camera)) return CameraPtr();
         return camera;
     }
     case Camera::MEI:
@@ -166,8 +194,9 @@ CameraFactory::generateCameraFromYamlFile(std::shared_ptr<rclcpp::Node> n, const
         CataCameraPtr camera(new CataCamera);
 
         CataCamera::Parameters params = camera->getParameters();
-        params.readFromYamlFile(n, filename);
+        if (!params.readFromYamlFile(n, filename)) return CameraPtr();
         camera->setParameters(params);
+        if (!isUsableCamera(camera)) return CameraPtr();
         return camera;
     }
     }

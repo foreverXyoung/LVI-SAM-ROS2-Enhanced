@@ -78,7 +78,7 @@ LVI-SAM-ROS2-Enhanced/                 # colcon 工作区根（即本仓库根�
 ### 3.2 工作区依赖（子模块）
 
 - **livox_ros_driver2**（`src/livox_ros_driver2`，pin 到上游 **v1.1.1**）：提供 MID360 的
-  `/livox/lidar` 点云与 `/IMU_data`（CustomMsg）话题，以及 `livox_ros_driver2/msg/custom_msg.hpp`。
+  `/livox/lidar` CustomMsg 点云；机器人 IMU 驱动需在 `/IMU_data` 发布标准 `sensor_msgs/Imu`。
 
 ### 3.3 平台集成要求（需自备，不随本仓库发布）
 
@@ -86,9 +86,8 @@ LVI-SAM-ROS2-Enhanced/                 # colcon 工作区根（即本仓库根�
   的 TF 链。`run.launch.py` 通过 `robot_description_file` 启动参数接收，并可选启动
   `robot_state_publisher`。请使用你机器人的真实外参替换。
 - **相机驱动**：VIS 需要 `/camera/image_raw`（sensor_msgs/Image）与相机内参。
-- **IMU 话题适配（已知待办）**：LIS 使用 livox `CustomMsg`（`/IMU_data`）；VIS 期望
-  `sensor_msgs/Imu`。若相机/IMU 不直接提供标准 IMU 话题，需增加一个
-  `CustomMsg → sensor_msgs/Imu` 转换节点，或在 `params_camera.yaml` 的 `imu_topic` 指向标准话题。
+- **IMU 话题**：LIS 与 VIS 默认共用 `/IMU_data`，类型必须是 `sensor_msgs/Imu`。
+  若现场驱动使用其他话题，通过入口 launch 的 `imu_topic` 一次性覆盖 LIS 与 VIS。
 
 ---
 
@@ -140,9 +139,9 @@ ros2 launch lvi_sam run.launch.py \
 | 话题 | 类型 | 说明 |
 |------|------|------|
 | `/livox/lidar` | `livox_ros_driver2/msg/CustomMsg` | MID360 原始点云（LIS 输入） |
-| `/IMU_data` | `livox_ros_driver2/msg/CustomMsg` | MID360 IMU（LIS 输入） |
+| `/IMU_data` | `sensor_msgs/Imu` | LIS 与 VIS 共用的标定后 IMU |
 | `/lio_sam/mapping/odometry` | `nav_msgs/Odometry` | LIS 里程计 → 对外 |
-| `/lio_sam/odometry/imu` | `nav_msgs/Odometry` | **LIS → VIS 位姿+尺度先验** |
+| `/odometry/imu` | `nav_msgs/Odometry` | **LIS → VIS 位姿+尺度先验** |
 | `/lio_sam/deskew/cloud_deskewed` | `sensor_msgs/PointCloud2` | **LIS → VIS 激光深度** |
 | `/lvi_sam/vins/loop/match_frame` | `std_msgs/Float64MultiArray` | **VIS → LIS 视觉回环候选** |
 | `/lio_sam/mapping/cloud_registered` | `sensor_msgs/PointCloud2` | LIS 建图点云 |
@@ -151,8 +150,11 @@ ros2 launch lvi_sam run.launch.py \
 
 ## 6. 已知限制 / Todo
 
-- [ ] 视觉端 IMU 话题类型适配（CustomMsg → sensor_msgs/Imu）。
 - [ ] 相机–IMU–激光外参标定与启动期时间同步。
+- [ ] 视觉 DBoW2/BRIEF 数据库目前只存在于运行内存；跨会话重定位仍由
+  Scan Context + ICP 完成，视觉地图持久化格式见架构文档。
+- [ ] RTK 核心接收地图对齐的 `nav_msgs/Odometry`；原始 `NavSatFix` 的转换、
+  RTK 解状态判定与天线杆臂补偿由上游转换节点负责。
 - [ ] 站场高度对称/长直股道下 ScanContext 误闭环风险 → 需加 RTK/先验地图一致性门控后再接受回环。
 - [ ] VIS → LIS 前端初值猜测（`imu_propagate_ros`，耦合点③a）暂未接入，最小验证闭环先不做。
 
@@ -164,6 +166,8 @@ ros2 launch lvi_sam run.launch.py \
 |------|------|
 | [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) | **详细环境配置**：Ubuntu 22.04 + ROS 2 Humble、apt 依赖、GTSAM 源码编译、Livox-SDK2 安装、子模块、rosdep、Docker 替代方案、版本核验。 |
 | [`docs/USAGE.md`](docs/USAGE.md) | **详细使用说明**：构建、URDF/相机/IMU 准备、launch 参数、话题接线表、参数文件、最小验证闭环、排错与调参。 |
+| [`docs/ARCHITECTURE_AND_MAP_FORMAT.md`](docs/ARCHITECTURE_AND_MAP_FORMAT.md) | 模块职责、地图版本、视觉跨会话重定位数据集和 RTK 输入契约。 |
+| [`docs/REMOTE_TEST_AND_CHANGES.md`](docs/REMOTE_TEST_AND_CHANGES.md) | **本次修改说明与远程测试手册**：拉取、编译、分阶段建图/定位、视觉、RTK、验收及已知边界。 |
 | [`scripts/setup.sh`](scripts/setup.sh) | 一键编排：子模块初始化 → 依赖安装 → 编译。 |
 | [`scripts/install_deps.sh`](scripts/install_deps.sh) | 安装系统/ROS 依赖，并源码编译安装 GTSAM 与 Livox-SDK2（重跑安全）。 |
 | [`scripts/build.sh`](scripts/build.sh) | `colcon build --symlink-install --packages-up-to lvi_sam`（自动先编 `livox_ros_driver2`）。 |

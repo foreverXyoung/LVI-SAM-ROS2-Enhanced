@@ -11,16 +11,16 @@ class LoopDetector
 public:
 
 	BriefDatabase db;
-	BriefVocabulary* voc;
+	std::unique_ptr<BriefVocabulary> voc;
 
 	map<int, cv::Mat> image_pool;
 
-	list<KeyFrame*> keyframelist;
+	list<std::unique_ptr<KeyFrame>> keyframelist;
 
 	LoopDetector();
 	void loadVocabulary(std::string voc_path);
 	
-	void addKeyFrame(KeyFrame* cur_kf, bool flag_detect_loop);
+	void addKeyFrame(std::unique_ptr<KeyFrame> cur_kf, bool flag_detect_loop);
 	void addKeyFrameIntoVoc(KeyFrame* keyframe);
 	KeyFrame* getKeyFrame(int index);
 

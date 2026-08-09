@@ -17,9 +17,30 @@ CameraPoseVisualization cameraposevisual(0, 1, 0, 1);
 CameraPoseVisualization keyframebasevisual(0.0, 0.0, 1.0, 1.0);
 static double sum_of_path = 0;
 static Vector3d last_path(0.0, 0.0, 0.0);
+static std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster;
+static std::shared_ptr<tf2_ros::Buffer> tf_buffer;
+static std::shared_ptr<tf2_ros::TransformListener> tf_listener;
+static Eigen::Affine3d camera_from_lidar = Eigen::Affine3d::Identity();
 
 void registerPub(std::shared_ptr<rclcpp::Node> n)
 {
+    tf_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>(n);
+    tf_buffer = std::make_shared<tf2_ros::Buffer>(n->get_clock());
+    tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
+
+    const double tx = n->get_parameter("lidar_to_cam_tx").as_double();
+    const double ty = n->get_parameter("lidar_to_cam_ty").as_double();
+    const double tz = n->get_parameter("lidar_to_cam_tz").as_double();
+    const double rx = n->get_parameter("lidar_to_cam_rx").as_double();
+    const double ry = n->get_parameter("lidar_to_cam_ry").as_double();
+    const double rz = n->get_parameter("lidar_to_cam_rz").as_double();
+    const Eigen::Quaterniond q_camera_lidar =
+        Eigen::AngleAxisd(rz, Eigen::Vector3d::UnitZ()) *
+        Eigen::AngleAxisd(ry, Eigen::Vector3d::UnitY()) *
+        Eigen::AngleAxisd(rx, Eigen::Vector3d::UnitX());
+    camera_from_lidar.linear() = q_camera_lidar.toRotationMatrix();
+    camera_from_lidar.translation() = Eigen::Vector3d(tx, ty, tz);
+
     pub_latest_odometry     = n->create_publisher<nav_msgs::msg::Odometry>(PROJECT_NAME + "/vins/odometry/imu_propagate", 10);
     pub_latest_odometry_ros = n->create_publisher<nav_msgs::msg::Odometry>(PROJECT_NAME + "/vins/odometry/imu_propagate_ros", 10);
     pub_path                = n->create_publisher<nav_msgs::msg::Path>(PROJECT_NAME + "/vins/odometry/path", 10);
@@ -62,9 +83,6 @@ geometry_msgs::msg::TransformStamped transformConversion(const geometry_msgs::ms
 
 void pubLatestOdometry(const Eigen::Vector3d &P, const Eigen::Quaterniond &Q, const Eigen::Vector3d &V, const std_msgs::msg::Header &header, const int& failureId)
 {
-    std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster;
-    std::shared_ptr<tf2_ros::Buffer> tf_buffer;
-    std::shared_ptr<tf2_ros::TransformListener> tf_listener;
     static double last_align_time = -1;
 
     // Quternion not normalized
@@ -88,28 +106,34 @@ void pubLatestOdometry(const Eigen::Vector3d &P, const Eigen::Quaterniond &Q, co
     odometry.twist.twist.linear.z = V.z();
     pub_latest_odometry->publish(odometry);
 
-    // imu odometry in ROS format (change rotation), used for lidar odometry initial guess
+    // Convert the VINS camera/body pose to the lidar pose with the same
+    // calibrated SE(3) used by the lidar-to-camera input path.
     odometry.pose.covariance[0] = static_cast<double>(failureId); // notify lidar odometry failure
-
-    tf2::Quaternion q_odom_cam(Q.x(), Q.y(), Q.z(), Q.w());
-    tf2::Quaternion q_cam_to_lidar(0, 1, 0, 0); // rotation
-    tf2::Quaternion q_odom_ros = q_odom_cam * q_cam_to_lidar;
-
-    geometry_msgs::msg::Quaternion q_msg;
-    q_msg = tf2::toMsg(q_odom_ros);
-    odometry.pose.pose.orientation = q_msg;
+    Eigen::Affine3d world_from_camera = Eigen::Affine3d::Identity();
+    world_from_camera.linear() = Q.normalized().toRotationMatrix();
+    world_from_camera.translation() = P;
+    const Eigen::Affine3d world_from_lidar =
+        world_from_camera * camera_from_lidar;
+    const Eigen::Quaterniond q_world_lidar(world_from_lidar.rotation());
+    odometry.pose.pose.position.x = world_from_lidar.translation().x();
+    odometry.pose.pose.position.y = world_from_lidar.translation().y();
+    odometry.pose.pose.position.z = world_from_lidar.translation().z();
+    odometry.pose.pose.orientation.x = q_world_lidar.x();
+    odometry.pose.pose.orientation.y = q_world_lidar.y();
+    odometry.pose.pose.orientation.z = q_world_lidar.z();
+    odometry.pose.pose.orientation.w = q_world_lidar.w();
 
     pub_latest_odometry_ros->publish(odometry);
 
-    // TF of camera in vins_world in ROS format (change rotation), used for depth registration
+    // TF of the lidar-aligned VINS body, used for depth registration.
     geometry_msgs::msg::TransformStamped tf_cam;
     tf_cam.header = header;
     tf_cam.child_frame_id = "vins_body_ros";
     tf_cam.header.frame_id = "vins_world";
-    tf_cam.transform.translation.x = P.x();
-    tf_cam.transform.translation.y = P.y();
-    tf_cam.transform.translation.z = P.z();
-    tf_cam.transform.rotation = q_msg;
+    tf_cam.transform.translation.x = world_from_lidar.translation().x();
+    tf_cam.transform.translation.y = world_from_lidar.translation().y();
+    tf_cam.transform.translation.z = world_from_lidar.translation().z();
+    tf_cam.transform.rotation = odometry.pose.pose.orientation;
     tf_broadcaster->sendTransform(tf_cam);
 
     // Handle camera-lidar alignment
@@ -398,8 +422,8 @@ void pubTF(const Estimator &estimator, const std_msgs::msg::Header &header)
 {
     if( estimator.solver_flag != Estimator::SolverFlag::NON_LINEAR)
         return;
-    const std::shared_ptr<rclcpp::Node> node;
-    static tf2_ros::TransformBroadcaster tf_broadcaster(node);
+    if (!tf_broadcaster)
+        return;
     geometry_msgs::msg::TransformStamped body_tf;
     body_tf.header.stamp = header.stamp;
     body_tf.header.frame_id = "vins_world";
@@ -415,7 +439,7 @@ void pubTF(const Estimator &estimator, const std_msgs::msg::Header &header)
     body_tf.transform.rotation.z = q.z();
     body_tf.transform.rotation.w = q.w();
 
-    tf_broadcaster.sendTransform(body_tf);
+    tf_broadcaster->sendTransform(body_tf);
 
     // camera frame
     geometry_msgs::msg::TransformStamped cam_tf;
@@ -433,7 +457,7 @@ void pubTF(const Estimator &estimator, const std_msgs::msg::Header &header)
     cam_tf.transform.rotation.z = ric_quat.z();
     cam_tf.transform.rotation.w = ric_quat.w();
 
-    tf_broadcaster.sendTransform(cam_tf);
+    tf_broadcaster->sendTransform(cam_tf);
 
     nav_msgs::msg::Odometry odometry;
     odometry.header = header;

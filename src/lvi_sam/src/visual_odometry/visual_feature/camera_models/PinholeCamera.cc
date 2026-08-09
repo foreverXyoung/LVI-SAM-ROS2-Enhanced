@@ -7,6 +7,7 @@
 #include <opencv2/calib3d/calib3d.hpp>
 #include <opencv2/core/eigen.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
+#include <boost/algorithm/string.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 #include "gpl.h"
@@ -160,7 +161,7 @@ PinholeCamera::Parameters::readFromYamlFile(std::shared_ptr<rclcpp::Node> node, 
         // fs["model_type"] >> sModelType;
         node->get_parameter("model_type", sModelType);
 
-        if (sModelType.compare("PINHOLE") != 0)
+        if (!boost::iequals(sModelType, "pinhole"))
         {
             return false;
         }

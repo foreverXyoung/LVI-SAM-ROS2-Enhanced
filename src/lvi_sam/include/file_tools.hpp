@@ -4,6 +4,10 @@
 #include "sc/Scancontext.h"
 #include <fstream>
 #include <iomanip>
+#include <exception>
+#include <sstream>
+#include <string>
+#include <vector>
 
 enum class SCInputType { SINGLE_SCAN_FULL, SINGLE_SCAN_FEAT, MULTI_SCAN_FEAT };
 
@@ -26,30 +30,45 @@ inline std::string padZeros(int val, int num_digits = 6) {
 }
 
 // zxl(已完成)
-inline void loadSCD(std::string fileName, Eigen::MatrixXd& matrix, char delimiter = ' ') {
-    // delimiter: ", " or " " etc.
+inline bool loadSCD(const std::string& fileName, Eigen::MatrixXd& matrix, char delimiter = ' ') {
+    matrix.resize(0, 0);
     std::vector<double> matrixEntries;
     std::ifstream matrixDataFile(fileName);
     if (!matrixDataFile.is_open()) {
-        std::cout << "读入SCD文件失败!!" << std::endl;
-        return;
+        return false;
     }
 
     std::string matrixRowString;
-    std::string matrixEntry;
     int matrixRowNumber = 0;
+    int matrixColumnNumber = -1;
     while (getline(matrixDataFile, matrixRowString)) {
         std::stringstream matrixRowStringStream(matrixRowString);
-
-        while (getline(matrixRowStringStream, matrixEntry, delimiter)) {
-            matrixEntries.push_back(stod(matrixEntry));
+        std::vector<double> rowEntries;
+        try {
+            if (delimiter == ' ') {
+                double value;
+                while (matrixRowStringStream >> value) rowEntries.push_back(value);
+            } else {
+                std::string matrixEntry;
+                while (getline(matrixRowStringStream, matrixEntry, delimiter)) {
+                    if (!matrixEntry.empty()) rowEntries.push_back(stod(matrixEntry));
+                }
+            }
+        } catch (const std::exception&) {
+            return false;
         }
+        if (rowEntries.empty()) continue;
+        if (matrixColumnNumber < 0) matrixColumnNumber = static_cast<int>(rowEntries.size());
+        if (static_cast<int>(rowEntries.size()) != matrixColumnNumber) return false;
+        matrixEntries.insert(matrixEntries.end(), rowEntries.begin(), rowEntries.end());
         matrixRowNumber++;
     }
 
+    if (matrixRowNumber == 0 || matrixColumnNumber <= 0) return false;
     matrix = Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>(matrixEntries.data(), matrixRowNumber,
-                                                                                                matrixEntries.size() / matrixRowNumber);
+                                                                                                 matrixColumnNumber);
     matrixDataFile.close();
+    return true;
 }
 
 // zxl(已完成)

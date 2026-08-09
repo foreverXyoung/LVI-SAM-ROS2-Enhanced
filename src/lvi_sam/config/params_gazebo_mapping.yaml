@@ -2,7 +2,7 @@
   ros__parameters:
     Loc:
       EnableFlag: false
-      loadPCDDirectory: "/home/lighter/Documents/return_station_ws/src/nav2_bringup/gazebo_map/"
+      loadPCDDirectory: "/tmp/lvi_sam_maps"
       surroundingKeyframeSearchRadius: 20.0
       surroundingKeyframeSearchMaxNum: 10
       useSCReLoc: true
@@ -35,7 +35,7 @@
     gpsFactorDistance: 0.0
     gpsVarianceFloor: 1.0e-6
     savePCD: true
-    savePCDDirectory: "/home/lighter/Documents/return_station_ws/src/nav2_bringup/gazebo_map/"
+    savePCDDirectory: "/tmp/lvi_sam_maps"
 
     sensor: livox
     N_SCAN: 16
@@ -79,6 +79,8 @@
     surroundingKeyframeDensity: 1.0
     surroundingKeyframeSearchRadius: 30.0
     loopClosureEnableFlag: true
+    scanContextLoopEnableFlag: true
+    scanContextDistanceThreshold: 0.3
     loopClosureFrequency: 1.0
     surroundingKeyframeSize: 20
     historyKeyframeSearchRadius: 15.0

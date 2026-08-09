@@ -66,14 +66,14 @@ JetPack 系统已自带 **CUDA 版 OpenCV（常 4.8 / 4.10）**；装 `ros-humbl
 `setup_orin.sh` 第 3 步已打印系统 OpenCV 与 cv_bridge 链接版本。
 
 **我们的默认策略（推荐，零额外操作）**：**沿用系统 CUDA 版 OpenCV**。
-`build.sh` 在 aarch64 上会自动查找系统 `OpenCVConfig.cmake` 并导出 `OPENCV_DIR`，
+`build.sh` 在 aarch64 上会自动查找系统 `OpenCVConfig.cmake` 并向 CMake 传入 `OpenCV_DIR`，
 让 cv_bridge 与本项目节点都用同一份（CUDA 加速对 VIS 特征/光流更友好）。
 
 **备选（仅当默认策略报错时）**：改用 apt 的 4.5.4
 ```bash
 KEEP_SYSTEM=0 bash scripts/build.sh
 # 或手动指定 OpenCV_DIR 指向 apt 版 cmake 目录
-# OPENCV_DIR=/usr/lib/aarch64-linux-gnu/cmake/opencv4 bash scripts/build.sh
+# OpenCV_DIR=/usr/lib/aarch64-linux-gnu/cmake/opencv4 bash scripts/build.sh
 ```
 
 **通过标志**（编译后 / 运行前）：
@@ -119,7 +119,7 @@ bash scripts/build.sh
 # 重编：bash scripts/build.sh --clean
 ```
 
-`build.sh` 在 Orin 上已自动：OpenCV 匹配（`OPENCV_DIR`）、ccache 启动器、并行度限 4。
+`build.sh` 在 Orin 上已自动：OpenCV 匹配（`OpenCV_DIR`）、ccache 启动器、并行度限 4。
 
 **通过标志**：
 ```bash
@@ -149,7 +149,7 @@ ros2 launch livox_ros_driver2 msg_MID360.launch.py
 
 **通过标志**（另开终端）：
 ```bash
-ros2 topic list | grep -E "/livox/lidar|/livox/imu"   # 两个话题存在
+ros2 topic list | grep -E "/livox/lidar|/IMU_data|/livox/imu"  # 点云和一个标准 IMU 话题存在
 ros2 topic hz /livox/lidar                              # 有频率（如 ~10Hz）
 ```
 > 驱动配置（MID360 的 `user_config.json` 里的 IP / 波特率）沿用你之前跑通定位模块的那套，本工程不重复提供。
@@ -208,7 +208,7 @@ sudo tegrastats --interval 2000   # 看温度（CPU/GPU）、频率、内存
 | 现象 | 原因 | 解决 |
 |------|------|------|
 | 编译 GTSAM OOM / 卡死 | Orin 内存小 + 并行度满 | `bash scripts/setup_orin.sh --apply` 建 swap；build 已限并行 4 |
-| 运行期 `cv::` 符号错误 / ABI 崩溃 | OpenCV 版本冲突 | 回到 §3 切 `KEEP_SYSTEM=0` 用 4.5.4，或确认 `OPENCV_DIR` 指向系统 CUDA 版 |
+| 运行期 `cv::` 符号错误 / ABI 崩溃 | OpenCV 版本冲突 | 回到 §3 切 `KEEP_SYSTEM=0` 用 4.5.4，或确认 `OpenCV_DIR` 指向系统 CUDA 版 |
 | `Could NOT find GTSAM` | 未装 / 未 ldconfig | 重跑 `install_deps.sh`，`sudo ldconfig` |
 | `liblivox_lidar_sdk_shared.so: cannot open` | Livox-SDK2 未装 | 重跑 `install_deps.sh` 第 3 步 |
 | `custom_msg` 找不到 | 子模块未初始化 | `git submodule update --init --recursive` |
@@ -239,7 +239,7 @@ docker run -it --rm --net=host --privileged -v /dev:/dev lvi-sam-orin bash
 - [ ] `setup_orin.sh --apply` 通过（L4T 6.x / ROS Humble / swap / 性能模式）
 - [ ] `install_deps.sh` 通过（GTSAM 4.0.3 / Livox-SDK2 / rosdep）
 - [ ] `build.sh` 通过（5 节点编译成功）
-- [ ] MID360 驱动起，`/livox/lidar` + `/livox/imu` 有数据
+- [ ] MID360 驱动起，`/livox/lidar` + 标准 IMU 有数据；非 `/IMU_data` 时通过 `imu_topic` 覆盖
 - [ ] `run.sh` 起 5 节点无报错
 - [ ] 话题接线 ①②③b 全部 `ros2 topic hz` 有数据
 - [ ] OpenCV 版本一致（或已按 §3 处理）
@@ -253,7 +253,7 @@ docker run -it --rm --net=host --privileged -v /dev:/dev lvi-sam-orin bash
 |------|------|
 | `scripts/setup_orin.sh`（新增） | Orin 前置自检 + `--apply` 建 swap / 性能模式 / OpenCV 自检 |
 | `scripts/install_deps.sh` | 加 ccache；GTSAM Orin 并行限 4；aarch64 检测与 OpenCV 自检 |
-| `scripts/build.sh` | aarch64 自动 OpenCV 匹配（`OPENCV_DIR`）+ ccache + 并行限 4；`KEEP_SYSTEM` 开关 |
+| `scripts/build.sh` | aarch64 自动 OpenCV 匹配（`OpenCV_DIR`）+ ccache + 并行限 4；`KEEP_SYSTEM` 开关 |
 | `src/lvi_sam/launch/run.launch.py` | 修复 `Loc.loadPCDDirectory` 嵌套覆盖（旧扁平写法无效，导致 Orin 地图路径指向 `/home/lighter/...`） |
 | `src/lvi_sam/CMakeLists.txt` | `find_package(GTSAM 4.0.3 REQUIRED)`（锁定版本，与脚本/Docker 一致） |
 | `docs/DEPLOY_ORIN.md`（本文件） | 一步步 Orin 部署手册 |

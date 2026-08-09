@@ -370,11 +370,11 @@ int main(int argc, char **argv)
     RCLCPP_INFO(n->get_logger(), "\033[1;32m----> Visual Odometry Feature DepthRegister constructor created.\033[0m");
 
     auto sub_img = n->create_subscription<sensor_msgs::msg::Image>(
-        IMAGE_TOPIC, 5,
+        IMAGE_TOPIC, rclcpp::SensorDataQoS().keep_last(5),
         img_callback);
 
     auto sub_lidar = n->create_subscription<sensor_msgs::msg::PointCloud2>(
-        POINT_CLOUD_TOPIC, 5,
+        POINT_CLOUD_TOPIC, rclcpp::SensorDataQoS().keep_last(5),
         lidar_callback);
 
     if (!USE_LIDAR)

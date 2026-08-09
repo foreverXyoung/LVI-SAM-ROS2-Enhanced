@@ -18,6 +18,8 @@
 #include <iostream>
 #include <stdexcept>
 #include <algorithm>
+#include <limits>
+#include <map>
 #include <pcl/common/angles.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/registration/icp.h>
@@ -127,6 +129,8 @@ public:
 
     vector<pcl::PointCloud<PointType>::Ptr> cornerCloudKeyFrames;
     vector<pcl::PointCloud<PointType>::Ptr> surfCloudKeyFrames;
+    vector<pcl::PointCloud<PointType>::Ptr> copyCornerCloudKeyFrames;
+    vector<pcl::PointCloud<PointType>::Ptr> copySurfCloudKeyFrames;
 
     pcl::PointCloud<PointType>::Ptr cloudKeyPoses3D;
     pcl::PointCloud<PointTypePose>::Ptr cloudKeyPoses6D;
@@ -173,6 +177,8 @@ public:
     std::mutex mtx;
     std::mutex mtxLoopInfo;
     std::mutex mtxExternalPose;
+    std::mutex mtxScanContext;
+    std::mutex mtxGPS;
 
     bool isDegenerate = false;
     Eigen::Matrix<float, 6, 6> matP;
@@ -217,7 +223,8 @@ public:
     pcl::PointCloud<PointType>::Ptr laserCloudRawDS{new pcl::PointCloud<PointType>()};  // giseop
     /////////////////////////////////// SC End ///////////////////////////////////
 
-    mapOptimization(const rclcpp::NodeOptions& options) : ParamServer("mapOptimizationParamServer") {
+    explicit mapOptimization(const rclcpp::NodeOptions& options)
+        : ParamServer("mapOptimizationParamServer", options) {
         ISAM2Params parameters;
         parameters.relinearizeThreshold = 0.1;
         parameters.relinearizeSkip = 1;
@@ -237,12 +244,6 @@ public:
 
         subCloud = create_subscription<livox_ros_driver2::msg::CustomMsg>(pointCloudTopic, qos_lidar,
                                                                           std::bind(&mapOptimization::laserCloudInfoHandler, this, std::placeholders::_1));
-        if (useGpsFactor) {
-            subGPS = create_subscription<nav_msgs::msg::Odometry>(
-                gpsTopic, 200,
-                std::bind(&mapOptimization::gpsHandler, this,
-                          std::placeholders::_1));
-        }
         if (useExternalPoseFactor) {
             subExternalPose = create_subscription<nav_msgs::msg::Odometry>(
                 externalPoseTopic, 200,
@@ -280,6 +281,7 @@ public:
                                                       surroundingKeyframeDensity);  // for surrounding key poses of scan-to-map optimization
 
         allocateMemory();
+        scManager.SC_DIST_THRES = scanContextDistanceThreshold;
 
         /////////////////////////////////// Sc & Loc  ///////////////////////////////////
 
@@ -293,18 +295,67 @@ public:
         }
         if (!savePCDDirectory.empty() && savePCDDirectory.back() != '/')
             savePCDDirectory += '/';
-        std::cout << "save pcd to: " << savePCDDirectory << std::endl;
-        if (!createDirectoryIfNotExists(savePCDDirectory) ||
-            !createDirectoryIfNotExists(savePCDDirectory + "Scans/") ||
-            !createDirectoryIfNotExists(savePCDDirectory + "SCDs/") ||
-            !createDirectoryIfNotExists(savePCDDirectory + "SurfMap/") ||
-            !createDirectoryIfNotExists(savePCDDirectory + "CornerMap/")) {
-            throw std::runtime_error(
-                "Failed to prepare LIO-SAM PCD output directory: " +
-                savePCDDirectory);
+        if (savePCD) {
+            if (savePCDDirectory.empty()) {
+                throw std::runtime_error("savePCD is enabled but savePCDDirectory is empty");
+            }
+            std::cout << "save pcd to: " << savePCDDirectory << std::endl;
+            if (!createDirectoryIfNotExists(savePCDDirectory) ||
+                !createDirectoryIfNotExists(savePCDDirectory + "Scans/") ||
+                !createDirectoryIfNotExists(savePCDDirectory + "SCDs/") ||
+                !createDirectoryIfNotExists(savePCDDirectory + "SurfMap/") ||
+                !createDirectoryIfNotExists(savePCDDirectory + "CornerMap/")) {
+                throw std::runtime_error(
+                    "Failed to prepare LIO-SAM PCD output directory: " +
+                    savePCDDirectory);
+            }
         }
 
         InitLocationMode();
+
+        if (gpsCovThreshold <= 0.0f || gpsVarianceFloor <= 0.0f) {
+            throw std::runtime_error(
+                "gpsCovThreshold and gpsVarianceFloor must be positive");
+        }
+        gpsTimeTolerance = std::max(0.01f, gpsTimeTolerance);
+        gpsQueueSize = std::max(1, gpsQueueSize);
+        if (useRTKInitialization && !useRTKAssist) {
+            throw std::runtime_error(
+                "Loc.useRTKInitialization requires Loc.useRTKAssist=true");
+        }
+        if (rtkUseHeading && rtkYawVarianceThreshold <= 0.0f) {
+            throw std::runtime_error(
+                "Loc.rtkYawVarianceThreshold must be positive when RTK heading is enabled");
+        }
+
+        // Mapping GPS factors and localization RTK assistance are independent
+        // consumers of the same map-aligned odometry interface. Subscribe when
+        // either feature is enabled; do not make RTK initialization depend on
+        // useGpsFactor.
+        if (useGpsFactor || useRTKAssist) {
+            const std::string expectedFrame =
+                LocEnableFlag && !rtkExpectedFrame.empty()
+                    ? rtkExpectedFrame
+                    : gpsExpectedFrame;
+            if (expectedFrame.empty()) {
+                RCLCPP_WARN(
+                    get_logger(),
+                    "RTK/GPS fusion is enabled without an expected frame; "
+                    "set gpsExpectedFrame or Loc.rtkExpectedFrame");
+            }
+            RCLCPP_INFO(
+                get_logger(),
+                "RTK/GPS input: topic=%s frame=%s GPS-factor=%s localization-assist=%s covariance<=%.3f time-tolerance=%.3f s",
+                gpsTopic.c_str(),
+                expectedFrame.empty() ? "<unchecked>" : expectedFrame.c_str(),
+                useGpsFactor ? "on" : "off",
+                useRTKAssist ? "on" : "off",
+                gpsCovThreshold, gpsTimeTolerance);
+            subGPS = create_subscription<nav_msgs::msg::Odometry>(
+                gpsTopic, rclcpp::SensorDataQoS().keep_last(200),
+                std::bind(&mapOptimization::gpsHandler, this,
+                          std::placeholders::_1));
+        }
 
         srvForceRelocalize = create_service<std_srvs::srv::Trigger>(
             "/lio_sam/localization/force_relocalize",
@@ -374,8 +425,16 @@ public:
     bool useSCReLoc = false;
     bool useRTKAssist = false;
     bool useRTKInitialization = false;
+    bool rtkUseHeading = false;
+    bool rtkAdaptiveBlend = true;
     float rtkPositionBlend = 0.20f;
     float rtkMaxInnovation = 3.0f;
+    float rtkMaxNormalizedInnovation = 5.0f;
+    float rtkYawVarianceThreshold = 0.10f;
+    float rtkInitializationMaxSpread = 0.50f;
+    int rtkInitializationMinSamples = 3;
+    std::string rtkExpectedFrame;
+    std::deque<nav_msgs::msg::Odometry> rtkInitializationSamples;
     bool dynamicFilterEnable = false;
     bool dynamicFilterPublishDebug = true;
     float dynamicFilterMaxMapDistance = 0.80f;
@@ -454,6 +513,7 @@ public:
         localizationBadMatchCount = 0;
         dynamicFilterFrameCount = 0;
         relocalizationAttemptCount = 0;
+        rtkInitializationSamples.clear();
         resetInitialGuessSeed = true;
         publishLocalizationState(true);
 
@@ -471,8 +531,18 @@ public:
             declare_and_get_parameter<bool>("Loc.useSCReLoc", useSCReLoc, false);
             declare_and_get_parameter<bool>("Loc.useRTKAssist", useRTKAssist, false);
             declare_and_get_parameter<bool>("Loc.useRTKInitialization", useRTKInitialization, false);
+            declare_and_get_parameter<bool>("Loc.rtkUseHeading", rtkUseHeading, false);
+            declare_and_get_parameter<bool>("Loc.rtkAdaptiveBlend", rtkAdaptiveBlend, true);
             declare_and_get_parameter<float>("Loc.rtkPositionBlend", rtkPositionBlend, 0.20f);
             declare_and_get_parameter<float>("Loc.rtkMaxInnovation", rtkMaxInnovation, 3.0f);
+            declare_and_get_parameter<float>("Loc.rtkMaxNormalizedInnovation", rtkMaxNormalizedInnovation, 5.0f);
+            declare_and_get_parameter<float>("Loc.rtkYawVarianceThreshold", rtkYawVarianceThreshold, 0.10f);
+            declare_and_get_parameter<float>("Loc.rtkInitializationMaxSpread", rtkInitializationMaxSpread, 0.50f);
+            declare_and_get_parameter<int>("Loc.rtkInitializationMinSamples", rtkInitializationMinSamples, 3);
+            declare_and_get_parameter<std::string>("Loc.rtkExpectedFrame", rtkExpectedFrame, "");
+            rtkPositionBlend = std::clamp(rtkPositionBlend, 0.0f, 1.0f);
+            rtkInitializationMinSamples = std::max(1, rtkInitializationMinSamples);
+            rtkInitializationMaxSpread = std::max(0.0f, rtkInitializationMaxSpread);
             declare_and_get_parameter<bool>("Loc.dynamicFilterEnable", dynamicFilterEnable, false);
             declare_and_get_parameter<bool>("Loc.dynamicFilterPublishDebug", dynamicFilterPublishDebug, true);
             declare_and_get_parameter<float>("Loc.dynamicFilterMaxMapDistance", dynamicFilterMaxMapDistance, 0.80f);
@@ -486,6 +556,10 @@ public:
             lostBadMatchThreshold = std::max(1, lostBadMatchThreshold);
             declare_and_get_parameter<vector<double>>("Loc.init_guess", init_guess, vector<double>());
             declare_and_get_parameter<string>("Loc.loadPCDDirectory", loadPCDDirectory, "");
+            if (!useSCReLoc && init_guess.size() != 6) {
+                throw std::runtime_error(
+                    "Loc.init_guess must contain [roll,pitch,yaw,x,y,z] when Scan Context relocalization is disabled");
+            }
             declare_and_get_parameter<float>("Loc.surroundingKeyframeSearchRadius", surroundingKeyframeSearchRadius, 20.0);
             declare_and_get_parameter<int>("Loc.surroundingKeyframeSearchMaxNum", surroundingKeyframeSearchMaxNum, 10);
             LoadPriorMap();
@@ -493,16 +567,121 @@ public:
         }
     }
 
+    void validateMapManifest() {
+        const std::string manifestPath = loadPCDDirectory + "/map_manifest.yaml";
+        std::ifstream manifest(manifestPath);
+        if (!manifest.is_open()) {
+            RCLCPP_WARN(
+                get_logger(),
+                "Prior map has no map_manifest.yaml; loading it as a legacy map");
+            return;
+        }
+
+        std::map<std::string, std::string> values;
+        std::string line;
+        while (std::getline(manifest, line)) {
+            const std::size_t separator = line.find(':');
+            if (separator == std::string::npos) continue;
+            std::string key = line.substr(0, separator);
+            std::string value = line.substr(separator + 1);
+            key.erase(0, key.find_first_not_of(" \t"));
+            key.erase(key.find_last_not_of(" \t") + 1);
+            value.erase(0, value.find_first_not_of(" \t"));
+            value.erase(value.find_last_not_of(" \t\r") + 1);
+            values[key] = value;
+        }
+
+        try {
+            const int schemaVersion = std::stoi(values.at("schema_version"));
+            if (schemaVersion > 1) {
+                throw std::runtime_error(
+                    "Prior map schema is newer than this executable: " +
+                    std::to_string(schemaVersion));
+            }
+            if (values.count("scan_context_rings") != 0 &&
+                std::stoi(values.at("scan_context_rings")) !=
+                    scManager.PC_NUM_RING) {
+                throw std::runtime_error(
+                    "Prior map Scan Context ring count is incompatible");
+            }
+            if (values.count("scan_context_sectors") != 0 &&
+                std::stoi(values.at("scan_context_sectors")) !=
+                    scManager.PC_NUM_SECTOR) {
+                throw std::runtime_error(
+                    "Prior map Scan Context sector count is incompatible");
+            }
+            const auto requireMatchingFrame = [&](const char* key,
+                                                  const std::string& configured) {
+                const auto found = values.find(key);
+                if (found != values.end() && found->second != configured) {
+                    throw std::runtime_error(
+                        "Prior map " + std::string(key) + "=" + found->second +
+                        " is incompatible with configured frame=" + configured);
+                }
+            };
+            requireMatchingFrame("map_frame", mapFrame);
+            requireMatchingFrame("odometry_frame", odometryFrame);
+            requireMatchingFrame("lidar_frame", lidarFrame);
+        } catch (const std::out_of_range&) {
+            throw std::runtime_error(
+                "Prior map manifest is missing schema_version: " + manifestPath);
+        } catch (const std::invalid_argument&) {
+            throw std::runtime_error(
+                "Prior map manifest contains an invalid number: " + manifestPath);
+        }
+    }
+
+    void writeMapManifest() const {
+        const std::string manifestPath = savePCDDirectory + "map_manifest.yaml";
+        std::ofstream manifest(manifestPath, std::ios::trunc);
+        if (!manifest.is_open()) {
+            RCLCPP_ERROR(
+                get_logger(), "Unable to write map manifest: %s",
+                manifestPath.c_str());
+            return;
+        }
+        manifest << "schema_version: 1\n";
+        manifest << "producer: lvi_sam_ros2_enhanced\n";
+        manifest << "keyframe_count: " << cloudKeyPoses6D->size() << "\n";
+        manifest << "map_frame: " << mapFrame << "\n";
+        manifest << "odometry_frame: " << odometryFrame << "\n";
+        manifest << "lidar_frame: " << lidarFrame << "\n";
+        manifest << "scan_context_rings: " << scManager.PC_NUM_RING << "\n";
+        manifest << "scan_context_sectors: " << scManager.PC_NUM_SECTOR << "\n";
+        manifest << "scan_context_distance_threshold: "
+                 << scManager.SC_DIST_THRES << "\n";
+        manifest << "visual_database_optional: VisualMap/visual_keyframes.yaml\n";
+    }
+
     void LoadPriorMap() {
+        if (loadPCDDirectory.empty()) {
+            throw std::runtime_error("Loc.loadPCDDirectory must be set in localization mode");
+        }
+        validateMapManifest();
         cloudKeyPoses6D->clear();
         cloudKeyPoses3D->clear();
-        pcl::io::loadPCDFile<PointTypePose>(loadPCDDirectory + "/transformations.pcd", *cloudKeyPoses6D);
-        pcl::io::loadPCDFile<PointType>(loadPCDDirectory + "/trajectory.pcd", *cloudKeyPoses3D);
+        const int transformationsResult = pcl::io::loadPCDFile<PointTypePose>(
+            loadPCDDirectory + "/transformations.pcd", *cloudKeyPoses6D);
+        const int trajectoryResult = pcl::io::loadPCDFile<PointType>(
+            loadPCDDirectory + "/trajectory.pcd", *cloudKeyPoses3D);
+        if (transformationsResult < 0 || trajectoryResult < 0 ||
+            cloudKeyPoses6D->empty() || cloudKeyPoses3D->empty()) {
+            throw std::runtime_error(
+                "Prior map is missing trajectory.pcd or transformations.pcd: " +
+                loadPCDDirectory);
+        }
+        if (cloudKeyPoses6D->size() != cloudKeyPoses3D->size()) {
+            throw std::runtime_error(
+                "Prior map pose files have different keyframe counts: transformations=" +
+                std::to_string(cloudKeyPoses6D->size()) + " trajectory=" +
+                std::to_string(cloudKeyPoses3D->size()));
+        }
         kdtreeSurroundingKeyPoses->setInputCloud(cloudKeyPoses3D);
 
         int count = cloudKeyPoses6D->size();
 
         std::cout << "loading map [ " << count << " ] from " << loadPCDDirectory << std::endl;
+        std::size_t loadedFeaturePointCount = 0;
         for (int i = 0; i < count; i++) {
             CloudPtr cornerKeyFrame(new CloudType());
             CloudPtr surfKeyFrame(new CloudType());
@@ -516,6 +695,9 @@ public:
                                    std::ios::in | std::ios::binary | std::ios::ate);
             if (cornerFile.good() && cornerFile.tellg() > std::streampos(0)) {
                 pcl::io::loadPCDFile<PointType>(cornerPath, *cornerKeyFrame);
+            } else {
+                RCLCPP_WARN(get_logger(), "Corner keyframe is missing or empty: %s",
+                            cornerPath.c_str());
             }
             if (surfFile.good() && surfFile.tellg() > std::streampos(0)) {
                 pcl::io::loadPCDFile<PointType>(surfPath, *surfKeyFrame);
@@ -523,8 +705,12 @@ public:
                 RCLCPP_WARN(get_logger(), "Surface keyframe is missing: %s",
                             surfPath.c_str());
             }
+            loadedFeaturePointCount += cornerKeyFrame->size() + surfKeyFrame->size();
             cornerCloudKeyFrames.push_back(cornerKeyFrame);
             surfCloudKeyFrames.push_back(surfKeyFrame);
+        }
+        if (loadedFeaturePointCount == 0) {
+            throw std::runtime_error("Prior map contains no usable CornerMap/SurfMap points");
         }
         std::cout << "************************Keyframe map loaded************************" << std::endl;
 
@@ -532,13 +718,32 @@ public:
 
         // 如果不存在idxMap，即非submap模式
         if (pcl::io::loadPCDFile<PointType>(loadPCDDirectory + "/idxMap.pcd", *idxMap) == -1) {
-            pcl::io::loadPCDFile<PointType>(loadPCDDirectory + "/trajectory.pcd", *idxMap);
+            if (pcl::io::loadPCDFile<PointType>(loadPCDDirectory + "/trajectory.pcd", *idxMap) < 0) {
+                throw std::runtime_error("Unable to construct Scan Context index map");
+            }
             subMapMode = false;
         }
+        if (idxMap->empty()) {
+            throw std::runtime_error("Scan Context index map is empty");
+        }
+        int scRows = -1;
+        int scCols = -1;
         for (int i = 0; i < idxMap->size(); ++i) {
             std::string scd_path = loadPCDDirectory + "/SCDs/" + padZeros(i) + ".scd";
             Eigen::MatrixXd load_sc;
-            loadSCD(scd_path, load_sc);
+            if (!loadSCD(scd_path, load_sc)) {
+                throw std::runtime_error("Invalid or missing Scan Context descriptor: " + scd_path);
+            }
+            if (load_sc.rows() != scManager.PC_NUM_RING ||
+                load_sc.cols() != scManager.PC_NUM_SECTOR) {
+                throw std::runtime_error("Unexpected Scan Context descriptor dimensions: " + scd_path);
+            }
+            if (scRows < 0) {
+                scRows = load_sc.rows();
+                scCols = load_sc.cols();
+            } else if (load_sc.rows() != scRows || load_sc.cols() != scCols) {
+                throw std::runtime_error("Inconsistent Scan Context descriptor dimensions: " + scd_path);
+            }
 
             // load keys
             Eigen::MatrixXd ringkey = scManager.makeRingkeyFromScancontext(load_sc);
@@ -565,25 +770,73 @@ public:
         updatePath(lastPoses6D);
     }
 
+    bool validateMapAlignedRTK(
+        const nav_msgs::msg::Odometry& rtkOdom,
+        bool requireHeading,
+        std::string* rejectionReason = nullptr) const {
+        auto reject = [&](const std::string& reason) {
+            if (rejectionReason != nullptr) *rejectionReason = reason;
+            return false;
+        };
+
+        const std::string& expectedFrame =
+            LocEnableFlag && !rtkExpectedFrame.empty()
+                ? rtkExpectedFrame
+                : gpsExpectedFrame;
+        if (!expectedFrame.empty() &&
+            rtkOdom.header.frame_id != expectedFrame) {
+            return reject("unexpected frame_id=" + rtkOdom.header.frame_id);
+        }
+
+        const double x = rtkOdom.pose.pose.position.x;
+        const double y = rtkOdom.pose.pose.position.y;
+        const double varianceX = rtkOdom.pose.covariance[0];
+        const double varianceY = rtkOdom.pose.covariance[7];
+        if (!std::isfinite(x) || !std::isfinite(y)) {
+            return reject("non-finite position");
+        }
+        if (!std::isfinite(varianceX) || !std::isfinite(varianceY) ||
+            varianceX <= 0.0 || varianceY <= 0.0) {
+            return reject("missing or invalid XY covariance");
+        }
+        if (varianceX > gpsCovThreshold || varianceY > gpsCovThreshold) {
+            return reject("XY covariance exceeds gpsCovThreshold");
+        }
+
+        if (requireHeading) {
+            const auto& q = rtkOdom.pose.pose.orientation;
+            const double quaternionNorm = std::sqrt(
+                q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w);
+            const double yawVariance = rtkOdom.pose.covariance[35];
+            if (!std::isfinite(quaternionNorm) || quaternionNorm < 0.99 ||
+                quaternionNorm > 1.01) {
+                return reject("invalid heading quaternion");
+            }
+            if (!std::isfinite(yawVariance) || yawVariance <= 0.0 ||
+                yawVariance > rtkYawVarianceThreshold) {
+                return reject("yaw covariance exceeds RTK heading threshold");
+            }
+        }
+        return true;
+    }
+
     bool getLocalizationRTK(nav_msgs::msg::Odometry& rtkOdom) {
+        std::lock_guard<std::mutex> lock(mtxGPS);
         while (!gpsQueue.empty()) {
-            double gpsTime = stamp2Sec(gpsQueue.front().header.stamp);
-            if (gpsTime < timeLaserInfoCur - 0.2) {
+            const double gpsTime = stamp2Sec(gpsQueue.front().header.stamp);
+            if (gpsTime < timeLaserInfoCur - gpsTimeTolerance) {
                 gpsQueue.pop_front();
                 continue;
             }
-            if (gpsTime > timeLaserInfoCur + 0.2) return false;
+            if (gpsTime > timeLaserInfoCur + gpsTimeTolerance) return false;
 
             rtkOdom = gpsQueue.front();
             gpsQueue.pop_front();
-            float varianceX = rtkOdom.pose.covariance[0];
-            float varianceY = rtkOdom.pose.covariance[7];
-            float x = rtkOdom.pose.pose.position.x;
-            float y = rtkOdom.pose.pose.position.y;
-            if (!std::isfinite(x) || !std::isfinite(y) ||
-                !std::isfinite(varianceX) || !std::isfinite(varianceY) ||
-                varianceX <= 0.0f || varianceY <= 0.0f ||
-                varianceX > gpsCovThreshold || varianceY > gpsCovThreshold) {
+            std::string reason;
+            if (!validateMapAlignedRTK(rtkOdom, rtkUseHeading, &reason)) {
+                RCLCPP_WARN_THROTTLE(
+                    get_logger(), *get_clock(), 2000,
+                    "Rejecting RTK localization sample: %s", reason.c_str());
                 continue;
             }
             return true;
@@ -596,22 +849,81 @@ public:
         nav_msgs::msg::Odometry rtkOdom;
         if (!getLocalizationRTK(rtkOdom)) return false;
 
-        tf2::Quaternion rtkQuaternion;
-        tf2::fromMsg(rtkOdom.pose.pose.orientation, rtkQuaternion);
-        double rtkRoll, rtkPitch, rtkYaw;
-        tf2::Matrix3x3(rtkQuaternion).getRPY(rtkRoll, rtkPitch, rtkYaw);
+        rtkInitializationSamples.push_back(rtkOdom);
+        while (rtkInitializationSamples.size() >
+               static_cast<std::size_t>(rtkInitializationMinSamples)) {
+            rtkInitializationSamples.pop_front();
+        }
+        if (rtkInitializationSamples.size() <
+            static_cast<std::size_t>(rtkInitializationMinSamples)) {
+            RCLCPP_INFO_THROTTLE(
+                get_logger(), *get_clock(), 2000,
+                "Waiting for stable RTK initialization samples: %zu/%d",
+                rtkInitializationSamples.size(), rtkInitializationMinSamples);
+            return false;
+        }
+
+        double weightSum = 0.0;
+        double xSum = 0.0;
+        double ySum = 0.0;
+        double yawSinSum = 0.0;
+        double yawCosSum = 0.0;
+        for (const auto& sample : rtkInitializationSamples) {
+            const double variance = std::max<double>(
+                gpsVarianceFloor,
+                std::max<double>(sample.pose.covariance[0],
+                                 sample.pose.covariance[7]));
+            const double weight = 1.0 / variance;
+            weightSum += weight;
+            xSum += weight * sample.pose.pose.position.x;
+            ySum += weight * sample.pose.pose.position.y;
+            if (rtkUseHeading) {
+                tf2::Quaternion quaternion;
+                tf2::fromMsg(sample.pose.pose.orientation, quaternion);
+                double roll, pitch, yaw;
+                tf2::Matrix3x3(quaternion).getRPY(roll, pitch, yaw);
+                const double yawWeight = 1.0 / std::max<double>(
+                    sample.pose.covariance[35], 1e-6);
+                yawSinSum += yawWeight * std::sin(yaw);
+                yawCosSum += yawWeight * std::cos(yaw);
+            }
+        }
+        const double meanX = xSum / weightSum;
+        const double meanY = ySum / weightSum;
+        double maxSpread = 0.0;
+        for (const auto& sample : rtkInitializationSamples) {
+            maxSpread = std::max(
+                maxSpread,
+                std::hypot(sample.pose.pose.position.x - meanX,
+                           sample.pose.pose.position.y - meanY));
+        }
+        if (maxSpread > rtkInitializationMaxSpread) {
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 2000,
+                "RTK initialization is not stable: spread %.3f m exceeds %.3f m",
+                maxSpread, rtkInitializationMaxSpread);
+            return false;
+        }
+
         transformTobeMapped[0] = cloudInfo.imu_roll_init;
         transformTobeMapped[1] = cloudInfo.imu_pitch_init;
-        transformTobeMapped[2] = static_cast<float>(rtkYaw);
-        lastPoses3D.x = transformTobeMapped[3] = rtkOdom.pose.pose.position.x;
-        lastPoses3D.y = transformTobeMapped[4] = rtkOdom.pose.pose.position.y;
+        transformTobeMapped[2] = rtkUseHeading
+            ? static_cast<float>(std::atan2(yawSinSum, yawCosSum))
+            : static_cast<float>(init_guess.size() >= 3
+                                     ? init_guess[2]
+                                     : cloudInfo.imu_yaw_init);
+        lastPoses3D.x = transformTobeMapped[3] = static_cast<float>(meanX);
+        lastPoses3D.y = transformTobeMapped[4] = static_cast<float>(meanY);
         lastPoses3D.z = transformTobeMapped[5] = init_guess.size() >= 6 ? init_guess[5] : 0.0;
         lastPoses6D = trans2PointTypePose(transformTobeMapped);
         lastPoses6D.time = timeLaserInfoCur;
         LocInitSta = InitializedFlag::Initialized;
+        rtkInitializationSamples.clear();
         RCLCPP_INFO(get_logger(),
-                    "Localization initialized from map-aligned RTK: x=%.3f y=%.3f yaw=%.3f",
-                    transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[2]);
+                    "Localization initialized from %d stable map-aligned RTK samples: x=%.3f y=%.3f yaw=%.3f heading=%s",
+                    rtkInitializationMinSamples, transformTobeMapped[3],
+                    transformTobeMapped[4], transformTobeMapped[2],
+                    rtkUseHeading ? "RTK" : "configured/IMU");
         return true;
     }
 
@@ -622,14 +934,28 @@ public:
 
         float gpsX = rtkOdom.pose.pose.position.x;
         float gpsY = rtkOdom.pose.pose.position.y;
-        float innovation = std::hypot(gpsX - transformTobeMapped[3], gpsY - transformTobeMapped[4]);
-        if (innovation > rtkMaxInnovation) {
+        const float dx = gpsX - transformTobeMapped[3];
+        const float dy = gpsY - transformTobeMapped[4];
+        const float innovation = std::hypot(dx, dy);
+        const float normalizedInnovation = std::sqrt(
+            dx * dx / std::max<float>(rtkOdom.pose.covariance[0], gpsVarianceFloor) +
+            dy * dy / std::max<float>(rtkOdom.pose.covariance[7], gpsVarianceFloor));
+        if ((rtkMaxInnovation > 0.0f && innovation > rtkMaxInnovation) ||
+            (rtkMaxNormalizedInnovation > 0.0f &&
+             normalizedInnovation > rtkMaxNormalizedInnovation)) {
             RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-                                 "Rejecting RTK localization assist: innovation %.3f m exceeds %.3f m",
-                                 innovation, rtkMaxInnovation);
+                                 "Rejecting RTK localization assist: innovation %.3f m (normalized %.2f)",
+                                 innovation, normalizedInnovation);
             return;
         }
-        float blend = std::max(0.0f, std::min(1.0f, rtkPositionBlend));
+        float blend = rtkPositionBlend;
+        if (rtkAdaptiveBlend) {
+            const float worstVariance = std::max<float>(
+                rtkOdom.pose.covariance[0], rtkOdom.pose.covariance[7]);
+            const float quality = std::clamp(
+                1.0f - worstVariance / gpsCovThreshold, 0.0f, 1.0f);
+            blend *= quality;
+        }
         transformTobeMapped[3] = (1.0f - blend) * transformTobeMapped[3] + blend * gpsX;
         transformTobeMapped[4] = (1.0f - blend) * transformTobeMapped[4] + blend * gpsY;
     }
@@ -639,13 +965,19 @@ public:
 
         *copy_cloudKeyPoses3D = *cloudKeyPoses3D;
         *copy_cloudKeyPoses6D = *cloudKeyPoses6D;
+        copyCornerCloudKeyFrames = cornerCloudKeyFrames;
+        copySurfCloudKeyFrames = surfCloudKeyFrames;
 
         // 使用当前扫描去查询
         downSizeFilterSurf.setInputCloud(laserCloudRaw);
         downSizeFilterSurf.filter(*laserCloudRawDS);
 
         // find keys
-        auto detectResult = scManager.detectLoopClosureID(*laserCloudRawDS);  // first: nn index, second: yaw diff 这个函数引起的崩溃，要排查
+        std::pair<int, float> detectResult;
+        {
+            std::lock_guard<std::mutex> lock(mtxScanContext);
+            detectResult = scManager.detectLoopClosureID(*laserCloudRawDS);
+        }
         int loopKeyPre = detectResult.first;
         // float yawDiffRad = detectResult.second;  // not use for v1 (because pcl icp withi initial somthing wrong...)
         if (loopKeyPre == -1) {
@@ -653,57 +985,91 @@ public:
             return;
         }
 
-        loopKeyPre = idxMap->points[loopKeyPre].intensity;
+        if (loopKeyPre < 0 || loopKeyPre >= static_cast<int>(idxMap->size())) {
+            RCLCPP_ERROR(get_logger(), "Scan Context returned an invalid descriptor index: %d", loopKeyPre);
+            return;
+        }
+        loopKeyPre = static_cast<int>(idxMap->points[loopKeyPre].intensity);
+        if (loopKeyPre < 0 || loopKeyPre >= static_cast<int>(cloudKeyPoses6D->size())) {
+            RCLCPP_ERROR(get_logger(), "Scan Context index maps to an invalid keyframe: %d", loopKeyPre);
+            return;
+        }
         std::cout << "[ReLoc] SC loop found: " << detectResult.first << " map to " << loopKeyPre << std::endl;
 
         // extract cloud
         pcl::PointCloud<PointType>::Ptr cureKeyframeCloud = laserCloudRawDS;
         pcl::PointCloud<PointType>::Ptr prevKeyframeCloud(new pcl::PointCloud<PointType>());
 
-        int base_key = 0;
-        // 实际上是将相邻histNum叠加在一起去配准
+        // Build the target submap in the matched keyframe coordinate system.
         if (subMapMode) historyKeyframeSearchNum = 2;
-        loopFindNearKeyframesWithRespectTo(prevKeyframeCloud, loopKeyPre, historyKeyframeSearchNum, base_key);
+        loopFindNearKeyframesWithRespectTo(prevKeyframeCloud, loopKeyPre, historyKeyframeSearchNum, loopKeyPre);
+        if (cureKeyframeCloud->size() < 100 || prevKeyframeCloud->size() < 300) {
+            RCLCPP_WARN(get_logger(), "Insufficient points for Scan Context relocalization ICP: source=%zu target=%zu",
+                        cureKeyframeCloud->size(), prevKeyframeCloud->size());
+            return;
+        }
         // 如果不叠加，getFitnessScore分数很高，根本上不去
         // loopFindNearKeyframes(cureKeyframeCloud, loopKeyCur, 2);                         // giseop
         // loopFindNearKeyframes(prevKeyframeCloud, loopKeyPre, historyKeyframeSearchNum);  // giseop
         if (pubHistoryKeyFrames->get_subscription_count() != 0) publishCloud(pubHistoryKeyFrames, prevKeyframeCloud, timeLaserInfoStamp, odometryFrame);
 
         // ICP Settings
-        pcl::IterativeClosestPoint<PointType, PointType> icp;
-        icp.setMaxCorrespondenceDistance(150);  // giseop , use a value can cover 2*historyKeyframeSearchNum range in meter
-        icp.setMaximumIterations(100);
-        icp.setTransformationEpsilon(1e-6);
-        icp.setEuclideanFitnessEpsilon(1e-6);
-        icp.setRANSACIterations(0);
+        auto configureIcp = [&](pcl::IterativeClosestPoint<PointType, PointType>& candidate) {
+            candidate.setMaxCorrespondenceDistance(std::max(5.0f, historyKeyframeSearchRadius * 2.0f));
+            candidate.setMaximumIterations(100);
+            candidate.setTransformationEpsilon(1e-6);
+            candidate.setEuclideanFitnessEpsilon(1e-6);
+            candidate.setRANSACIterations(0);
+            candidate.setInputSource(cureKeyframeCloud);
+            candidate.setInputTarget(prevKeyframeCloud);
+        };
 
-        // Align clouds
-        icp.setInputSource(cureKeyframeCloud);
-        icp.setInputTarget(prevKeyframeCloud);
-        pcl::PointCloud<PointType>::Ptr unused_result(new pcl::PointCloud<PointType>());
-        icp.align(*unused_result);
-        // giseop
-        // TODO icp align with initial
-        if (icp.hasConverged() == false || icp.getFitnessScore() > historyKeyframeFitnessScore) {
-            std::cout << "[ReLoc] ICP fitness test failed (" << icp.getFitnessScore() << " > " << historyKeyframeFitnessScore << "). Reject this SC loop."
+        // Scan Context's shift convention differs among forks. Test both yaw
+        // directions and keep the converged solution with the lower score.
+        pcl::IterativeClosestPoint<PointType, PointType> icpPositive;
+        pcl::IterativeClosestPoint<PointType, PointType> icpNegative;
+        configureIcp(icpPositive);
+        configureIcp(icpNegative);
+        pcl::PointCloud<PointType> resultPositive;
+        pcl::PointCloud<PointType> resultNegative;
+        const Eigen::Matrix4f positiveGuess =
+            pcl::getTransformation(0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                   detectResult.second).matrix();
+        const Eigen::Matrix4f negativeGuess =
+            pcl::getTransformation(0.0f, 0.0f, 0.0f, 0.0f, 0.0f,
+                                   -detectResult.second).matrix();
+        icpPositive.align(resultPositive, positiveGuess);
+        icpNegative.align(resultNegative, negativeGuess);
+
+        pcl::IterativeClosestPoint<PointType, PointType>* bestIcp = nullptr;
+        if (icpPositive.hasConverged()) bestIcp = &icpPositive;
+        if (icpNegative.hasConverged() &&
+            (bestIcp == nullptr || icpNegative.getFitnessScore() < bestIcp->getFitnessScore())) {
+            bestIcp = &icpNegative;
+        }
+        const double bestScore = bestIcp == nullptr
+            ? std::numeric_limits<double>::infinity()
+            : bestIcp->getFitnessScore();
+        if (bestIcp == nullptr || bestScore > historyKeyframeFitnessScore) {
+            std::cout << "[ReLoc] ICP fitness test failed (" << bestScore << " > " << historyKeyframeFitnessScore << "). Reject this SC loop."
                       << std::endl;
             return;
         } else {
-            std::cout << "[ReLoc] ICP fitness test passed (" << icp.getFitnessScore() << " < " << historyKeyframeFitnessScore << "). Add this SC loop."
+            std::cout << "[ReLoc] ICP fitness test passed (" << bestScore << " < " << historyKeyframeFitnessScore << "). Add this SC loop."
                       << std::endl;
         }
 
         // publish corrected cloud
         if (pubIcpKeyFrames->get_subscription_count() != 0) {
             pcl::PointCloud<PointType>::Ptr closed_cloud(new pcl::PointCloud<PointType>());
-            pcl::transformPointCloud(*cureKeyframeCloud, *closed_cloud, icp.getFinalTransformation());
+            pcl::transformPointCloud(*cureKeyframeCloud, *closed_cloud, bestIcp->getFinalTransformation());
             publishCloud(pubIcpKeyFrames, closed_cloud, timeLaserInfoStamp, odometryFrame);
         }
 
         // Get pose transformation
         float x, y, z, roll, pitch, yaw;
         Eigen::Affine3f correctionLidarFrame;
-        correctionLidarFrame = icp.getFinalTransformation();
+        correctionLidarFrame = bestIcp->getFinalTransformation();
         Eigen::Affine3f loopKeyPreTransformInTheWorld = pclPointToAffine3f(cloudKeyPoses6D->points[loopKeyPre]);  // zxl
         Eigen::Affine3f loopKeyCurTransformInTheWorld = loopKeyPreTransformInTheWorld * correctionLidarFrame;     // zxl
 
@@ -793,6 +1159,7 @@ public:
                         LocInitSta = InitializedFlag::NonInitialized;
                         localizationBadMatchCount = 0;
                         dynamicFilterFrameCount = 0;
+                        rtkInitializationSamples.clear();
                         resetInitialGuessSeed = true;
                         RCLCPP_ERROR(get_logger(), "Localization lost, switch back to relocalizing");
                     }
@@ -820,10 +1187,14 @@ public:
 
             publishOdometry();
 
+            // This is an algorithm input for VIS depth registration, not an
+            // RViz-only diagnostic topic.
+            publishCloud(pubExtractedCloud, cloudInfo.cloud_deskewed,
+                         cloudInfo.header.stamp, lidarFrame);
+
             if (useRviz) {
                 publishFrames();
 
-                publishCloud(pubExtractedCloud, cloudInfo.cloud_deskewed, cloudInfo.header.stamp, lidarFrame);
                 publishCloud(pubCornerPoints, cloudInfo.cloud_corner, cloudInfo.header.stamp, lidarFrame);
                 publishCloud(pubSurfacePoints, cloudInfo.cloud_surface, cloudInfo.header.stamp, lidarFrame);
             }
@@ -836,7 +1207,13 @@ public:
         }
     }
 
-    void gpsHandler(const nav_msgs::msg::Odometry::SharedPtr gpsMsg) { gpsQueue.push_back(*gpsMsg); }
+    void gpsHandler(const nav_msgs::msg::Odometry::SharedPtr gpsMsg) {
+        std::lock_guard<std::mutex> lock(mtxGPS);
+        gpsQueue.push_back(*gpsMsg);
+        const std::size_t queueLimit = static_cast<std::size_t>(
+            std::max(1, gpsQueueSize));
+        while (gpsQueue.size() > queueLimit) gpsQueue.pop_front();
+    }
 
     void externalPoseHandler(const nav_msgs::msg::Odometry::SharedPtr poseMsg) {
         std::lock_guard<std::mutex> lock(mtxExternalPose);
@@ -933,7 +1310,7 @@ public:
         for (const auto& pose_stamped : path.poses) {
             const auto& pos = pose_stamped.pose.position;
             const auto& q = pose_stamped.pose.orientation;
-            file << pose_stamped.header.stamp.nanosec * 1e-9 << " " << pos.x << " " << pos.y << " " << pos.z << " " << q.x << " " << q.y << " " << q.z << " "
+            file << stamp2Sec(pose_stamped.header.stamp) << " " << pos.x << " " << pos.y << " " << pos.z << " " << q.x << " " << q.y << " " << q.z << " "
                  << q.w << "\n";
         }
 
@@ -1000,6 +1377,7 @@ public:
         *globalMapCloud += *globalCornerCloud;
         *globalMapCloud += *globalSurfCloud;
         savePCDIfNotEmpty(savePCDDirectory + "cloudGlobal.pcd", *globalMapCloud);
+        writeMapManifest();
         cout << "****************************************************" << endl;
 
         cout << "Saving map to pcd files completed" << endl;
@@ -1008,7 +1386,20 @@ public:
     void publishGlobalMap() {
         if (pubLaserCloudSurround->get_subscription_count() == 0) return;
 
-        if (cloudKeyPoses3D->points.empty() == true) return;
+        pcl::PointCloud<PointType>::Ptr poseSnapshot3D(new pcl::PointCloud<PointType>());
+        pcl::PointCloud<PointTypePose>::Ptr poseSnapshot6D(new pcl::PointCloud<PointTypePose>());
+        vector<pcl::PointCloud<PointType>::Ptr> cornerSnapshot;
+        vector<pcl::PointCloud<PointType>::Ptr> surfSnapshot;
+        rclcpp::Time mapStamp;
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            if (cloudKeyPoses3D->empty()) return;
+            *poseSnapshot3D = *cloudKeyPoses3D;
+            *poseSnapshot6D = *cloudKeyPoses6D;
+            cornerSnapshot = cornerCloudKeyFrames;
+            surfSnapshot = surfCloudKeyFrames;
+            mapStamp = timeLaserInfoStamp;
+        }
 
         pcl::KdTreeFLANN<PointType>::Ptr kdtreeGlobalMap(new pcl::KdTreeFLANN<PointType>());
         pcl::PointCloud<PointType>::Ptr globalMapKeyPoses(new pcl::PointCloud<PointType>());
@@ -1020,12 +1411,10 @@ public:
         std::vector<int> pointSearchIndGlobalMap;
         std::vector<float> pointSearchSqDisGlobalMap;
         // search near key frames to visualize
-        mtx.lock();
-        kdtreeGlobalMap->setInputCloud(cloudKeyPoses3D);
-        kdtreeGlobalMap->radiusSearch(cloudKeyPoses3D->back(), globalMapVisualizationSearchRadius, pointSearchIndGlobalMap, pointSearchSqDisGlobalMap, 0);
-        mtx.unlock();
+        kdtreeGlobalMap->setInputCloud(poseSnapshot3D);
+        kdtreeGlobalMap->radiusSearch(poseSnapshot3D->back(), globalMapVisualizationSearchRadius, pointSearchIndGlobalMap, pointSearchSqDisGlobalMap, 0);
 
-        for (int i = 0; i < (int)pointSearchIndGlobalMap.size(); ++i) globalMapKeyPoses->push_back(cloudKeyPoses3D->points[pointSearchIndGlobalMap[i]]);
+        for (int i = 0; i < (int)pointSearchIndGlobalMap.size(); ++i) globalMapKeyPoses->push_back(poseSnapshot3D->points[pointSearchIndGlobalMap[i]]);
         // downsample near selected key frames
         pcl::VoxelGrid<PointType> downSizeFilterGlobalMapKeyPoses;  // for global map visualization
         downSizeFilterGlobalMapKeyPoses.setLeafSize(globalMapVisualizationPoseDensity, globalMapVisualizationPoseDensity,
@@ -1034,15 +1423,18 @@ public:
         downSizeFilterGlobalMapKeyPoses.filter(*globalMapKeyPosesDS);
         for (auto& pt : globalMapKeyPosesDS->points) {
             kdtreeGlobalMap->nearestKSearch(pt, 1, pointSearchIndGlobalMap, pointSearchSqDisGlobalMap);
-            pt.intensity = cloudKeyPoses3D->points[pointSearchIndGlobalMap[0]].intensity;
+            pt.intensity = poseSnapshot3D->points[pointSearchIndGlobalMap[0]].intensity;
         }
 
         // extract visualized and downsampled key frames
         for (int i = 0; i < (int)globalMapKeyPosesDS->size(); ++i) {
-            if (pointDistance(globalMapKeyPosesDS->points[i], cloudKeyPoses3D->back()) > globalMapVisualizationSearchRadius) continue;
+            if (pointDistance(globalMapKeyPosesDS->points[i], poseSnapshot3D->back()) > globalMapVisualizationSearchRadius) continue;
             int thisKeyInd = (int)globalMapKeyPosesDS->points[i].intensity;
-            *globalMapKeyFrames += *transformPointCloud(cornerCloudKeyFrames[thisKeyInd], &cloudKeyPoses6D->points[thisKeyInd]);
-            *globalMapKeyFrames += *transformPointCloud(surfCloudKeyFrames[thisKeyInd], &cloudKeyPoses6D->points[thisKeyInd]);
+            if (thisKeyInd < 0 || thisKeyInd >= static_cast<int>(poseSnapshot6D->size()) ||
+                thisKeyInd >= static_cast<int>(cornerSnapshot.size()) ||
+                thisKeyInd >= static_cast<int>(surfSnapshot.size())) continue;
+            *globalMapKeyFrames += *transformPointCloud(cornerSnapshot[thisKeyInd], &poseSnapshot6D->points[thisKeyInd]);
+            *globalMapKeyFrames += *transformPointCloud(surfSnapshot[thisKeyInd], &poseSnapshot6D->points[thisKeyInd]);
         }
         // downsample visualized points
         pcl::VoxelGrid<PointType> downSizeFilterGlobalMapKeyFrames;  // for global map visualization
@@ -1050,7 +1442,7 @@ public:
                                                      globalMapVisualizationLeafSize);  // for global map visualization
         downSizeFilterGlobalMapKeyFrames.setInputCloud(globalMapKeyFrames);
         downSizeFilterGlobalMapKeyFrames.filter(*globalMapKeyFramesDS);
-        publishCloud(pubLaserCloudSurround, globalMapKeyFramesDS, timeLaserInfoStamp, odometryFrame);
+        publishCloud(pubLaserCloudSurround, globalMapKeyFramesDS, mapStamp, odometryFrame);
     }
 
     void loopClosureThread() {
@@ -1062,14 +1454,21 @@ public:
             rate.sleep();
             if (LocEnableFlag == true) return;  // 线程可能不同步
 
-            if (cloudKeyPoses3D->points.size()) {
-                mtx.lock();
-                *copy_cloudKeyPoses3D = *cloudKeyPoses3D;
-                *copy_cloudKeyPoses6D = *cloudKeyPoses6D;
-                mtx.unlock();
+            bool snapshotAvailable = false;
+            {
+                std::lock_guard<std::mutex> lock(mtx);
+                if (!cloudKeyPoses3D->empty()) {
+                    *copy_cloudKeyPoses3D = *cloudKeyPoses3D;
+                    *copy_cloudKeyPoses6D = *cloudKeyPoses6D;
+                    copyCornerCloudKeyFrames = cornerCloudKeyFrames;
+                    copySurfCloudKeyFrames = surfCloudKeyFrames;
+                    snapshotAvailable = true;
+                }
+            }
 
+            if (snapshotAvailable) {
                 performLoopClosure();
-                // performSCLoopClosure();
+                if (scanContextLoopEnableFlag) performSCLoopClosure();
                 visualizeLoopClosure();
             }
         }
@@ -1143,11 +1542,12 @@ public:
         std::cout << "RS loop found! between " << loopKeyCur << " and " << loopKeyPre << "." << std::endl;  // giseop
 
         // Add pose constraint
-        mtx.lock();
-        loopIndexQueue.push_back(make_pair(loopKeyCur, loopKeyPre));
-        loopPoseQueue.push_back(poseFrom.between(poseTo));
-        loopNoiseQueue.push_back(constraintNoise);
-        mtx.unlock();
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            loopIndexQueue.push_back(make_pair(loopKeyCur, loopKeyPre));
+            loopPoseQueue.push_back(poseFrom.between(poseTo));
+            loopNoiseQueue.push_back(constraintNoise);
+        }
 
         // add loop constriant
         loopIndexContainer[loopKeyCur] = loopKeyPre;
@@ -1159,14 +1559,27 @@ public:
     void loopFindNearKeyframesWithRespectTo(pcl::PointCloud<PointType>::Ptr& nearKeyframes, const int& key, const int& searchNum, const int _wrt_key) {
         // 提取附近的关键帧
         nearKeyframes->clear();
-        int cloudSize = copy_cloudKeyPoses6D->size();    // 获取关键帧云的大小
+        const int cloudSize = static_cast<int>(std::min({
+            copy_cloudKeyPoses6D->size(), copyCornerCloudKeyFrames.size(),
+            copySurfCloudKeyFrames.size()}));
+        if (_wrt_key < 0 || _wrt_key >= cloudSize) return;
+        const Eigen::Affine3f wrtTransformInverse =
+            pclPointToAffine3f(copy_cloudKeyPoses6D->points[_wrt_key]).inverse();
         for (int i = -searchNum; i <= searchNum; ++i) {  // 在给定关键帧的前后searchNum范围内寻找关键帧
             int keyNear = key + i;
             if (keyNear < 0 || keyNear >= cloudSize)  // 如果keyNear超出范围，则继续下一次循环
                 continue;
             // 把找到的关键帧转换到给定的关键帧的坐标系下，并添加到nearKeyframes中
-            *nearKeyframes += *transformPointCloud(cornerCloudKeyFrames[keyNear], &copy_cloudKeyPoses6D->points[_wrt_key]);
-            *nearKeyframes += *transformPointCloud(surfCloudKeyFrames[keyNear], &copy_cloudKeyPoses6D->points[_wrt_key]);
+            const Eigen::Affine3f relativeTransform = wrtTransformInverse *
+                pclPointToAffine3f(copy_cloudKeyPoses6D->points[keyNear]);
+            pcl::PointCloud<PointType> transformedCorner;
+            pcl::PointCloud<PointType> transformedSurf;
+            pcl::transformPointCloud(*copyCornerCloudKeyFrames[keyNear], transformedCorner,
+                                     relativeTransform);
+            pcl::transformPointCloud(*copySurfCloudKeyFrames[keyNear], transformedSurf,
+                                     relativeTransform);
+            *nearKeyframes += transformedCorner;
+            *nearKeyframes += transformedSurf;
         }
 
         if (nearKeyframes->empty()) return;
@@ -1180,71 +1593,107 @@ public:
 
     void performSCLoopClosure() {
         // find keys
-        auto detectResult = scManager.detectLoopClosureID();  // first: nn index, second: yaw diff
-        int loopKeyCur = copy_cloudKeyPoses3D->size() - 1;
+        std::pair<int, float> detectResult;
+        {
+            std::lock_guard<std::mutex> lock(mtxScanContext);
+            detectResult = scManager.detectLoopClosureID();
+        }
+        const int cloudSize = static_cast<int>(std::min({
+            copy_cloudKeyPoses3D->size(), copy_cloudKeyPoses6D->size(),
+            copyCornerCloudKeyFrames.size(), copySurfCloudKeyFrames.size()}));
+        if (cloudSize < 2) return;
+        int loopKeyCur = cloudSize - 1;
         int loopKeyPre = detectResult.first;
-        // float yawDiffRad = detectResult.second;  // not use for v1 (because pcl icp withi initial somthing wrong...)
         if (loopKeyPre == -1)  // No loop found
             return;
+        if (loopKeyPre < 0 || loopKeyPre >= cloudSize) {
+            RCLCPP_WARN(get_logger(),
+                        "Ignoring out-of-range Scan Context loop index %d (size=%d)",
+                        loopKeyPre, cloudSize);
+            return;
+        }
+        if (loopIndexContainer.find(loopKeyCur) != loopIndexContainer.end()) return;
 
         std::cout << "SC loop found! between " << loopKeyCur << " and " << loopKeyPre << "." << std::endl;  // giseop
 
         pcl::PointCloud<PointType>::Ptr cureKeyframeCloud(new pcl::PointCloud<PointType>());
         pcl::PointCloud<PointType>::Ptr prevKeyframeCloud(new pcl::PointCloud<PointType>());
         {
-            int base_key = 0;
-            // 实际上是将相邻histNum叠加在一起去配准，
-            loopFindNearKeyframesWithRespectTo(cureKeyframeCloud, loopKeyCur, 0, base_key);                         // giseop
-            loopFindNearKeyframesWithRespectTo(prevKeyframeCloud, loopKeyPre, historyKeyframeSearchNum, base_key);  // giseop
-            // 如果不叠加，getFitnessScore分数很高，根本上不去
-            // loopFindNearKeyframes(cureKeyframeCloud, loopKeyCur, 2);                         // giseop
-            // loopFindNearKeyframes(prevKeyframeCloud, loopKeyPre, historyKeyframeSearchNum);  // giseop
+            // Use the current pose estimate to place both clouds in the map
+            // frame, then let ICP estimate the loop correction.
+            loopFindNearKeyframes(cureKeyframeCloud, loopKeyCur, 0);
+            loopFindNearKeyframes(prevKeyframeCloud, loopKeyPre, historyKeyframeSearchNum);
             if (cureKeyframeCloud->size() < 300 || prevKeyframeCloud->size() < 1000) return;
             if (pubHistoryKeyFrames->get_subscription_count() != 0) publishCloud(pubHistoryKeyFrames, prevKeyframeCloud, timeLaserInfoStamp, odometryFrame);
         }
 
         // ICP Settings
-        static pcl::IterativeClosestPoint<PointType, PointType> icp;
-        icp.setMaxCorrespondenceDistance(150);  // giseop , use a value can cover 2*historyKeyframeSearchNum range in meter
-        icp.setMaximumIterations(100);
-        icp.setTransformationEpsilon(1e-6);
-        icp.setEuclideanFitnessEpsilon(1e-6);
-        icp.setRANSACIterations(0);
+        auto configureIcp = [&](pcl::IterativeClosestPoint<PointType, PointType>& candidate) {
+            candidate.setMaxCorrespondenceDistance(historyKeyframeSearchRadius * 2.0f);
+            candidate.setMaximumIterations(100);
+            candidate.setTransformationEpsilon(1e-6);
+            candidate.setEuclideanFitnessEpsilon(1e-6);
+            candidate.setRANSACIterations(0);
+            candidate.setInputSource(cureKeyframeCloud);
+            candidate.setInputTarget(prevKeyframeCloud);
+        };
 
-        // Align clouds
-        icp.setInputSource(cureKeyframeCloud);
-        icp.setInputTarget(prevKeyframeCloud);
-        pcl::PointCloud<PointType>::Ptr unused_result(new pcl::PointCloud<PointType>());
-        icp.align(*unused_result);
-        // giseop
-        // TODO icp align with initial
+        const Eigen::Affine3f currentPose =
+            pclPointToAffine3f(copy_cloudKeyPoses6D->points[loopKeyCur]);
+        const Eigen::Affine3f yawPositive =
+            pcl::getTransformation(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, detectResult.second);
+        const Eigen::Affine3f yawNegative =
+            pcl::getTransformation(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -detectResult.second);
+        const Eigen::Matrix4f positiveGuess =
+            (currentPose * yawPositive * currentPose.inverse()).matrix();
+        const Eigen::Matrix4f negativeGuess =
+            (currentPose * yawNegative * currentPose.inverse()).matrix();
 
-        if (icp.hasConverged() == false || icp.getFitnessScore() > historyKeyframeFitnessScore) {
-            std::cout << "ICP fitness test failed (" << icp.getFitnessScore() << " > " << historyKeyframeFitnessScore << "). Reject this SC loop." << std::endl;
+        pcl::IterativeClosestPoint<PointType, PointType> icpPositive;
+        pcl::IterativeClosestPoint<PointType, PointType> icpNegative;
+        configureIcp(icpPositive);
+        configureIcp(icpNegative);
+        pcl::PointCloud<PointType> resultPositive;
+        pcl::PointCloud<PointType> resultNegative;
+        icpPositive.align(resultPositive, positiveGuess);
+        icpNegative.align(resultNegative, negativeGuess);
+
+        pcl::IterativeClosestPoint<PointType, PointType>* bestIcp = nullptr;
+        if (icpPositive.hasConverged()) bestIcp = &icpPositive;
+        if (icpNegative.hasConverged() &&
+            (bestIcp == nullptr || icpNegative.getFitnessScore() < bestIcp->getFitnessScore())) {
+            bestIcp = &icpNegative;
+        }
+        const double bestScore = bestIcp == nullptr
+            ? std::numeric_limits<double>::infinity()
+            : bestIcp->getFitnessScore();
+        if (bestIcp == nullptr || bestScore > historyKeyframeFitnessScore) {
+            std::cout << "ICP fitness test failed (" << bestScore << " > " << historyKeyframeFitnessScore << "). Reject this SC loop." << std::endl;
             return;
         } else {
-            std::cout << "ICP fitness test passed (" << icp.getFitnessScore() << " < " << historyKeyframeFitnessScore << "). Add this SC loop." << std::endl;
+            std::cout << "ICP fitness test passed (" << bestScore << " < " << historyKeyframeFitnessScore << "). Add this SC loop." << std::endl;
         }
 
         // publish corrected cloud
         if (pubIcpKeyFrames->get_subscription_count() != 0) {
             pcl::PointCloud<PointType>::Ptr closed_cloud(new pcl::PointCloud<PointType>());
-            pcl::transformPointCloud(*cureKeyframeCloud, *closed_cloud, icp.getFinalTransformation());
+            pcl::transformPointCloud(*cureKeyframeCloud, *closed_cloud, bestIcp->getFinalTransformation());
             publishCloud(pubIcpKeyFrames, closed_cloud, timeLaserInfoStamp, odometryFrame);
         }
 
         // Get pose transformation
         float x, y, z, roll, pitch, yaw;
         Eigen::Affine3f correctionLidarFrame;
-        correctionLidarFrame = icp.getFinalTransformation();
-
-        // giseop
-        pcl::getTranslationAndEulerAngles(correctionLidarFrame, x, y, z, roll, pitch, yaw);
+        correctionLidarFrame = bestIcp->getFinalTransformation();
+        const Eigen::Affine3f tWrong =
+            pclPointToAffine3f(copy_cloudKeyPoses6D->points[loopKeyCur]);
+        const Eigen::Affine3f tCorrect = correctionLidarFrame * tWrong;
+        pcl::getTranslationAndEulerAngles(tCorrect, x, y, z, roll, pitch, yaw);
         gtsam::Pose3 poseFrom = Pose3(Rot3::RzRyRx(roll, pitch, yaw), Point3(x, y, z));
-        gtsam::Pose3 poseTo = Pose3(Rot3::RzRyRx(0.0, 0.0, 0.0), Point3(0.0, 0.0, 0.0));
+        gtsam::Pose3 poseTo = pclPointTogtsamPose3(copy_cloudKeyPoses6D->points[loopKeyPre]);
 
         // giseop, robust kernel for a SC loop
-        float robustNoiseScore = 0.5;  // constant is ok...
+        float robustNoiseScore = std::max(0.05, bestScore);
         gtsam::Vector robustNoiseVector6(6);
         robustNoiseVector6 << robustNoiseScore, robustNoiseScore, robustNoiseScore, robustNoiseScore, robustNoiseScore, robustNoiseScore;
         noiseModel::Base::shared_ptr robustConstraintNoise;
@@ -1253,11 +1702,12 @@ public:
             gtsam::noiseModel::Robust::Create(gtsam::noiseModel::mEstimator::Cauchy::Create(1), gtsam::noiseModel::Diagonal::Variances(robustNoiseVector6));
 
         // Add pose constraint
-        mtx.lock();
-        loopIndexQueue.push_back(make_pair(loopKeyCur, loopKeyPre));
-        loopPoseQueue.push_back(poseFrom.between(poseTo));
-        loopNoiseQueue.push_back(robustConstraintNoise);
-        mtx.unlock();
+        {
+            std::lock_guard<std::mutex> lock(mtx);
+            loopIndexQueue.push_back(make_pair(loopKeyCur, loopKeyPre));
+            loopPoseQueue.push_back(poseFrom.between(poseTo));
+            loopNoiseQueue.push_back(robustConstraintNoise);
+        }
 
         // add loop constriant
         loopIndexContainer.insert(std::pair<int, int>(loopKeyCur, loopKeyPre));  // giseop for multimap
@@ -1266,7 +1716,10 @@ public:
     /////////////////////////////////// SC End ///////////////////////////////////
 
     bool detectLoopClosureDistance(int* latestID, int* closestID) {
-        int loopKeyCur = copy_cloudKeyPoses3D->size() - 1;
+        const int cloudSize = static_cast<int>(std::min(
+            copy_cloudKeyPoses3D->size(), copy_cloudKeyPoses6D->size()));
+        if (cloudSize < 2) return false;
+        int loopKeyCur = cloudSize - 1;
         int loopKeyPre = -1;
 
         // check loop constraint added before
@@ -1309,7 +1762,9 @@ public:
 
         if (abs(loopTimeCur - loopTimePre) < historyKeyframeSearchTimeDiff) return false;
 
-        int cloudSize = copy_cloudKeyPoses6D->size();
+        const int cloudSize = static_cast<int>(std::min({
+            copy_cloudKeyPoses6D->size(), copyCornerCloudKeyFrames.size(),
+            copySurfCloudKeyFrames.size()}));
         if (cloudSize < 2) return false;
 
         // latest key
@@ -1344,12 +1799,15 @@ public:
     void loopFindNearKeyframes(pcl::PointCloud<PointType>::Ptr& nearKeyframes, const int& key, const int& searchNum) {
         // extract near keyframes
         nearKeyframes->clear();
-        int cloudSize = copy_cloudKeyPoses6D->size();
+        const int cloudSize = static_cast<int>(std::min({
+            copy_cloudKeyPoses6D->size(), copyCornerCloudKeyFrames.size(),
+            copySurfCloudKeyFrames.size()}));
+        if (key < 0 || key >= cloudSize) return;
         for (int i = -searchNum; i <= searchNum; ++i) {
             int keyNear = key + i;
             if (keyNear < 0 || keyNear >= cloudSize) continue;
-            *nearKeyframes += *transformPointCloud(cornerCloudKeyFrames[keyNear], &copy_cloudKeyPoses6D->points[keyNear]);
-            *nearKeyframes += *transformPointCloud(surfCloudKeyFrames[keyNear], &copy_cloudKeyPoses6D->points[keyNear]);
+            *nearKeyframes += *transformPointCloud(copyCornerCloudKeyFrames[keyNear], &copy_cloudKeyPoses6D->points[keyNear]);
+            *nearKeyframes += *transformPointCloud(copySurfCloudKeyFrames[keyNear], &copy_cloudKeyPoses6D->points[keyNear]);
         }
 
         if (nearKeyframes->empty()) return;
@@ -2224,7 +2682,9 @@ public:
     }
 
     void addGPSFactor() {
-        if (!useGpsFactor || gpsQueue.empty()) return;
+        if (!useGpsFactor) return;
+        std::lock_guard<std::mutex> gpsLock(mtxGPS);
+        if (gpsQueue.empty()) return;
 
         // wait for system initialized and settles down
         if (cloudKeyPoses3D->points.empty())
@@ -2246,21 +2706,31 @@ public:
         static bool hasLastGPSPoint = false;
 
         while (!gpsQueue.empty()) {
-            if (stamp2Sec(gpsQueue.front().header.stamp) < timeLaserInfoCur - 0.2) {
+            if (stamp2Sec(gpsQueue.front().header.stamp) <
+                timeLaserInfoCur - gpsTimeTolerance) {
                 // message too old
                 gpsQueue.pop_front();
-            } else if (stamp2Sec(gpsQueue.front().header.stamp) > timeLaserInfoCur + 0.2) {
+            } else if (stamp2Sec(gpsQueue.front().header.stamp) >
+                       timeLaserInfoCur + gpsTimeTolerance) {
                 // message too new
                 break;
             } else {
                 nav_msgs::msg::Odometry thisGPS = gpsQueue.front();
                 gpsQueue.pop_front();
 
-                // GPS too noisy, skip
+                std::string rejectionReason;
+                if (!validateMapAlignedRTK(
+                        thisGPS, false, &rejectionReason)) {
+                    RCLCPP_WARN_THROTTLE(
+                        get_logger(), *get_clock(), 2000,
+                        "Rejecting GPS factor input: %s",
+                        rejectionReason.c_str());
+                    continue;
+                }
+
                 float noise_x = thisGPS.pose.covariance[0];
                 float noise_y = thisGPS.pose.covariance[7];
                 float noise_z = thisGPS.pose.covariance[14];
-                if (noise_x > gpsCovThreshold || noise_y > gpsCovThreshold) continue;
                 float gps_x = thisGPS.pose.pose.position.x;
                 float gps_y = thisGPS.pose.pose.position.y;
                 float gps_z = thisGPS.pose.pose.position.z;
@@ -2269,8 +2739,24 @@ public:
                     noise_z = 0.01;
                 }
 
-                // GPS not properly initialized (0,0,0)
-                if (abs(gps_x) < 1e-6 && abs(gps_y) < 1e-6) continue;
+                if (!std::isfinite(gps_z) || !std::isfinite(noise_z) ||
+                    noise_z <= 0.0f) {
+                    if (useGpsElevation) continue;
+                    gps_z = transformTobeMapped[5];
+                    noise_z = gpsVarianceFloor;
+                }
+
+                const float positionInnovation = std::hypot(
+                    gps_x - transformTobeMapped[3],
+                    gps_y - transformTobeMapped[4]);
+                if (gpsInnovationThreshold > 0.0f &&
+                    positionInnovation > gpsInnovationThreshold) {
+                    RCLCPP_WARN_THROTTLE(
+                        get_logger(), *get_clock(), 2000,
+                        "Rejecting GPS factor: %.3f m innovation exceeds %.3f m",
+                        positionInnovation, gpsInnovationThreshold);
+                    continue;
+                }
 
                 // Add GPS every a few meters
                 PointType curGPSPoint;
@@ -2289,8 +2775,14 @@ public:
                 Vector3 << max(noise_x, gpsVarianceFloor),
                            max(noise_y, gpsVarianceFloor),
                            max(noise_z, gpsVarianceFloor);
-                noiseModel::Diagonal::shared_ptr gps_noise =
+                noiseModel::Base::shared_ptr gps_noise =
                     noiseModel::Diagonal::Variances(Vector3);
+                if (gpsUseRobustNoise) {
+                    gps_noise = gtsam::noiseModel::Robust::Create(
+                        gtsam::noiseModel::mEstimator::Huber::Create(
+                            std::max(0.1f, gpsRobustKernelScale)),
+                        gps_noise);
+                }
                 gtsam::GPSFactor gps_factor(
                     cloudKeyPoses3D->size(),
                     gtsam::Point3(gps_x, gps_y, gps_z), gps_noise);
@@ -2472,6 +2964,7 @@ public:
 
         int curcnt = cloudKeyPoses3D->size() - 1;
         if (loopClosureEnableFlag) {
+            std::lock_guard<std::mutex> scanContextLock(mtxScanContext);
             // Scan Context loop detector - giseop
             // - SINGLE_SCAN_FULL: using downsampled original point cloud (/full_cloud_projected + downsampling)
             // - SINGLE_SCAN_FEAT: using surface feature as an input point cloud for scan context (2020.04.01: checked it works.)

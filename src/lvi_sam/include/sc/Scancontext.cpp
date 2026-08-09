@@ -3,6 +3,8 @@
 
 #include <pcl/filters/voxel_grid.h>
 #include <pcl_conversions/pcl_conversions.h>
+#include <algorithm>
+#include <cstddef>
 
 using namespace nanoflann;
 
@@ -186,6 +188,7 @@ void SCManager::makeAndSaveScancontextAndKeys(pcl::PointCloud<SCPointType>& _sca
 }
 
 std::pair<int, float> SCManager::detectLoopClosureID(void) {
+    if (polarcontext_invkeys_mat_.empty() || polarcontexts_.empty()) return {-1, 0.0f};
     auto curr_key = polarcontext_invkeys_mat_.back();  // 当前观察值（查询）
     auto curr_desc = polarcontexts_.back();            // 当前观察值（查询）
 
@@ -198,7 +201,9 @@ std::pair<int, float> SCManager::detectLoopClosureID(pcl::PointCloud<SCPointType
     // Eigen::MatrixXd sectorkey = makeSectorkeyFromScancontext(sc);
     std::vector<float> polarcontext_invkey_vec = eig2stdvec(ringkey);
 
-    return detectLoopClosureIDBase(polarcontext_invkey_vec, sc);
+    // An external scan is a cross-session query against the complete prior
+    // database; do not exclude its most recent map descriptors.
+    return detectLoopClosureIDBetweenSession(polarcontext_invkey_vec, sc);
 }
 
 std::pair<int, float> SCManager::detectLoopClosureIDBase(std::vector<float>& curr_key, Eigen::MatrixXd& curr_desc) {
@@ -234,18 +239,21 @@ std::pair<int, float> SCManager::detectLoopClosureIDBase(std::vector<float>& cur
     int nn_idx = 0;
 
     // knn搜索
-    std::vector<size_t> candidate_indexes(NUM_CANDIDATES_FROM_TREE);
-    std::vector<float> out_dists_sqr(NUM_CANDIDATES_FROM_TREE);
+    const std::size_t candidateCount = std::min<std::size_t>(
+        NUM_CANDIDATES_FROM_TREE, polarcontext_invkeys_to_search_.size());
+    if (candidateCount == 0 || curr_key.empty()) return {loop_id, 0.0f};
+    std::vector<size_t> candidate_indexes(candidateCount);
+    std::vector<float> out_dists_sqr(candidateCount);
 
     // TicToc t_tree_search;  // 计时开始
-    nanoflann::KNNResultSet<float> knnsearch_result(NUM_CANDIDATES_FROM_TREE);
+    nanoflann::KNNResultSet<float> knnsearch_result(candidateCount);
     knnsearch_result.init(&candidate_indexes[0], &out_dists_sqr[0]);
     polarcontext_tree_->index->findNeighbors(knnsearch_result, &curr_key[0] /* query */, nanoflann::SearchParameters(10));
     // t_tree_search.toc("Tree search");  // 计时结束
 
     // 步骤2：成对距离（使用余弦距离找出最优的列匹配）
     // TicToc t_calc_dist;  // 计时开始
-    for (int candidate_iter_idx = 0; candidate_iter_idx < NUM_CANDIDATES_FROM_TREE; candidate_iter_idx++) {
+    for (std::size_t candidate_iter_idx = 0; candidate_iter_idx < candidateCount; candidate_iter_idx++) {
         MatrixXd polarcontext_candidate = polarcontexts_[candidate_indexes[candidate_iter_idx]];
         std::pair<double, int> sc_dist_result = distanceBtnScanContext(curr_desc, polarcontext_candidate);
 
@@ -295,6 +303,9 @@ void SCManager::saveScancontextAndKeys(Eigen::MatrixXd _scd) {
 
 std::pair<int, float> SCManager::detectLoopClosureIDBetweenSession(std::vector<float>& _curr_key, Eigen::MatrixXd& _curr_desc) {
     int loop_id{-1};  // init with -1, -1 means no loop (== LeGO-LOAM's variable "closestHistoryFrameID")
+    if (polarcontext_invkeys_mat_.empty() || polarcontexts_.empty() || _curr_key.empty()) {
+        return {loop_id, 0.0f};
+    }
 
     auto& curr_key = _curr_key;
     auto& curr_desc = _curr_desc;  // current observation (query)
@@ -316,16 +327,19 @@ std::pair<int, float> SCManager::detectLoopClosureIDBetweenSession(std::vector<f
     int nn_idx = 0;
 
     // step 1: knn search
-    std::vector<size_t> candidate_indexes(NUM_CANDIDATES_FROM_TREE);
-    std::vector<float> out_dists_sqr(NUM_CANDIDATES_FROM_TREE);
+    const std::size_t candidateCount = std::min<std::size_t>(
+        NUM_CANDIDATES_FROM_TREE, polarcontext_invkeys_to_search_.size());
+    if (candidateCount == 0) return {loop_id, 0.0f};
+    std::vector<size_t> candidate_indexes(candidateCount);
+    std::vector<float> out_dists_sqr(candidateCount);
 
-    nanoflann::KNNResultSet<float> knnsearch_result(NUM_CANDIDATES_FROM_TREE);
+    nanoflann::KNNResultSet<float> knnsearch_result(candidateCount);
     knnsearch_result.init(&candidate_indexes[0], &out_dists_sqr[0]);
     polarcontext_tree_batch_->index->findNeighbors(knnsearch_result, &curr_key[0] /* query */, nanoflann::SearchParameters(10));  // error here
 
     // step 2: pairwise distance (find optimal columnwise best-fit using cosine distance)
     // TicToc t_calc_dist;
-    for (int candidate_iter_idx = 0; candidate_iter_idx < NUM_CANDIDATES_FROM_TREE; candidate_iter_idx++) {
+    for (std::size_t candidate_iter_idx = 0; candidate_iter_idx < candidateCount; candidate_iter_idx++) {
         MatrixXd polarcontext_candidate = polarcontexts_[candidate_indexes[candidate_iter_idx]];
         std::pair<double, int> sc_dist_result = distanceBtnScanContext(curr_desc, polarcontext_candidate);
 

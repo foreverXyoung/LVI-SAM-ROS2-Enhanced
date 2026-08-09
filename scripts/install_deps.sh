@@ -34,9 +34,6 @@ if [ -f "/opt/ros/$ROS_DISTRO/setup.bash" ]; then
   # shellcheck disable=SC1091
   source "/opt/ros/$ROS_DISTRO/setup.bash"
   c_ok "已 source /opt/ros/$ROS_DISTRO/setup.bash"
-elif [ -n "${ROS_DISTRO:-}" ]; then
-  # shellcheck disable=SC1091
-  source "/opt/ros/$ROS_DISTRO/setup.bash"
 else
   c_err "未找到 ROS 2 ($ROS_DISTRO)。请先按 docs/ENVIRONMENT.md 安装 ROS 2 Humble。"
   exit 1
@@ -48,7 +45,7 @@ $SUDO apt-get update -y
 $SUDO apt-get install -y --no-install-recommends \
   build-essential cmake git wget curl ca-certificates ccache \
   libpcl-dev libopencv-dev libeigen3-dev libboost-all-dev libceres-dev \
-  python3-pip python3-rosdep python3-colcon-common-extensions \
+  python3-pip python3-yaml python3-pyproj python3-rosdep python3-colcon-common-extensions \
   ros-"$ROS_DISTRO"-desktop ros-"$ROS_DISTRO"-pcl-ros \
   ros-"$ROS_DISTRO"-pcl-conversions ros-"$ROS_DISTRO"-tf2* \
   ros-"$ROS_DISTRO"-robot-state-publisher ros-"$ROS_DISTRO"-xacro
@@ -56,15 +53,23 @@ $SUDO apt-get install -y --no-install-recommends \
 # Orin 上启用 ccache（加速重复编译），通过 CCACHE_DIR 可持久化
 if [ "$IS_ORIN" -eq 1 ]; then
   c_info "检测到 aarch64(AGX Orin/Jetson)：ccache 已安装，建议 export CCACHE_DIR=/mnt/<外存>/ccache 持久化。"
-  export CCACHE_DIR="${CCACHE_DIR:-/root/.ccache}"
+  export CCACHE_DIR="${CCACHE_DIR:-${HOME}/.ccache}"
   export CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-10G}"
   c_info "ccache 配置：CCACHE_DIR=$CCACHE_DIR CCACHE_MAXSIZE=$CCACHE_MAXSIZE（可用 ccache -z 查看命中率）"
 fi
 
 # ---------- 2) GTSAM（源码编译，可跳过） ----------
-if [ -f /usr/local/lib/cmake/GTSAM/GTSAMConfig.cmake ]; then
-  c_ok "GTSAM 已安装，跳过源码编译"
+GTSAM_VERSION_FILE="/usr/local/lib/cmake/GTSAM/GTSAMConfigVersion.cmake"
+INSTALLED_GTSAM_VERSION=""
+if [ -f "$GTSAM_VERSION_FILE" ]; then
+  INSTALLED_GTSAM_VERSION="$(grep -m1 -E 'set\(PACKAGE_VERSION "[^"]+"' "$GTSAM_VERSION_FILE" | cut -d'"' -f2 || true)"
+fi
+if [ "$INSTALLED_GTSAM_VERSION" = "4.0.3" ]; then
+  c_ok "GTSAM 4.0.3 已安装，跳过源码编译"
 else
+  if [ -n "$INSTALLED_GTSAM_VERSION" ]; then
+    c_warn "检测到 GTSAM $INSTALLED_GTSAM_VERSION，本项目要求精确版本 4.0.3，将安装兼容版本。"
+  fi
   # ---- swap 检测：ARM/Jetson 上源码编译 GTSAM 极易 OOM，务必先确认 swap ----
   _mem_kb="$(grep MemTotal /proc/meminfo | awk '{print $2}')"
   _mem_gb="$(( _mem_kb / 1024 / 1024 ))"
@@ -158,7 +163,7 @@ if [ "$IS_ORIN" -eq 1 ]; then
   else
     c_info "cv_bridge 尚未编译（先 build 后再查），或不在 ldconfig 缓存。"
   fi
-  c_warn "若二者主版本不一致（如 4.10 vs 4.5），编译/运行前需在 build.sh 设 OPENCV_DIR，详见 docs/DEPLOY_ORIN.md §3。"
+  c_warn "若二者主版本不一致（如 4.10 vs 4.5），编译/运行前需在 build.sh 设 OpenCV_DIR，详见 docs/DEPLOY_ORIN.md §3。"
 fi
 
 c_ok "依赖安装完成。下一步：bash scripts/build.sh"

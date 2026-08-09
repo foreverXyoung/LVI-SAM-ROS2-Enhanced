@@ -3,7 +3,7 @@
 
     Loc:
       EnableFlag: false
-      loadPCDDirectory: "/data/return_station_ws/src/nav2_bringup/maps/501/"
+      loadPCDDirectory: "/tmp/lvi_sam_maps"
       surroundingKeyframeSearchRadius: 20.0
       surroundingKeyframeSearchMaxNum: 5
       useSCReLoc: true
@@ -17,6 +17,9 @@
     # Local, ENU-aligned RTK observations produced during first-track mapping.
     # No publisher is started during ordinary mapping, so the input is optional.
     gpsTopic: "/gps/lio_sam_odom"
+    # rtk_to_liosam_odom.py publishes map-aligned coordinates in the LIO
+    # graph's odometry frame.
+    gpsExpectedFrame: "odom"
 
     # Frames
     lidarFrame: "livox_frame"
@@ -31,6 +34,7 @@
     # GPS Settings
     useImuHeadingInitialization: false
     useGpsElevation: false
+    useGpsFactor: true
     gpsCovThreshold: 0.5
     poseCovThreshold: 25.0
     # First-track mapping: keep RTK as a low-frequency global position anchor.
@@ -38,11 +42,16 @@
     gpsInitialDistance: 1.0
     gpsFactorDistance: 2.0
     gpsVarianceFloor: 0.04
+    gpsTimeTolerance: 0.2
+    gpsInnovationThreshold: 5.0
+    gpsUseRobustNoise: true
+    gpsRobustKernelScale: 2.0
+    gpsQueueSize: 500
 
     # Export settings
     savePCD: true
     # railway_mapping.launch.py overrides this with profile.pcd_directory.
-    savePCDDirectory: "/data/return_station_ws/src/nav2_bringup/maps/501/"
+    savePCDDirectory: "/tmp/lvi_sam_maps"
 
     # Sensor Settings
     sensor: livox
@@ -105,6 +114,8 @@
 
     # Loop closure / Scan Context map export
     loopClosureEnableFlag: true
+    scanContextLoopEnableFlag: true
+    scanContextDistanceThreshold: 0.3
     loopClosureFrequency: 1.0
     surroundingKeyframeSize: 20
     historyKeyframeSearchRadius: 15.0

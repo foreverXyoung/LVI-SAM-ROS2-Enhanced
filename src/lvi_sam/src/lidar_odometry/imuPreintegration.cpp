@@ -48,7 +48,8 @@ public:
     double lidarOdomTime = -1;
     deque<nav_msgs::msg::Odometry> imuOdomQueue;
 
-    TransformFusion(const rclcpp::NodeOptions& options) : ParamServer("TransformFusionParamServer") {
+    explicit TransformFusion(const rclcpp::NodeOptions& options)
+        : ParamServer("TransformFusionParamServer", options) {
         tfBuffer = std::make_shared<tf2_ros::Buffer>(get_clock());
         tfListener = std::make_shared<tf2_ros::TransformListener>(*tfBuffer);
 
@@ -237,7 +238,8 @@ public:
             imuToLidarTrans.z()));
     gtsam::Pose3 lidar2Imu = imu2Lidar.inverse();
 
-    IMUPreintegration(const rclcpp::NodeOptions& options) : ParamServer("IMUPreintegrationParamServer") {
+    explicit IMUPreintegration(const rclcpp::NodeOptions& options)
+        : ParamServer("IMUPreintegrationParamServer", options) {
         callbackGroupImu = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
         callbackGroupOdom = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
 

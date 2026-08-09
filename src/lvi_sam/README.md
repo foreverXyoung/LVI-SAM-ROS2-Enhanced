@@ -98,12 +98,13 @@ ros2 launch lvi_sam run.launch.py \
 ```
 
 常用参数：`lidar_params_file`（场景/模式 yaml）、`camera_params_file`、`pcd_directory`（覆盖先验地图/输出目录）、`use_sim_time`、`publish_map_odom_static`。
+`imu_topic` 会同时覆盖 LIS 与 VIS 的标准 `sensor_msgs/Imu` 输入，默认 `/IMU_data`。
 
 ---
 
-## 6. 待在 Linux 环境解决的集成缺口（TODO）
+## 6. 实机部署前必须确认
 
-1. **IMU 类型转换**：VIS 需要 `sensor_msgs/Imu` 标准消息；fork 的 `/IMU_data` 是 livox `CustomMsg`。需在 `params_camera.yaml` 的 `imu_topic` 指向 livox_ros_driver2 发布的标准 IMU 话题（如 `/livox/imu`），或加 `CustomMsg→Imu` 转换节点。
+1. **IMU 接口**：LIS 与 VIS 现统一订阅 `/IMU_data`，类型为标准 `sensor_msgs/Imu`；若驱动实际发布其他话题或消息类型，须在驱动侧 remap/转换后再接入。
 2. **相机-IMU-激光外参标定**：`params_camera.yaml` 里的 `extrinsicRotation/Translation`、`lidar_to_cam_*` 为示例值，须按实机标定填入（阶段 4）。
 3. **时间同步**：图像/IMU/雷达时间戳对齐（MID360 已 IMU-雷达硬同步，相机需对齐）。
 4. **先验地图/输出目录**：`pcd_directory` 默认 `/tmp/lvi_sam_maps`；实机请指向实际地图目录（launch 已覆盖 yaml 默认）。
