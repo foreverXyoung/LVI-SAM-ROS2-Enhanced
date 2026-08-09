@@ -17,6 +17,11 @@ ROS_DISTRO="${ROS_DISTRO:-humble}"
 SUDO=""
 if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; fi
 
+# 平台检测：aarch64 -> 多为 AGX Orin / Jetson，启用 Orin 专属提示与限制
+ARCH="$(uname -m)"
+IS_ORIN=0
+if [ "$ARCH" = "aarch64" ]; then IS_ORIN=1; fi
+
 # 终端颜色
 c_info(){ echo -e "\033[1;34m[INFO]\033[0m  $*"; }
 c_ok(){   echo -e "\033[1;32m[ OK ]\033[0m  $*"; }
@@ -41,12 +46,20 @@ fi
 c_info "安装 apt / 编译基础包 ..."
 $SUDO apt-get update -y
 $SUDO apt-get install -y --no-install-recommends \
-  build-essential cmake git wget curl ca-certificates \
+  build-essential cmake git wget curl ca-certificates ccache \
   libpcl-dev libopencv-dev libeigen3-dev libboost-all-dev libceres-dev \
   python3-pip python3-rosdep python3-colcon-common-extensions \
   ros-"$ROS_DISTRO"-desktop ros-"$ROS_DISTRO"-pcl-ros \
   ros-"$ROS_DISTRO"-pcl-conversions ros-"$ROS_DISTRO"-tf2* \
   ros-"$ROS_DISTRO"-robot-state-publisher ros-"$ROS_DISTRO"-xacro
+
+# Orin 上启用 ccache（加速重复编译），通过 CCACHE_DIR 可持久化
+if [ "$IS_ORIN" -eq 1 ]; then
+  c_info "检测到 aarch64(AGX Orin/Jetson)：ccache 已安装，建议 export CCACHE_DIR=/mnt/<外存>/ccache 持久化。"
+  export CCACHE_DIR="${CCACHE_DIR:-/root/.ccache}"
+  export CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-10G}"
+  c_info "ccache 配置：CCACHE_DIR=$CCACHE_DIR CCACHE_MAXSIZE=$CCACHE_MAXSIZE（可用 ccache -z 查看命中率）"
+fi
 
 # ---------- 2) GTSAM（源码编译，可跳过） ----------
 if [ -f /usr/local/lib/cmake/GTSAM/GTSAMConfig.cmake ]; then
@@ -67,6 +80,13 @@ else
     c_warn "物理内存 ${_mem_gb}GB（已检测到 swap）。若编译 OOM，请扩大 swap 至 32GB 后重试。"
   fi
 
+  # Orin 上限制 GTSAM 编译并行度，避免 12 核全开吃满共享内存导致 OOM
+  GTSAM_JOBS="$(nproc)"
+  if [ "$IS_ORIN" -eq 1 ]; then
+    GTSAM_JOBS=4
+    c_info "AGX Orin：GTSAM 编译并行度限制为 $GTSAM_JOBS（默认全核易 OOM）。"
+  fi
+
   c_info "源码编译安装 GTSAM 4.0.3 (约需数分钟~数十分钟，依平台而定) ..."
   GTSAM_VER="4.0.3"
   TMP="$(mktemp -d)"
@@ -82,7 +102,7 @@ else
     -DGTSAM_BUILD_WITH_MARCH_NATIVE=OFF \
     -DGTSAM_BUILD_PYTHON=OFF \
     -DGTSAM_USE_SYSTEM_EIGEN=ON
-  make -j"$(nproc)"
+  make -j"$GTSAM_JOBS"
   $SUDO make install
   $SUDO ldconfig
   cd "$WS_ROOT"
@@ -123,5 +143,22 @@ $SUDO rosdep init 2>/dev/null || true
 rosdep update 2>/dev/null || true
 rosdep install --from-paths "$WS_ROOT/src" --ignore-src -y --skip-keys gtsam \
   || c_warn "rosdep 部分包未安装（多因已装或为源码包，可继续）"
+
+# ---------- 6) Orin 专属：OpenCV 冲突自检 ----------
+# JetPack 系统已带 CUDA 版 OpenCV（常 4.8/4.10），与 ros-humble 拉入的 4.5.4 并存，
+# cv_bridge 链接版本若与实际运行的不一致会在运行期 ABI 崩溃。提前打印供决策。
+if [ "$IS_ORIN" -eq 1 ]; then
+  c_info "===== AGX Orin OpenCV 冲突自检 ====="
+  _sys_cv="$(pkg-config --modversion opencv4 2>/dev/null || echo 'N/A')"
+  c_info "系统 OpenCV (pkg-config opencv4): $_sys_cv"
+  _cv_bridge_so="$(ldconfig -p 2>/dev/null | grep -m1 'libcv_bridge.so' | awk '{print $NF}')"
+  if [ -n "$_cv_bridge_so" ] && [ -f "$_cv_bridge_so" ]; then
+    _linked_cv="$(strings "$_cv_bridge_so" 2>/dev/null | grep -m1 '^opencv' || echo 'N/A')"
+    c_info "cv_bridge 实际链接的 OpenCV: $_linked_cv"
+  else
+    c_info "cv_bridge 尚未编译（先 build 后再查），或不在 ldconfig 缓存。"
+  fi
+  c_warn "若二者主版本不一致（如 4.10 vs 4.5），编译/运行前需在 build.sh 设 OPENCV_DIR，详见 docs/DEPLOY_ORIN.md §3。"
+fi
 
 c_ok "依赖安装完成。下一步：bash scripts/build.sh"

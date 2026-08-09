@@ -29,7 +29,7 @@ find_package(tf2_ros REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(PCL REQUIRED)
 find_package(pcl_ros REQUIRED)
-find_package(GTSAM REQUIRED)
+find_package(GTSAM 4.0.3 REQUIRED)   # 显式锁定 4.0.3，与 scripts/install_deps.sh、Dockerfile 一致，避免误装 4.2 引入 API 漂移
 find_package(Eigen3 REQUIRED)        # 修复：原 LVI-SAM-ROS2 硬编码 /opt/eigen，改为标准 find_package
 find_package(OpenMP REQUIRED)
 find_package(Ceres REQUIRED)         # VIS(VINS) 需要

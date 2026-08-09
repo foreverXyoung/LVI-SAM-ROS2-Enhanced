@@ -52,11 +52,15 @@ def generate_launch_description():
         publish_map_odom = LaunchConfiguration('publish_map_odom_static').perform(context)
 
         # LIS 节点共享的覆盖参数（pcd 目录 + 仿真时间）
+        # ⚠️ 注意：yaml 里 loadPCDDirectory 位于嵌套组 Loc 下（Loc.loadPCDDirectory），
+        #    必须用嵌套字典 {'Loc': {'loadPCDDirectory': ...}} 才能正确覆盖；
+        #    扁平写法 {'Loc.loadPCDDirectory': ...} 在 ros2 param 中无效（会被当成顶层键）。
+        #    旧版扁平写法会导致在 Orin 等新机器上地图路径仍指向硬编码的 /home/lighter/...
         lis_common = [
             {'use_sim_time': use_sim_time == 'true'},
             {'savePCD': False},
             {'savePCDDirectory': pcd_directory},
-            {'Loc.loadPCDDirectory': pcd_directory},
+            {'Loc': {'loadPCDDirectory': pcd_directory}},
         ]
 
         nodes = []
