@@ -110,7 +110,7 @@ bash scripts/setup.sh
 # 或分步：
 #   bash scripts/install_deps.sh   # apt + GTSAM(源码) + Livox-SDK2(源码) + rosdep
 #   bash scripts/build.sh          # 全量构建 LIS + VIS
-#   bash scripts/build.sh --lidar-only --clean  # 首轮上车：只构建 LIS，隔离相机/OpenCV
+#   bash scripts/build.sh --lidar-only --clean  # 首轮上车：只构建 LIS，缩短编译与排障链路
 #   bash scripts/run.sh            # 启动 LIS + VIS
 ```
 
@@ -123,6 +123,12 @@ colcon build --symlink-install --packages-up-to lvi_sam \
   --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_VISUAL=ON
 source install/setup.bash
 ```
+
+VIS 使用工程内的 `sensor_msgs/Image ↔ cv::Mat` 适配层，不直接链接 ROS 预编译
+`cv_bridge`。因此 JetPack OpenCV 4.8 与 ROS Humble OpenCV 4.5 可以保留在系统中，
+LVI-SAM 每个进程只会加载 CMake 选中的一套 OpenCV。迁移到新机器后正常重新编译即可；
+只有在机器上存在多个 `OpenCVConfig.cmake` 且默认选择不符合预期时，才需要显式设置
+`OpenCV_DIR`。详见 [`docs/DEPLOY_ORIN.md`](docs/DEPLOY_ORIN.md#3-opencv-单一依赖策略)。
 
 ---
 

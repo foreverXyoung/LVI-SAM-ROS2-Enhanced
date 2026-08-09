@@ -1,6 +1,9 @@
 #include "parameters.h"
 #include "keyframe.h"
 #include "loop_detection.h"
+#include "lvi_sam/image_conversion.hpp"
+
+#include <utility>
 
 #define SKIP_FIRST_CNT 10
 
@@ -196,36 +199,17 @@ void process()
             if((T - last_t).norm() > SKIP_DIST)
             {
                 // convert image
-                cv_bridge::CvImageConstPtr ptr;
-                try
+                auto converted_image = lvi_sam::image_conversion::toMono8(*image_msg);
+                if (!converted_image)
                 {
-                    if (image_msg->encoding == "8UC1")
-                    {
-                        sensor_msgs::msg::Image img;
-                        img.header = image_msg->header;
-                        img.height = image_msg->height;
-                        img.width = image_msg->width;
-                        img.is_bigendian = image_msg->is_bigendian;
-                        img.step = image_msg->step;
-                        img.data = image_msg->data;
-                        img.encoding = "mono8";
-                        ptr = cv_bridge::toCvCopy(img, sensor_msgs::image_encodings::MONO8);
-                    }
-                    else
-                    {
-                        ptr = cv_bridge::toCvCopy(
-                            image_msg, sensor_msgs::image_encodings::MONO8);
-                    }
-                }
-                catch (const cv_bridge::Exception& error)
-                {
-                    RCLCPP_WARN(rclcpp::get_logger("visual_loop"),
-                                "Discarding image that cv_bridge cannot convert: %s",
-                                error.what());
+                    static rclcpp::Clock warning_clock(RCL_STEADY_TIME);
+                    RCLCPP_WARN_THROTTLE(
+                        rclcpp::get_logger("visual_loop"), warning_clock, 5000,
+                        "Discarding camera image: %s", converted_image.error.c_str());
                     continue;
                 }
-                
-                cv::Mat image = ptr->image;
+
+                cv::Mat image = std::move(converted_image.image);
 
                 vector<cv::Point3f> point_3d; 
                 vector<cv::Point2f> point_2d_uv; 

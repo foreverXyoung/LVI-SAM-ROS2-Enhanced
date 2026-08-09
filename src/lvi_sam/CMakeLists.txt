@@ -13,8 +13,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g -pthread -fopenmp")
 
 option(BUILD_VISUAL "Build the camera/VINS/DBoW2 pipeline" ON)
-option(LVI_SAM_PREFER_ROS_OPENCV
-  "Prefer the distro OpenCV ABI used by the prebuilt ROS cv_bridge" ON)
 
 # ============ find dependencies ============
 find_package(ament_cmake REQUIRED)
@@ -34,17 +32,9 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(tf2_sensor_msgs REQUIRED)
 find_package(tf2_eigen REQUIRED)
 find_package(tf2_ros REQUIRED)
-# Jetson often has a /usr/local CUDA OpenCV in addition to the Ubuntu/ROS
-# build. A prebuilt cv_bridge remains linked to the distro ABI, so selecting
-# /usr/local can put two incompatible OpenCV versions in one executable.
-if(LVI_SAM_PREFER_ROS_OPENCV AND NOT OpenCV_DIR AND CMAKE_LIBRARY_ARCHITECTURE)
-  set(_ros_opencv_dir "/usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}/cmake/opencv4")
-  if(EXISTS "${_ros_opencv_dir}/OpenCVConfig.cmake")
-    set(OpenCV_DIR "${_ros_opencv_dir}" CACHE PATH
-      "OpenCV config compatible with the ROS distro" FORCE)
-    message(STATUS "LVI-SAM: preferring ROS-compatible OpenCV at ${OpenCV_DIR}")
-  endif()
-endif()
+# VIS converts sensor_msgs/Image through the package-local adapter in
+# include/lvi_sam/image_conversion.hpp. It intentionally does not link the
+# prebuilt cv_bridge, so every LVI-SAM executable uses this single OpenCV find.
 find_package(OpenCV REQUIRED)
 find_package(PCL REQUIRED)
 find_package(pcl_ros REQUIRED)
@@ -55,7 +45,6 @@ find_package(GTSAM 4.0 REQUIRED)
 find_package(Eigen3 REQUIRED)        # 修复：原 LVI-SAM-ROS2 硬编码 /opt/eigen，改为标准 find_package
 find_package(OpenMP REQUIRED)
 if(BUILD_VISUAL)
-  find_package(cv_bridge REQUIRED)
   find_package(Ceres REQUIRED)       # VIS(VINS) 需要
   find_package(Boost REQUIRED COMPONENTS atomic filesystem program_options system timer)
 endif()
@@ -101,7 +90,6 @@ set(common_dependencies
 
 set(visual_dependencies
   ${common_dependencies}
-  cv_bridge
 )
 
 # ============ 激光 LIS（来自 fork，已含 MID360/RTK/ScanContext/LoadPriorMap）============
@@ -152,8 +140,22 @@ if(BUILD_VISUAL)
   ament_target_dependencies(visual_loop_node ${visual_dependencies})
 endif()
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest QUIET)
+  if(ament_cmake_gtest_FOUND)
+    ament_add_gtest(test_image_conversion test/test_image_conversion.cpp)
+    if(TARGET test_image_conversion)
+      ament_target_dependencies(test_image_conversion sensor_msgs std_msgs)
+      target_link_libraries(test_image_conversion ${OpenCV_LIBS})
+    endif()
+  else()
+    message(WARNING "ament_cmake_gtest not found; image conversion tests are skipped")
+  endif()
+endif()
+
 # ============ 安装 ============
 install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY include/ DESTINATION include)
 
 install(
   PROGRAMS

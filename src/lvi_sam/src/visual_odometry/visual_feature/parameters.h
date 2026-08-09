@@ -14,7 +14,6 @@
 #include "nav_msgs/msg/odometry.hpp"
 
 #include <opencv2/opencv.hpp>
-#include <cv_bridge/cv_bridge.h>
 #include <eigen3/Eigen/Dense>
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/eigen.hpp>

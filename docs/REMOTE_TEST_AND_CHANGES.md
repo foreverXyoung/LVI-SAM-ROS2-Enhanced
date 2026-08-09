@@ -19,6 +19,8 @@
 - 修复回环线程访问关键帧数据时的并发快照、下标检查和候选范围问题。
 - 视觉回环修复相机模型未初始化、队列无上限、异常图像/特征输入和关键帧内存生命周期问题。
 - 修复相机—IMU 外参及 `td`/滚动快门时间参数的 ROS 2 类型契约；时间偏移保留浮点精度，并在启动时拒绝非法旋转矩阵。
+- 使用工程内图像适配层替代 VIS 对 `cv_bridge` 的直接链接，支持当前实机 `rgb8`
+  及常见 8 位 ROS 图像编码，避免 Orin 同一进程混载 OpenCV 4.5/4.8。
 
 ### 1.3 ROS 2 与 MID360
 
@@ -68,6 +70,28 @@ bash scripts/build.sh --lidar-only --clean
 source install/setup.bash
 ```
 
+如果仓库位于现有机器人工作区 `/data/return_station_ws/src/`，应从工作区根目录重编，
+避免同时维护仓库内外两套 `build/install`：
+
+```bash
+cd /data/return_station_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+
+colcon build --symlink-install \
+  --packages-select lvi_sam \
+  --cmake-clean-cache \
+  --cmake-args \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_VISUAL=ON
+
+source install/setup.bash
+colcon test --packages-select lvi_sam --event-handlers console_direct+
+colcon test-result --verbose
+```
+
+本次内部图像适配层不要求重新编译系统 `cv_bridge`，也不需要额外 overlay 工作空间。
+
 检查包与可执行文件：
 
 ```bash
@@ -76,8 +100,8 @@ ros2 pkg executables lvi_sam
 ```
 
 第一阶段应看到 `lvi_sam_imuPreintegration` 与 `lvi_sam_mapOptimization`。相机标定完成后，
-再运行 `bash scripts/build.sh --clean` 构建完整 VIS；Orin 的 OpenCV ABI 核验见
-[`DEPLOY_ORIN.md`](DEPLOY_ORIN.md#3-opencv-冲突决策orin-头号坑)。
+再运行 `bash scripts/build.sh --clean` 构建完整 VIS；Orin 的 OpenCV 单一依赖核验见
+[`DEPLOY_ORIN.md`](DEPLOY_ORIN.md#3-opencv-单一依赖策略)。
 
 应至少看到：
 
@@ -87,7 +111,7 @@ ros2 pkg executables lvi_sam
 - `visual_estimator_node`
 - `visual_loop_node`
 
-如果是 AGX Orin，先按 [DEPLOY_ORIN.md](DEPLOY_ORIN.md) 检查 JetPack/L4T、swap 和 OpenCV ABI，再运行 `bash scripts/setup_orin.sh`。
+如果是 AGX Orin，先按 [DEPLOY_ORIN.md](DEPLOY_ORIN.md) 检查 JetPack/L4T、swap 和 OpenCV，再运行 `bash scripts/setup_orin.sh`。
 
 ## 3. 启动前必须确认的配置
 
@@ -225,7 +249,9 @@ ros2 topic echo /lvi_sam/vins/loop/match_frame --once
 
 `match_frame` 只在 DBoW2/BRIEF 找到并验证回环时发布，因此短时间没有消息不代表节点异常。应同时观察三个视觉节点日志、特征跟踪图和 VINS 里程计是否连续。
 
-当前实机默认相机配置来自 `/camera/color/camera_info`：`640x400`、PINHOLE/plumb_bob。
+当前实机默认相机配置来自 `/camera/color/camera_info`：`640x400`、PINHOLE/plumb_bob；
+`/camera/color/image_raw` 已确认编码为 `rgb8`。内部适配层按 `RGB → mono8` 一次转换，
+生成的灰度矩阵持有独立内存，可安全用于跨帧光流。
 在相机—IMU与雷达—相机外参完成实机标定前，配置会优化相机—IMU初值，并默认关闭
 LiDAR 深度注入；此阶段只用于验证视觉特征与 VIO 数据链，不作为最终融合精度结论。
 

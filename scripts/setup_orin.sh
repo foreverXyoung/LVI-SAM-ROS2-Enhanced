@@ -5,7 +5,7 @@
 # 作用：
 #   1) 确认 L4T / Ubuntu / ROS 2 版本（决定 Docker 标签与 OpenCV 处理）
 #   2) 检查并建议 swap（源码编译 GTSAM / Ceres 极易 OOM）
-#   3) 检查 OpenCV 冲突（JetPack 自带 CUDA 版 vs ros-humble 的 4.5.4）
+#   3) 检查 LVI-SAM 将使用的 OpenCV（VIS 不再直接链接 cv_bridge）
 #   4) 一键设为最大性能模式（nvpmodel -m 0 + jetson_clocks），避免限频抖动
 #   5) 打印后续部署命令清单
 #
@@ -83,18 +83,17 @@ else
 fi
 echo
 
-# ---------- 3) OpenCV 冲突 ----------
-c_step "3) OpenCV 冲突自检（Orin 高危坑）"
+# ---------- 3) OpenCV ----------
+c_step "3) OpenCV 自检"
 _sys_cv="$(pkg-config --modversion opencv4 2>/dev/null || echo 'N/A')"
 c_info "系统 OpenCV (pkg-config opencv4): $_sys_cv"
-_cv_bridge_so="/opt/ros/${ROS_DISTRO:-humble}/lib/libcv_bridge.so"
-if [ -n "$_cv_bridge_so" ] && [ -f "$_cv_bridge_so" ]; then
-  _linked_cv="$(ldd "$_cv_bridge_so" 2>/dev/null | grep -m1 'libopencv_core' | awk '{print $1}' || echo 'N/A')"
-  c_info "cv_bridge 链接的 OpenCV: $_linked_cv"
-  c_info "两套 OpenCV 可以共存；build.sh 默认优先 cv_bridge 对应的 ROS ABI。"
+_opencv_config="$(find /usr/lib /usr/local/lib /opt -name OpenCVConfig.cmake -path '*opencv4*' -print -quit 2>/dev/null || true)"
+if [ -n "$_opencv_config" ]; then
+  c_info "默认可见的 OpenCVConfig.cmake: $_opencv_config"
 else
-  c_info "未找到 ROS cv_bridge；仅激光测试可使用 build.sh --lidar-only。"
+  c_warn "未找到 OpenCVConfig.cmake；完整 VIS 构建需要 OpenCV 开发包。"
 fi
+c_ok "LVI-SAM VIS 使用内部图像适配层，不会把 ROS cv_bridge 的另一套 OpenCV 链入同一进程。"
 echo
 
 # ---------- 4) 性能模式 ----------
@@ -120,7 +119,7 @@ c_step "5) 后续部署命令"
 c_ok "自检完成。建议按以下顺序执行："
 echo "    # a) 安装系统/ROS 依赖 + GTSAM + Livox-SDK2（已含 Orin 提示）"
 echo "    bash scripts/install_deps.sh"
-echo "    # b) 编译（已含 OpenCV 自动匹配 + ccache + 并行度限制）"
+echo "    # b) 编译（单一 OpenCV + ccache + 并行度限制）"
 echo "    bash scripts/build.sh"
 echo "    # c) 运行（需另起终端先启动 livox_ros_driver2 激光驱动）"
 echo "    bash scripts/run.sh"

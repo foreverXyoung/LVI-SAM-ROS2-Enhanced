@@ -69,35 +69,18 @@ if [ "$CLEAN_BUILD" = "1" ]; then
   rm -rf build install log
 fi
 
-# ---------- Orin(AGX Orin/Jetson) 专属：OpenCV 冲突处理 ----------
-# JetPack 系统自带 CUDA 版 OpenCV（4.8/4.10），ros-humble 还会装 4.5.4，二者并存时
-# cv_bridge 与本项目节点可能因链接不同版本在运行期 ABI 崩溃。
-# 策略（默认 KEEP_SYSTEM=0，优先 ROS/cv_bridge 使用的发行版 OpenCV）：
-#   - KEEP_SYSTEM=0 时由项目 CMake 自动选择 /usr/lib/<multiarch> 的 ROS 兼容版本；
-#   - KEEP_SYSTEM=1 仅用于已针对 /usr/local OpenCV 重编 cv_bridge 的高级环境。
+# ---------- OpenCV 选择 ----------
+# VIS 使用包内图像适配层，不再链接 cv_bridge。CMake 只选择一套 OpenCV；如机器
+# 上存在多个 OpenCVConfig.cmake，可用标准变量 OpenCV_DIR 显式指定其中一个。
+if [ -n "${OPENCV_DIR:-}" ] && [ -z "${OpenCV_DIR:-}" ]; then
+  c_warn "OPENCV_DIR 已弃用，自动转换为标准变量 OpenCV_DIR。"
+  OpenCV_DIR="$OPENCV_DIR"
+fi
+if [ -n "${KEEP_SYSTEM:-}" ]; then
+  c_warn "KEEP_SYSTEM 已不再需要：LVI-SAM VIS 已移除 cv_bridge 二进制依赖。"
+fi
 if [ "$IS_ORIN" -eq 1 ]; then
-  KEEP_SYSTEM="${KEEP_SYSTEM:-0}"
-  if [ -n "${OPENCV_DIR:-}" ] && [ -z "${OpenCV_DIR:-}" ]; then
-    c_warn "OPENCV_DIR 已弃用，自动转换为标准变量 OpenCV_DIR。"
-    OpenCV_DIR="$OPENCV_DIR"
-  fi
-  if [ "$KEEP_SYSTEM" = "1" ] && [ -z "${OpenCV_DIR:-}" ]; then
-    _pkg_cv="$(pkg-config --variable=libdir opencv4 2>/dev/null || true)"
-    _auto_cv=""
-    if [ -n "$_pkg_cv" ] && [ -f "$_pkg_cv/cmake/opencv4/OpenCVConfig.cmake" ]; then
-      _auto_cv="$_pkg_cv/cmake/opencv4/OpenCVConfig.cmake"
-    else
-      _auto_cv="$(find /usr/local /opt /usr -name OpenCVConfig.cmake -path '*opencv4*' -print -quit 2>/dev/null || true)"
-    fi
-    if [ -n "$_auto_cv" ]; then
-      OpenCV_DIR="$(dirname "$_auto_cv")"
-      c_info "AGX Orin：使用 OpenCV_DIR=$OpenCV_DIR"
-    else
-      c_warn "AGX Orin：未自动找到 OpenCVConfig.cmake；若出现 ABI 问题，请手动设置 OpenCV_DIR。"
-    fi
-  else
-    c_info "AGX Orin：KEEP_SYSTEM=$KEEP_SYSTEM，OpenCV_DIR=${OpenCV_DIR:-（未设，使用 CMake 默认查找）}"
-  fi
+  c_info "AGX Orin：VIS 使用内部图像适配层；OpenCV_DIR=${OpenCV_DIR:-（未设，使用 CMake 默认查找）}"
 fi
 
 # ---------- ccache（加速重复编译，尤其 Orin） ----------
@@ -119,9 +102,6 @@ if command -v ccache >/dev/null 2>&1; then
 fi
 if [ -n "${OpenCV_DIR:-}" ]; then
   CMAKE_ARGS+=("-DOpenCV_DIR=$OpenCV_DIR")
-fi
-if [ "$IS_ORIN" -eq 1 ] && [ "${KEEP_SYSTEM:-0}" = "1" ]; then
-  CMAKE_ARGS+=(-DLVI_SAM_PREFER_ROS_OPENCV=OFF)
 fi
 colcon build --symlink-install --packages-up-to lvi_sam \
   --parallel-workers "$COLCON_JOBS" \

@@ -55,7 +55,8 @@ ros2 topic list | grep -E "/livox/lidar|/IMU_data"
 ### 2.3 相机话题与内参
 
 VIS 需要：
-- 图像话题 `image_topic`（默认 `/camera/image_raw`，`sensor_msgs/Image`）。
+- 图像话题 `image_topic`（默认 `/camera/color/image_raw`，`sensor_msgs/Image`）。当前实机输出
+  `rgb8`；内部适配层也支持 `bgr8`、`rgba8`、`bgra8`、`mono8` 和 `8UC1`。
 - 相机内参写在 `config/params_camera.yaml` 的 `camera_intrinsics` / `distortion` 等字段，
   **须按实机标定填入**（仓库内为示例值）。
 
@@ -180,7 +181,7 @@ ros2 topic hz /lio_sam/mapping/cloud_registered
 关键字段：
 
 - `PROJECT_NAME: lvi_sam` → 决定 VIS 发布话题前缀（`/lvi_sam/vins/...`）。
-- `imu_topic: /IMU_data`、`image_topic: /camera/image_raw`。
+- `imu_topic: /IMU_data`、`image_topic: /camera/color/image_raw`。
 - `point_cloud_topic: /lio_sam/deskew/cloud_deskewed`（② 激光深度，绝对路径）。
 - `camera_intrinsics` / `distortion`：相机内参（**须标定**）。
 - `extrinsicRotation` / `extrinsicTranslation`：相机→IMU 外参（**须标定**）。
@@ -193,7 +194,7 @@ ros2 topic hz /lio_sam/mapping/cloud_registered
 
 目标：在**不标定外参、不接真实相机**的情况下，先确认管线能跑通。
 
-1. 用仿真或录制的 bag 提供 `/livox/lidar`、`/IMU_data`、`/camera/image_raw`。
+1. 用仿真或录制的 bag 提供 `/livox/lidar`、`/IMU_data`、`/camera/color/image_raw`。
 2. 启动 `run.launch.py`（`use_sim_time:=true`），观察：
    - `visual_estimator_node` 是否输出 `/lvi_sam/vins/odometry/...`（VIS 位姿）。
    - `visual_loop_node` 是否在经过相似场景时发布 `/lvi_sam/vins/loop/match_frame`。
@@ -209,7 +210,7 @@ ros2 topic hz /lio_sam/mapping/cloud_registered
 | 现象 | 排查 |
 |------|------|
 | VIS 节点起不来 / 闪退 | 检查 `params_camera.yaml` 是否存在、`vocabulary_file` 路径；看节点 stderr 是否报「文件不存在」 |
-| VIS 完全不动 / 无位姿 | `ros2 topic hz /IMU_data`、`/camera/image_raw`、`/odometry/imu` 是否都有数据 |
+| VIS 完全不动 / 无位姿 | `ros2 topic hz /IMU_data`、`/camera/color/image_raw`、`/odometry/imu` 是否都有数据 |
 | VIS 尺度 drift / 飞掉 | 确认 `odometry/imu` 接通（① 先验）；单目 VIS 离了 LIS 尺度会失控 |
 | LIS 收不到视觉回环 | `ros2 topic echo /lvi_sam/vins/loop/match_frame`；确认 remap 未被改动 |
 | LIS 不发布 `cloud_deskewed` | 检查 `params.yaml` 的 `deskew` 开关与输入点云时间戳 |

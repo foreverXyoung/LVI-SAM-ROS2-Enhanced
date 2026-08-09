@@ -81,38 +81,42 @@ void img_callback(const sensor_msgs::msg::Image::ConstSharedPtr &img_msg)
         PUB_THIS_FRAME = false;
     }
 
-    cv_bridge::CvImageConstPtr ptr;
-    if (img_msg->encoding == "8UC1")
+    auto converted_image = lvi_sam::image_conversion::toMono8(*img_msg);
+    if (!converted_image)
     {
-        sensor_msgs::msg::Image img;
-        img.header = img_msg->header;
-        img.height = img_msg->height;
-        img.width = img_msg->width;
-        img.is_bigendian = img_msg->is_bigendian;
-        img.step = img_msg->step;
-        img.data = img_msg->data;
-        img.encoding = "mono8";
-        ptr = cv_bridge::toCvCopy(img, sensor_msgs::image_encodings::MONO8);
+        static rclcpp::Clock warning_clock(RCL_STEADY_TIME);
+        RCLCPP_WARN_THROTTLE(
+            rclcpp::get_logger("visual_feature"), warning_clock, 5000,
+            "Discarding camera image: %s", converted_image.error.c_str());
+        return;
     }
-    else
-        ptr = cv_bridge::toCvCopy(img_msg, sensor_msgs::image_encodings::MONO8);
 
-    cv::Mat show_img = ptr->image;
+    cv::Mat &mono_image = converted_image.image;
+    if (mono_image.rows != ROW * NUM_OF_CAM || mono_image.cols != COL)
+    {
+        static rclcpp::Clock warning_clock(RCL_STEADY_TIME);
+        RCLCPP_WARN_THROTTLE(
+            rclcpp::get_logger("visual_feature"), warning_clock, 5000,
+            "Discarding camera image with size %dx%d; expected %dx%d",
+            mono_image.cols, mono_image.rows, COL, ROW * NUM_OF_CAM);
+        return;
+    }
+    cv::Mat show_img = mono_image;
     TicToc t_r;
     for (int i = 0; i < NUM_OF_CAM; i++)
     {
         // RCLCPP_DEBUG(this->get_logger(), "processing camera %d", i);
         if (i != 1 || !STEREO_TRACK)
-            trackerData[i].readImage(ptr->image.rowRange(ROW * i, ROW * (i + 1)), cur_img_time);
+            trackerData[i].readImage(mono_image.rowRange(ROW * i, ROW * (i + 1)), cur_img_time);
         else
         {
             if (EQUALIZE)
             {
                 cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE();
-                clahe->apply(ptr->image.rowRange(ROW * i, ROW * (i + 1)), trackerData[i].cur_img);
+                clahe->apply(mono_image.rowRange(ROW * i, ROW * (i + 1)), trackerData[i].cur_img);
             }
             else
-                trackerData[i].cur_img = ptr->image.rowRange(ROW * i, ROW * (i + 1));
+                trackerData[i].cur_img = mono_image.rowRange(ROW * i, ROW * (i + 1));
         }
 
         #if SHOW_UNDISTORTION
@@ -197,14 +201,12 @@ void img_callback(const sensor_msgs::msg::Image::ConstSharedPtr &img_msg)
         // publish features in image
         if (pub_match->get_subscription_count() != 0)
         {
-            ptr = cv_bridge::cvtColor(ptr, sensor_msgs::image_encodings::RGB8);
-            //cv::Mat stereo_img(ROW * NUM_OF_CAM, COL, CV_8UC3);
-            cv::Mat stereo_img = ptr->image;
+            cv::Mat stereo_img;
+            cv::cvtColor(show_img, stereo_img, cv::COLOR_GRAY2RGB);
 
             for (int i = 0; i < NUM_OF_CAM; i++)
             {
                 cv::Mat tmp_img = stereo_img.rowRange(i * ROW, (i + 1) * ROW);
-                cv::cvtColor(show_img, tmp_img, CV_GRAY2RGB);
 
                 for (unsigned int j = 0; j < trackerData[i].cur_pts.size(); j++)
                 {
@@ -226,7 +228,19 @@ void img_callback(const sensor_msgs::msg::Image::ConstSharedPtr &img_msg)
                 }
             }
 
-            pub_match->publish(*ptr->toImageMsg());
+            auto image_message = lvi_sam::image_conversion::toRosImage(
+                stereo_img, sensor_msgs::image_encodings::RGB8, img_msg->header);
+            if (!image_message)
+            {
+                static rclcpp::Clock warning_clock(RCL_STEADY_TIME);
+                RCLCPP_WARN_THROTTLE(
+                    rclcpp::get_logger("visual_feature"), warning_clock, 5000,
+                    "Unable to publish feature image: %s", image_message.error.c_str());
+            }
+            else
+            {
+                pub_match->publish(image_message.message);
+            }
         }
     }
 }

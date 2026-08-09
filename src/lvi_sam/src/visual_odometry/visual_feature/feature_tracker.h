@@ -15,6 +15,7 @@
 
 #include "parameters.h"
 #include "tic_toc.h"
+#include "lvi_sam/image_conversion.hpp"
 
 using namespace std;
 using namespace camodocal;
@@ -302,12 +303,20 @@ public:
             }
             cv::addWeighted(showImage, 1.0, circleImage, 0.7, 0, showImage); // blend camera image and circle image
 
-            cv_bridge::CvImage bridge;
-            bridge.image = showImage;
-            bridge.encoding = "rgb8";
-            auto imageShowPointer = bridge.toImageMsg();
-            imageShowPointer->header.stamp = stamp_cur;
-            pub_depth_image->publish(*imageShowPointer);
+            std_msgs::msg::Header header;
+            header.stamp = stamp_cur;
+            auto image_message = lvi_sam::image_conversion::toRosImage(
+                showImage, sensor_msgs::image_encodings::RGB8, header);
+            if (!image_message)
+            {
+                RCLCPP_WARN_THROTTLE(
+                    node_->get_logger(), *node_->get_clock(), 5000,
+                    "Unable to publish depth image: %s", image_message.error.c_str());
+            }
+            else
+            {
+                pub_depth_image->publish(image_message.message);
+            }
         }
 
         return depth_of_point;

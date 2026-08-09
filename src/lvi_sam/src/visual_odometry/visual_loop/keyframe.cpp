@@ -1,4 +1,5 @@
 #include "keyframe.h"
+#include "lvi_sam/image_conversion.hpp"
 #include <opencv2/imgproc/imgproc.hpp>
 
 template <typename Derived>
@@ -245,9 +246,20 @@ bool KeyFrame::findConnection(KeyFrame* old_kf)
                         MATCH_IMAGE_SCALE*2, cv::Scalar(255), 2);
                 cv::vconcat(notation, loop_match_img, loop_match_img);
                 // publish matched image
-    	    	std::shared_ptr<sensor_msgs::msg::Image> msg = cv_bridge::CvImage(std_msgs::msg::Header(), "bgr8", loop_match_img).toImageMsg();
-                msg->header.stamp = rclcpp::Time(time_stamp);
-    	    	pub_match_img->publish(*msg);
+                std_msgs::msg::Header header;
+                header.stamp = rclcpp::Time(time_stamp);
+                auto image_message = lvi_sam::image_conversion::toRosImage(
+                    loop_match_img, sensor_msgs::image_encodings::BGR8, header);
+                if (!image_message)
+                {
+                    RCLCPP_ERROR(
+                        rclcpp::get_logger("visual_loop"),
+                        "Unable to publish loop-match image: %s", image_message.error.c_str());
+                }
+                else
+                {
+                    pub_match_img->publish(image_message.message);
+                }
             }
 
             return true;

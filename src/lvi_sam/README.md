@@ -75,7 +75,7 @@ src/lvi_sam/
 
 ```bash
 # 依赖（Linux/ROS2 humble 环境）：
-#   ament 系统包：rclcpp cv_bridge pcl_ros pcl_conversions tf2* visualization_msgs nav_msgs
+#   ament 系统包：rclcpp pcl_ros pcl_conversions tf2* visualization_msgs nav_msgs
 #   非 apt（需源码/二进制）：GTSAM、Ceres、Boost、OpenCV、Eigen3、livox_ros_driver2
 #   （已修正 LVI-SAM-ROS2 原版 Eigen3_DIR 硬编码 /opt/eigen；改用 find_package(Eigen3)）
 
@@ -83,6 +83,10 @@ cd LVI-SAM-ROS2-Enhanced
 colcon build --packages-select lvi_sam
 source install/setup.bash
 ```
+
+视觉节点通过 `include/lvi_sam/image_conversion.hpp` 完成 ROS 图像与 OpenCV 的转换，
+不直接依赖 `cv_bridge`。输入支持 `rgb8`、`bgr8`、`rgba8`、`bgra8`、`mono8`
+和 `8UC1`；未知编码、非法 `step` 或数据长度不足的图像会被安全丢弃并限频告警。
 
 > ⚠️ 本工程在 Windows 下无法编译（ROS2 + VINS 依赖链需 Linux）。上述为在目标 Linux/ROS2 环境下的构建命令。
 

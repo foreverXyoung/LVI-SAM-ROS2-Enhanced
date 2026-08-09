@@ -149,21 +149,12 @@ rosdep update 2>/dev/null || true
 rosdep install --from-paths "$WS_ROOT/src" --ignore-src -y --skip-keys gtsam \
   || c_warn "rosdep 部分包未安装（多因已装或为源码包，可继续）"
 
-# ---------- 6) Orin 专属：OpenCV 冲突自检 ----------
-# JetPack 系统已带 CUDA 版 OpenCV（常 4.8/4.10），与 ros-humble 拉入的 4.5.4 并存，
-# cv_bridge 链接版本若与实际运行的不一致会在运行期 ABI 崩溃。提前打印供决策。
+# ---------- 6) Orin 专属：OpenCV 自检 ----------
 if [ "$IS_ORIN" -eq 1 ]; then
-  c_info "===== AGX Orin OpenCV 冲突自检 ====="
+  c_info "===== AGX Orin OpenCV 自检 ====="
   _sys_cv="$(pkg-config --modversion opencv4 2>/dev/null || echo 'N/A')"
   c_info "系统 OpenCV (pkg-config opencv4): $_sys_cv"
-  _cv_bridge_so="/opt/ros/${ROS_DISTRO}/lib/libcv_bridge.so"
-  if [ -n "$_cv_bridge_so" ] && [ -f "$_cv_bridge_so" ]; then
-    _linked_cv="$(ldd "$_cv_bridge_so" 2>/dev/null | grep -m1 'libopencv_core' | awk '{print $1}' || echo 'N/A')"
-    c_info "cv_bridge 实际链接的 OpenCV: $_linked_cv"
-  else
-    c_info "未找到 ROS cv_bridge；仅激光测试可使用 build.sh --lidar-only。"
-  fi
-  c_info "两套 OpenCV 可以共存；build.sh 默认优先 cv_bridge 对应的 ROS ABI。"
+  c_info "LVI-SAM VIS 使用内部图像适配层，不依赖 ROS cv_bridge 的 OpenCV ABI。"
 fi
 
 c_ok "依赖安装完成。下一步：bash scripts/build.sh"
