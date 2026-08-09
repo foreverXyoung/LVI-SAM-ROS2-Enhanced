@@ -427,4 +427,627 @@ bool Estimator::visualInitialAlign()
         return false;
     }
 
-    // changeã^·¶‰žËkºwµçUÉ}™É…µ•lÁt¹ÕØ¹ä ¤°¥Ñ}Á•É}™É…µ”¹ÕØ¹ä ¤¤ì4(€€€€€€€€€€€€€€€ÁÉ½‰±•´¹‘‘I•Í¥‘Õ…±	±½¬¡™}Ñ°±½ÍÍ}™Õ¹Ñ¥½¸°Á…É…}A½Í•m¥µÕ}¥t°Á…É…}A½Í•m¥µÕ}©t°Á…É…}á}A½Í•lÁt°Á…É…}•…ÑÕÉ•m™•…ÑÕÉ•}¥¹‘•át°Á…É…}Q‘lÁt¤ì4(€€€€€€€€€€€€€€€€4(€€€€€€€€€€€€€€€€¼¼‘•ÁÑ ¥Ì½‰Ñ…¥¹•™É½´±¥‘…È°Í­¥À½ÁÑ¥µ¥é¥¹œ¥Ð4(€€€€€€€€€€€€€€€¥˜€¡¥Ñ}Á•É}¥¹±¥‘…É}‘•ÁÑ¡}™±…œ€ôôÑÉÕ”¤4(€€€€€€€€€€€€€€€€€€€ÁÉ½‰±•´¹M•ÑA…É…µ•Ñ•É	±½­½¹ÍÑ…¹Ð¡Á…É…}•…ÑÕÉ•m™•…ÑÕÉ•}¥¹‘•át¤ì4(€€€€€€€€€€€ô4(€€€€€€€€€€€•±Í”4(€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€AÉ½©•Ñ¥½¹…Ñ½È€©˜€ô¹•ÜAÉ½©•Ñ¥½¹…Ñ½È¡ÁÑÍ}¤°ÁÑÍ}¨¤ì4(€€€€€€€€€€€€€€€ÁÉ½‰±•´¹‘‘I•Í¥‘Õ…±	±½¬¡˜°±½ÍÍ}™Õ¹Ñ¥½¸°Á…É…}A½Í•m¥µÕ}¥t°Á…É…}A½Í•m¥µÕ}©t°Á…É…}á}A½Í•lÁt°Á…É…}•…ÑÕÉ•m™•…ÑÕÉ•}¥¹‘•át¤ì4(4(€€€€€€€€€€€€€€€€¼¼‘•ÁÑ ¥Ì½‰Ñ…¥¹•™É½´±¥‘…È°Í­¥À½ÁÑ¥µ¥é¥¹œ¥Ð4(€€€€€€€€€€€€€€€¥˜€¡¥Ñ}Á•É}¥¹±¥‘…É}‘•ÁÑ¡}™±…œ€ôôÑÉÕ”¤4(€€€€€€€€€€€€€€€€€€€ÁÉ½‰±•´¹M•ÑA…É…µ•Ñ•É	±½­½¹ÍÑ…¹Ð¡Á…É…}•…ÑÕÉ•m™•…ÑÕÉ•}¥¹‘•át¤ì4(€€€€€€€€€€€ô4(€€€€€€€€€€€™}µ}¹Ð¬¬ì4(€€€€€€€ô4(€€€ô4(4(€€€•É•ÌèéM½±Ù•Èèé=ÁÑ¥½¹Ì½ÁÑ¥½¹Ìì4(€€€½ÁÑ¥½¹Ì¹±¥¹•…É}Í½±Ù•É}ÑåÁ”€ô•É•Ìèé9M}M!UHì4(€€€€¼½½ÁÑ¥½¹Ì¹¹Õµ}Ñ¡É•…‘Ì€ô€Èì4(€€€½ÁÑ¥½¹Ì¹ÑÉÕÍÑ}É•¥½¹}ÍÑÉ…Ñ•å}ÑåÁ”€ô•É•Ìèé=1ì4(€€€½ÁÑ¥½¹Ì¹µ…á}¹Õµ}¥Ñ•É…Ñ¥½¹Ì€ô9U5}%QIQ%=9Lì4(€€€€¼½½ÁÑ¥½¹Ì¹ÕÍ•}•áÁ±¥¥Ñ}Í¡ÕÉ}½µÁ±•µ•¹Ð€ôÑÉÕ”ì4(€€€€¼½½ÁÑ¥½¹Ì¹µ¥¹¥µ¥é•É}ÁÉ½É•ÍÍ}Ñ½}ÍÑ‘½ÕÐ€ôÑÉÕ”ì4(€€€€¼½½ÁÑ¥½¹Ì¹ÕÍ•}¹½¹µ½¹½Ñ½¹¥}ÍÑ•ÁÌ€ôÑÉÕ”ì4(4(€€€¥˜€¡µ…É¥¹…±¥é…Ñ¥½¹}™±…œ€ôô5I%9}=1¤4(€€€€€€€½ÁÑ¥½¹Ì¹µ…á}Í½±Ù•É}Ñ¥µ•}¥¹}Í•½¹‘Ì€ôM=1YI}Q%5€¨€Ð¸À€¼€Ô¸Àì4(€€€•±Í”4(€€€€€€€½ÁÑ¥½¹Ì¹µ…á}Í½±Ù•É}Ñ¥µ•}¥¹}Í•½¹‘Ì€ôM=1YI}Q%5ì4(4(€€€•É•ÌèéM½±Ù•ÈèéMÕµµ…ÉäÍÕµµ…Éäì4(€€€•É•ÌèéM½±Ù”¡½ÁÑ¥½¹Ì°€™ÁÉ½‰±•´°€™ÍÕµµ…Éä¤ì4(4(€€€‘½Õ‰±”ÉÙ•Ñ½È ¤ì4(4(€€€¥˜€¡µ…É¥¹…±¥é…Ñ¥½¹}™±…œ€ôô5I%9}=1¤4(€€€ì4(€€€€€€€5…É¥¹…±¥é…Ñ¥½¹%¹™¼€©µ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼€ô¹•Ü5…É¥¹…±¥é…Ñ¥½¹%¹™¼ ¤ì4(€€€€€€€Ù•Ñ½ÈÉ‘½Õ‰±” ¤ì4(4(€€€€€€€¥˜€¡±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼¤4(€€€€€€€ì4(€€€€€€€€€€€Ù•Ñ½Èñ¥¹Ðø‘É½Á}Í•Ðì4(€€€€€€€€€€€™½È€¡¥¹Ð¤€ô€Àì¤€ðÍÑ…Ñ¥}…ÍÐñ¥¹Ðø¡±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}Á…É…µ•Ñ•É}‰±½­Ì¹Í¥é” ¤¤ì¤¬¬¤4(€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€¥˜€¡±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}Á…É…µ•Ñ•É}‰±½­Ím¥t€ôôÁ…É…}A½Í•lÁtñð4(€€€€€€€€€€€€€€€€€€€±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}Á…É…µ•Ñ•É}‰±½­Ím¥t€ôôÁ…É…}MÁ••‘	¥…ÍlÁt¤4(€€€€€€€€€€€€€€€€€€€‘É½Á}Í•Ð¹ÁÕÍ¡}‰…¬¡¤¤ì4(€€€€€€€€€€€ô4(€€€€€€€€€€€€¼¼½¹ÍÑÉÕÐ¹•Üµ…É¥¹±¥é…Ñ¥½¹}™…Ñ½È4(€€€€€€€€€€€5…É¥¹…±¥é…Ñ¥½¹…Ñ½È€©µ…É¥¹…±¥é…Ñ¥½¹}™…Ñ½È€ô¹•Ü5…É¥¹…±¥é…Ñ¥½¹…Ñ½È¡±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼¤ì4(€€€€€€€€€€€I•Í¥‘Õ…±	±½­%¹™¼€©É•Í¥‘Õ…±}‰±½­}¥¹™¼€ô¹•ÜI•Í¥‘Õ…±	±½­%¹™¼¡µ…É¥¹…±¥é…Ñ¥½¹}™…Ñ½È°9U10°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}Á…É…µ•Ñ•É}‰±½­Ì°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‘É½Á}Í•Ð¤ì4(4(€€€€€€€€€€€µ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼´ù…‘‘I•Í¥‘Õ…±	±½­%¹™¼¡É•Í¥‘Õ…±}‰±½­}¥¹™¼¤ì4(€€€€€€€ô4(4(€€€€€€€ì4(€€€€€€€€€€€¥˜€¡ÁÉ•}¥¹Ñ•É…Ñ¥½¹ÍlÅt´ùÍÕµ}‘Ð€ð€ÄÀ¸À¤4(€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€%5U…Ñ½È¨¥µÕ}™…Ñ½È€ô¹•Ü%5U…Ñ½È¡ÁÉ•}¥¹Ñ•É…Ñ¥½¹ÍlÅt¤ì4(€€€€€€€€€€€€€€€I•Í¥‘Õ…±	±½­%¹™¼€©É•Í¥‘Õ…±}‰±½­}¥¹™¼€ô¹•ÜI•Í¥‘Õ…±	±½­%¹™¼¡¥µÕ}™…Ñ½È°9U10°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ù•Ñ½Èñ‘½Õ‰±”€¨ùíÁ…É…}A½Í•lÁt°Á…É…}MÁ••‘	¥…ÍlÁt°Á…É…}A½Í•lÅt°Á…É…}MÁ••‘	¥…ÍlÅuô°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ù•Ñ½Èñ¥¹ÐùìÀ°€Åô¤ì4(€€€€€€€€€€€€€€€µ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼´ù…‘‘I•Í¥‘Õ…±	±½­%¹™¼¡É•Í¥‘Õ…±}‰±½­}¥¹™¼¤ì4(€€€€€€€€€€€ô4(€€€€€€€ô4(4(€€€€€€€ì4(€€€€€€€€€€€¥¹Ð™•…ÑÕÉ•}¥¹‘•à€ô€´Äì4(€€€€€€€€€€€™½È€¡…ÕÑ¼€™¥Ñ}Á•É}¥€è™}µ…¹…•È¹™•…ÑÕÉ”¤4(€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€¥Ñ}Á•É}¥¹ÕÍ•‘}¹Õ´€ô¥Ñ}Á•É}¥¹™•…ÑÕÉ•}Á•É}™É…µ”¹Í¥é” ¤ì4(€€€€€€€€€€€€€€€¥˜€ „¡¥Ñ}Á•É}¥¹ÕÍ•‘}¹Õ´€øô€È€˜˜¥Ñ}Á•É}¥¹ÍÑ…ÉÑ}™É…µ”€ð]%9=]}M%i€´€È¤¤4(€€€€€€€€€€€€€€€€€€€½¹Ñ¥¹Õ”ì4(4(€€€€€€€€€€€€€€€€¬­™•…ÑÕÉ•}¥¹‘•àì4(4(€€€€€€€€€€€€€€€¥¹Ð¥µÕ}¤€ô¥Ñ}Á•É}¥¹ÍÑ…ÉÑ}™É…µ”°¥µÕ}¨€ô¥µÕ}¤€´€Äì4(€€€€€€€€€€€€€€€¥˜€¡¥µÕ}¤€„ô€À¤4(€€€€€€€€€€€€€€€€€€€½¹Ñ¥¹Õ”ì4(4(€€€€€€€€€€€€€€€Y•Ñ½ÈÍÁÑÍ}¤€ô¥Ñ}Á•É}¥¹™•…ÑÕÉ•}Á•É}™É…µ•lÁt¹Á½¥¹Ðì4(4(€€€€€€€€€€€€€€€™½È€¡…ÕÑ¼€™¥Ñ}Á•É}™É…µ”€è¥Ñ}Á•É}¥¹™•…ÑÕÉ•}Á•É}™É…µ”¤4(€€€€€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€€€€€¥µÕ}¨¬¬ì4(€€€€€€€€€€€€€€€€€€€¥˜€¡¥µÕ}¤€ôô¥µÕ}¨¤4(€€€€€€€€€€€€€€€€€€€€€€€½¹Ñ¥¹Õ”ì4(4(€€€€€€€€€€€€€€€€€€€Y•Ñ½ÈÍÁÑÍ}¨€ô¥Ñ}Á•É}™É…µ”¹Á½¥¹Ðì4(€€€€€€€€€€€€€€€€€€€¥˜€¡MQ%5Q}Q¤4(€€€€€€€€€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€€€€€€€€€AÉ½©•Ñ¥½¹Q‘…Ñ½È€©™}Ñ€ô¹•ÜAÉ½©•Ñ¥½¹Q‘…Ñ½È¡ÁÑÍ}¤°ÁÑÍ}¨°¥Ñ}Á•É}¥¹™•…ÑÕÉ•}Á•É}™É…µ•lÁt¹Ù•±½¥Ñä°¥Ñ}Á•É}™É…µ”¹Ù•±½¥Ñä°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¥Ñ}Á•É}¥¹™•…ÑÕÉ•}Á•É}™É…µ•lÁt¹ÕÉ}Ñ°¥Ñ}Á•É}™É…µ”¹ÕÉ}Ñ°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€¥Ñ}Á•É}¥¹™•…ÑÕÉ•}Á•É}™É…µ•lÁt¹ÕØ¹ä ¤°¥Ñ}Á•É}™É…µ”¹ÕØ¹ä ¤¤ì4(€€€€€€€€€€€€€€€€€€€€€€€I•Í¥‘Õ…±	±½­%¹™¼€©É•Í¥‘Õ…±}‰±½­}¥¹™¼€ô¹•ÜI•Í¥‘Õ…±	±½­%¹™¼¡™}Ñ°±½ÍÍ}™Õ¹Ñ¥½¸°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ù•Ñ½Èñ‘½Õ‰±”€¨ùíÁ…É…}A½Í•m¥µÕ}¥t°Á…É…}A½Í•m¥µÕ}©t°Á…É…}á}A½Í•lÁt°Á…É…}•…ÑÕÉ•m™•…ÑÕÉ•}¥¹‘•át°Á…É…}Q‘lÁuô°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ù•Ñ½Èñ¥¹ÐùìÀ°€Íô¤ì4(€€€€€€€€€€€€€€€€€€€€€€€µ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼´ù…‘‘I•Í¥‘Õ…±	±½­%¹™¼¡É•Í¥‘Õ…±}‰±½­}¥¹™¼¤ì4(€€€€€€€€€€€€€€€€€€€ô4(€€€€€€€€€€€€€€€€€€€•±Í”4(€€€€€€€€€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€€€€€€€€€AÉ½©•Ñ¥½¹…Ñ½È€©˜€ô¹•ÜAÉ½©•Ñ¥½¹…Ñ½È¡ÁÑÍ}¤°ÁÑÍ}¨¤ì4(€€€€€€€€€€€€€€€€€€€€€€€I•Í¥‘Õ…±	±½­%¹™¼€©É•Í¥‘Õ…±}‰±½­}¥¹™¼€ô¹•ÜI•Í¥‘Õ…±	±½­%¹™¼¡˜°±½ÍÍ}™Õ¹Ñ¥½¸°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ù•Ñ½Èñ‘½Õ‰±”€¨ùíÁ…É…}A½Í•m¥µÕ}¥t°Á…É…}A½Í•m¥µÕ}©t°Á…É…}á}A½Í•lÁt°Á…É…}•…ÑÕÉ•m™•…ÑÕÉ•}¥¹‘•áuô°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€Ù•Ñ½Èñ¥¹ÐùìÀ°€Íô¤ì4(€€€€€€€€€€€€€€€€€€€€€€€µ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼´ù…‘‘I•Í¥‘Õ…±	±½­%¹™¼¡É•Í¥‘Õ…±}‰±½­}¥¹™¼¤ì4(€€€€€€€€€€€€€€€€€€€ô4(€€€€€€€€€€€€€€€ô4(€€€€€€€€€€€ô4(€€€€€€€ô4(4(€€€€€€€Q¥Q½ŒÑ}ÁÉ•}µ…É¥¸ì4(€€€€€€€µ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼´ùÁÉ•5…É¥¹…±¥é” ¤ì4(€€€€€€€I1AA}	U¡Ñ¡¥Ì´ù•Ñ}±½•È ¤°€‰ÁÉ”µ…É¥¹…±¥é…Ñ¥½¸€•˜µÌˆ°Ñ}ÁÉ•}µ…É¥¸¹Ñ½Œ ¤¤ì4(€€€€€€€€4(€€€€€€€Q¥Q½ŒÑ}µ…É¥¸ì4(€€€€€€€µ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼´ùµ…É¥¹…±¥é” ¤ì4(€€€€€€€I1AA}	U¡Ñ¡¥Ì´ù•Ñ}±½•È ¤°€‰µ…É¥¹…±¥é…Ñ¥½¸€•˜µÌˆ°Ñ}µ…É¥¸¹Ñ½Œ ¤¤ì4(4(€€€€€€€ÍÑèéÕ¹½É‘•É•‘}µ…Àñ±½¹œ°‘½Õ‰±”€¨ø…‘‘É}Í¡¥™Ðì4(€€€€€€€™½È€¡¥¹Ð¤€ô€Äì¤€ðô]%9=]}M%iì¤¬¬¤4(€€€€€€€ì4(€€€€€€€€€€€…‘‘É}Í¡¥™ÑmÉ•¥¹Ñ•ÉÁÉ•Ñ}…ÍÐñ±½¹œø¡Á…É…}A½Í•m¥t¥t€ôÁ…É…}A½Í•m¤€´€Åtì4(€€€€€€€€€€€…‘‘É}Í¡¥™ÑmÉ•¥¹Ñ•ÉÁÉ•Ñ}…ÍÐñ±½¹œø¡Á…É…}MÁ••‘	¥…Ím¥t¥t€ôÁ…É…}MÁ••‘	¥…Ím¤€´€Åtì4(€€€€€€€ô4(€€€€€€€™½È€¡¥¹Ð¤€ô€Àì¤€ð9U5}=}4ì¤¬¬¤4(€€€€€€€€€€€…‘‘É}Í¡¥™ÑmÉ•¥¹Ñ•ÉÁÉ•Ñ}…ÍÐñ±½¹œø¡Á…É…}á}A½Í•m¥t¥t€ôÁ…É…}á}A½Í•m¥tì4(€€€€€€€¥˜€¡MQ%5Q}Q¤4(€€€€€€€ì4(€€€€€€€€€€€…‘‘É}Í¡¥™ÑmÉ•¥¹Ñ•ÉÁÉ•Ñ}…ÍÐñ±½¹œø¡Á…É…}Q‘lÁt¥t€ôÁ…É…}Q‘lÁtì4(€€€€€€€ô4(€€€€€€€Ù•Ñ½Èñ‘½Õ‰±”€¨øÁ…É…µ•Ñ•É}‰±½­Ì€ôµ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼´ù•ÑA…É…µ•Ñ•É	±½­Ì¡…‘‘É}Í¡¥™Ð¤ì4(4(€€€€€€€¥˜€¡±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼¤4(€€€€€€€€€€€‘•±•Ñ”±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼ì4(€€€€€€€±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼€ôµ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼ì4(€€€€€€€±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}Á…É…µ•Ñ•É}‰±½­Ì€ôÁ…É…µ•Ñ•É}‰±½­Ìì4(€€€€€€€€4(€€€ô4(€€€•±Í”4(€€€ì4(€€€€€€€¥˜€¡±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼€˜˜4(€€€€€€€€€€€ÍÑèé½Õ¹Ð¡ÍÑèé‰•¥¸¡±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}Á…É…µ•Ñ•É}‰±½­Ì¤°ÍÑèé•¹¡±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}Á…É…µ•Ñ•É}‰±½­Ì¤°Á…É…}A½Í•m]%9=]}M%i€´€Åt¤¤4(€€€€€€€ì4(4(€€€€€€€€€€€5…É¥¹…±¥é…Ñ¥½¹%¹™¼€©µ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼€ô¹•Ü5…É¥¹…±¥é…Ñ¥½¹%¹™¼ ¤ì4(€€€€€€€€€€€Ù•Ñ½ÈÉ‘½Õ‰±” ¤ì4(€€€€€€€€€€€¥˜€¡±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼¤4(€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€Ù•Ñ½Èñ¥¹Ðø‘É½Á}Í•Ðì4(€€€€€€€€€€€€€€€™½È€¡¥¹Ð¤€ô€Àì¤€ðÍÑ…Ñ¥}…ÍÐñ¥¹Ðø¡±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}Á…É…µ•Ñ•É}‰±½­Ì¹Í¥é” ¤¤ì¤¬¬¤4(€€€€€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€€€€€…ÍÍ•ÉÐ¡±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}Á…É…µ•Ñ•É}‰±½­Ím¥t€„ôÁ…É…}MÁ••‘	¥…Ím]%9=]}M%i€´€Åt¤ì4(€€€€€€€€€€€€€€€€€€€¥˜€¡±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}Á…É…µ•Ñ•É}‰±½­Ím¥t€ôôÁ…É…}A½Í•m]%9=]}M%i€´€Åt¤4(€€€€€€€€€€€€€€€€€€€€€€€‘É½Á}Í•Ð¹ÁÕÍ¡}‰…¬¡¤¤ì4(€€€€€€€€€€€€€€€ô4(€€€€€€€€€€€€€€€€¼¼½¹ÍÑÉÕÐ¹•Üµ…É¥¹±¥é…Ñ¥½¹}™…Ñ½È4(€€€€€€€€€€€€€€€5…É¥¹…±¥é…Ñ¥½¹…Ñ½È€©µ…É¥¹…±¥é…Ñ¥½¹}™…Ñ½È€ô¹•Ü5…É¥¹…±¥é…Ñ¥½¹…Ñ½È¡±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼¤ì4(€€€€€€€€€€€€€€€I•Í¥‘Õ…±	±½­%¹™¼€©É•Í¥‘Õ…±}‰±½­}¥¹™¼€ô¹•ÜI•Í¥‘Õ…±	±½­%¹™¼¡µ…É¥¹…±¥é…Ñ¥½¹}™…Ñ½È°9U10°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}Á…É…µ•Ñ•É}‰±½­Ì°4(€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€‘É½Á}Í•Ð¤ì4(4(€€€€€€€€€€€€€€€µ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼´ù…‘‘I•Í¥‘Õ…±	±½­%¹™¼¡É•Í¥‘Õ…±}‰±½­}¥¹™¼¤ì4(€€€€€€€€€€€ô4(4(€€€€€€€€€€€Q¥Q½ŒÑ}ÁÉ•}µ…É¥¸ì4(€€€€€€€€€€€I1AA}	U¡Ñ¡¥Ì´ù•Ñ}±½•È ¤°€‰‰•¥¸µ…É¥¹…±¥é…Ñ¥½¸ˆ¤ì4(€€€€€€€€€€€µ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼´ùÁÉ•5…É¥¹…±¥é” ¤ì4(€€€€€€€€€€€I1AA}	U¡Ñ¡¥Ì´ù•Ñ}±½•È ¤°€‰•¹ÁÉ”µ…É¥¹…±¥é…Ñ¥½¸°€•˜µÌˆ°Ñ}ÁÉ•}µ…É¥¸¹Ñ½Œ ¤¤ì4(4(€€€€€€€€€€€Q¥Q½ŒÑ}µ…É¥¸ì4(€€€€€€€€€€€I1AA}	U¡Ñ¡¥Ì´ù•Ñ}±½•È ¤°€‰‰•¥¸µ…É¥¹…±¥é…Ñ¥½¸ˆ¤ì4(€€€€€€€€€€€µ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼´ùµ…É¥¹…±¥é” ¤ì4(€€€€€€€€€€€I1AA}	U¡Ñ¡¥Ì´ù•Ñ}±½•È ¤°€‰•¹µ…É¥¹…±¥é…Ñ¥½¸°€•˜µÌˆ°Ñ}µ…É¥¸¹Ñ½Œ ¤¤ì4(€€€€€€€€€€€€4(€€€€€€€€€€€ÍÑèéÕ¹½É‘•É•‘}µ…Àñ±½¹œ°‘½Õ‰±”€¨ø…‘‘É}Í¡¥™Ðì4(€€€€€€€€€€€™½È€¡¥¹Ð¤€ô€Àì¤€ðô]%9=]}M%iì¤¬¬¤4(€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€¥˜€¡¤€ôô]%9=]}M%i€´€Ä¤4(€€€€€€€€€€€€€€€€€€€½¹Ñ¥¹Õ”ì4(€€€€€€€€€€€€€€€•±Í”¥˜€¡¤€ôô]%9=]}M%i¤4(€€€€€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€€€€€…‘‘É}Í¡¥™ÑmÉ•¥¹Ñ•ÉÁÉ•Ñ}…ÍÐñ±½¹œø¡Á…É…}A½Í•m¥t¥t€ôÁ…É…}A½Í•m¤€´€Åtì4(€€€€€€€€€€€€€€€€€€€…‘‘É}Í¡¥™ÑmÉ•¥¹Ñ•ÉÁÉ•Ñ}…ÍÐñ±½¹œø¡Á…É…}MÁ••‘	¥…Ím¥t¥t€ôÁ…É…}MÁ••‘	¥…Ím¤€´€Åtì4(€€€€€€€€€€€€€€€ô4(€€€€€€€€€€€€€€€•±Í”4(€€€€€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€€€€€…‘‘É}Í¡¥™ÑmÉ•¥¹Ñ•ÉÁÉ•Ñ}…ÍÐñ±½¹œø¡Á…É…}A½Í•m¥t¥t€ôÁ…É…}A½Í•m¥tì4(€€€€€€€€€€€€€€€€€€€…‘‘É}Í¡¥™ÑmÉ•¥¹Ñ•ÉÁÉ•Ñ}…ÍÐñ±½¹œø¡Á…É…}MÁ••‘	¥…Ím¥t¥t€ôÁ…É…}MÁ••‘	¥…Ím¥tì4(€€€€€€€€€€€€€€€ô4(€€€€€€€€€€€ô4(€€€€€€€€€€€™½È€¡¥¹Ð¤€ô€Àì¤€ð9U5}=}4ì¤¬¬¤4(€€€€€€€€€€€€€€€…‘‘É}Í¡¥™ÑmÉ•¥¹Ñ•ÉÁÉ•Ñ}…ÍÐñ±½¹œø¡Á…É…}á}A½Í•m¥t¥t€ôÁ…É…}á}A½Í•m¥tì4(€€€€€€€€€€€¥˜€¡MQ%5Q}Q¤4(€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€…‘‘É}Í¡¥™ÑmÉ•¥¹Ñ•ÉÁÉ•Ñ}…ÍÐñ±½¹œø¡Á…É…}Q‘lÁt¥t€ôÁ…É…}Q‘lÁtì4(€€€€€€€€€€€ô4(€€€€€€€€€€€€4(€€€€€€€€€€€Ù•Ñ½Èñ‘½Õ‰±”€¨øÁ…É…µ•Ñ•É}‰±½­Ì€ôµ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼´ù•ÑA…É…µ•Ñ•É	±½­Ì¡…‘‘É}Í¡¥™Ð¤ì4(€€€€€€€€€€€¥˜€¡±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼¤4(€€€€€€€€€€€€€€€‘•±•Ñ”±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼ì4(€€€€€€€€€€€±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼€ôµ…É¥¹…±¥é…Ñ¥½¹}¥¹™¼ì4(€€€€€€€€€€€±…ÍÑ}µ…É¥¹…±¥é…Ñ¥½¹}Á…É…µ•Ñ•É}‰±½­Ì€ôÁ…É…µ•Ñ•É}‰±½­Ìì4(€€€€€€€€€€€€4(€€€€€€€ô4(€€€ô4)ô4(4)Ù½¥ÍÑ¥µ…Ñ½ÈèéÍ±¥‘•]¥¹‘½Ü ¤4)ì4(€€€Q¥Q½ŒÑ}µ…É¥¸ì4(€€€¥˜€¡µ…É¥¹…±¥é…Ñ¥½¹}™±…œ€ôô5I%9}=1¤4(€€€ì4(€€€€€€€‘½Õ‰±”Ñ|À€ôÉ±ÁÀèéQ¥µ”¡!•…‘•ÉÍlÁt¹ÍÑ…µÀ¤¹Í•½¹‘Ì ¤ì4(€€€€€€€‰…­}HÀ€ôIÍlÁtì4(€€€€€€€‰…­}@À€ôAÍlÁtì4(€€€€€€€¥˜€¡™É…µ•}½Õ¹Ð€ôô]%9=]}M%i¤4(€€€€€€€ì4(€€€€€€€€€€€™½È€¡¥¹Ð¤€ô€Àì¤€ð]%9=]}M%iì¤¬¬¤4(€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€IÍm¥t¹ÍÝ…À¡IÍm¤€¬€Åt¤ì4(4(€€€€€€€€€€€€€€€ÍÑèéÍÝ…À¡ÁÉ•}¥¹Ñ•É…Ñ¥½¹Ím¥t°ÁÉ•}¥¹Ñ•É…Ñ¥½¹Ím¤€¬€Åt¤ì4(4(€€€€€€€€€€€€€€€‘Ñ}‰Õ™m¥t¹ÍÝ…À¡‘Ñ}‰Õ™m¤€¬€Åt¤ì4(€€€€€€€€€€€€€€€±¥¹•…É}…•±•É…Ñ¥½¹}‰Õ™m¥t¹ÍÝ…À¡±¥¹•…É}…•±•É…Ñ¥½¹}‰Õ™m¤€¬€Åt¤ì4(€€€€€€€€€€€€€€€…¹Õ±…É}Ù•±½¥Ñå}‰Õ™m¥t¹ÍÝ…À¡…¹Õ±…É}Ù•±½¥Ñå}‰Õ™m¤€¬€Åt¤ì4(4(€€€€€€€€€€€€€€€!•…‘•ÉÍm¥t€ô!•…‘•ÉÍm¤€¬€Åtì4(€€€€€€€€€€€€€€€AÍm¥t¹ÍÝ…À¡AÍm¤€¬€Åt¤ì4(€€€€€€€€€€€€€€€YÍm¥t¹ÍÝ…À¡YÍm¤€¬€Åt¤ì4(€€€€€€€€€€€€€€€	…Ím¥t¹ÍÝ…À¡	…Ím¤€¬€Åt¤ì4(€€€€€€€€€€€€€€€	Ím¥t¹ÍÝ…À¡	Ím¤€¬€Åt¤ì4(€€€€€€€€€€€ô4(€€€€€€€€€€€!•…‘•ÉÍm]%9=]}M%it€ô!•…‘•ÉÍm]%9=]}M%i€´€Åtì4(€€€€€€€€€€€AÍm]%9=]}M%it€ôAÍm]%9=]}M%i€´€Åtì4(€€€€€€€€€€€YÍm]%9=]}M%it€ôYÍm]%9=]}M%i€´€Åtì4(€€€€€€€€€€€IÍm]%9=]}M%it€ôIÍm]%9=]}M%i€´€Åtì4(€€€€€€€€€€€	…Ím]%9=]}M%it€ô	…Ím]%9=]}M%i€´€Åtì4(€€€€€€€€€€€	Ím]%9=]}M%it€ô	Ím]%9=]}M%i€´€Åtì4(4(€€€€€€€€€€€‘•±•Ñ”ÁÉ•}¥¹Ñ•É…Ñ¥½¹Ím]%9=]}M%itì4(€€€€€€€€€€€ÁÉ•}¥¹Ñ•É…Ñ¥½¹Ím]%9=]}M%it€ô¹•Ü%¹Ñ•É…Ñ¥½¹	…Í•í…|À°åÉ|À°	…Ím]%9=]}M%it°	Ím]%9=]}M%iuôì4(4(€€€€€€€€€€€‘Ñ}‰Õ™m]%9=]}M%it¹±•…È ¤ì4(€€€€€€€€€€€±¥¹•…É}…•±•É…Ñ¥½¹}‰Õ™m]%9=]}M%it¹±•…È ¤ì4(€€€€€€€€€€€…¹Õ±…É}Ù•±½¥Ñå}‰Õ™m]%9=]}M%it¹±•…È ¤ì4(4(€€€€€€€€€€€¥˜€¡ÑÉÕ”ñðÍ½±Ù•É}™±…œ€ôô%9%Q%0¤4(€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€µ…Àñ‘½Õ‰±”°%µ…•É…µ”øèé¥Ñ•É…Ñ½È¥Ñ|Àì4(€€€€€€€€€€€€€€€¥Ñ|À€ô…±±}¥µ…•}™É…µ”¹™¥¹¡Ñ|À¤ì4(€€€€€€€€€€€€€€€‘•±•Ñ”¥Ñ|À´ùÍ•½¹¹ÁÉ•}¥¹Ñ•É…Ñ¥½¸ì4(€€€€€€€€€€€€€€€¥Ñ|À´ùÍ•½¹¹ÁÉ•}¥¹Ñ•É…Ñ¥½¸€ô¹Õ±±ÁÑÈì4(€4(€€€€€€€€€€€€€€€™½È€¡µ…Àñ‘½Õ‰±”°%µ…•É…µ”øèé¥Ñ•É…Ñ½È¥Ð€ô…±±}¥µ…•}™É…µ”¹‰•¥¸ ¤ì¥Ð€„ô¥Ñ|Àì€¬­¥Ð¤4(€€€€€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€€€€€¥˜€¡¥Ð´ùÍ•½¹¹ÁÉ•}¥¹Ñ•É…Ñ¥½¸¤4(€€€€€€€€€€€€€€€€€€€€€€€‘•±•Ñ”¥Ð´ùÍ•½¹¹ÁÉ•}¥¹Ñ•É…Ñ¥½¸ì4(€€€€€€€€€€€€€€€€€€€¥Ð´ùÍ•½¹¹ÁÉ•}¥¹Ñ•É…Ñ¥½¸€ô9U10ì4(€€€€€€€€€€€€€€€ô4(4(€€€€€€€€€€€€€€€…±±}¥µ…•}™É…µ”¹•É…Í”¡…±±}¥µ…•}™É…µ”¹‰•¥¸ ¤°¥Ñ|À¤ì4(€€€€€€€€€€€€€€€…±±}¥µ…•}™É…µ”¹•É…Í”¡Ñ|À¤ì4(4(€€€€€€€€€€€ô4(€€€€€€€€€€€Í±¥‘•]¥¹‘½Ý=± ¤ì4(€€€€€€€ô4(€€€ô4(€€€•±Í”4(€€€ì4(€€€€€€€¥˜€¡™É…µ•}½Õ¹Ð€ôô]%9=]}M%i¤4(€€€€€€€ì4(€€€€€€€€€€€™½È€¡Õ¹Í¥¹•¥¹Ð¤€ô€Àì¤€ð‘Ñ}‰Õ™m™É…µ•}½Õ¹Ñt¹Í¥é” ¤ì¤¬¬¤4(€€€€€€€€€€€ì4(€€€€€€€€€€€€€€€‘½Õ‰±”ÑµÁ}‘Ð€ô‘Ñ}‰Õ™m™É…µ•}½Õ¹Ñum¥tì4(€€€€€€€€€€€€€€€Y•Ñ½ÈÍÑµÁ}±¥¹•…É}…•±•É…Ñ¥½¸€ô±¥¹•…É}…•±•É…Ñ¥½¹}‰Õ™m™É…µ•}½Õ¹Ñum¥tì4(€€€€€€€€€€€€€€€Y•Ñ½ÈÍÑµÁ}…¹Õ±…É}Ù•±½¥Ñä€ô…¹Õ±…É}Ù•±½¥Ñå}‰Õ™m™É…µ•}½Õ¹Ñum¥tì4(4(€€€€€€€€€€€€€€€ÁÉ•}¥¹Ñ•É…Ñ¥½¹Ím™É…µ•}½Õ¹Ð€´€Åt´ùÁÕÍ¡}‰…¬¡ÑµÁ}‘Ð°ÑµÁ}±¥¹•…É}…•±•É…Ñ¥½¸°ÑµÁ}…¹Õ±…É}Ù•±½¥Ñä¤ì4(4(€€€€€€€€€€€€€€€‘Ñ}‰Õ™m™É…µ•}½Õ¹Ð€´€Åt¹ÁÕÍ¡}‰…¬¡ÑµÁ}‘Ð¤ì4(€€€€€€€€€€€€€€€±¥¹•…É}…•±•É…Ñ¥½¹}‰Õ™m™É…µ•}½Õ¹Ð€´€Åt¹ÁÕÍ¡}‰…¬¡ÑµÁ}±¥¹•…É}…•±•É…Ñ¥½¸¤ì4(€€€€€€€€€€€€€€€…¹Õ±…É}Ù•±½¥Ñå}‰Õ™m™É…µ•}½Õ¹Ð€´€Åt¹ÁÕÍ¡}‰…¬¡ÑµÁ}…¹Õ±…É}Ù•±½¥Ñä¤ì4(€€€€€€€€€€€ô4(4(€€€€€€€€€€€!•…‘•ÉÍm™É…µ•}½Õ¹Ð€´€Åt€ô!•…‘•ÉÍm™É…µ•}½Õ¹Ñtì4(€€€€€€€€€€€AÍm™É…µ•}½Õ¹Ð€´€Åt€ôAÍm™É…µ•}½Õ¹Ñtì4(€€€€€€€€€€€YÍm™É…µ•}½Õ¹Ð€´€Åt€ôYÍm™É…µ•}½Õ¹Ñtì4(€€€€€€€€€€€IÍm™É…µ•}½Õ¹Ð€´€Åt€ôIÍm™É…µ•}½Õ¹Ñtì4(€€€€€€€€€€€	…Ím™É…µ•}½Õ¹Ð€´€Åt€ô	…Ím™É…µ•}½Õ¹Ñtì4(€€€€€€€€€€€	Ím™É…µ•}½Õ¹Ð€´€Åt€ô	Ím™É…µ•}½Õ¹Ñtì4(4(€€€€€€€€€€€‘•±•Ñ”ÁÉ•}¥¹Ñ•É…Ñ¥½¹Ím]%9=]}M%itì4(€€€€€€€€€€€ÁÉ•}¥¹Ñ•É…Ñ¥½¹Ím]%9=]}M%it€ô¹•Ü%¹Ñ•É…Ñ¥½¹	…Í•í…|À°åÉ|À°	…Ím]%9=]}M%it°	Ím]%9=]}M%iuôì4(4(€€€€€€€€€€€‘Ñ}‰Õ™m]%9=]}M%it¹±•…È ¤ì4(€€€€€€€€€€€±¥¹•…É}…•±•É…Ñ¥½¹}‰Õ™m]%9=]}M%it¹±•…È ¤ì4(€€€€€€€€€€€…¹Õ±…É}Ù•±½¥Ñå}‰Õ™m]%9=]}M%it¹±•…È ¤ì4(4(€€€€€€€€€€€Í±¥‘•]¥¹‘½Ý9•Ü ¤ì4(€€€€€€€ô4(€€€ô4)ô4(4(¼¼É•…°µ…É¥¹…±¥é…Ñ¥½¸¥ÌÉ•µ½Ù•¥¸Í½±Ù•}•É•Ì ¤4)Ù½¥ÍÑ¥µ…Ñ½ÈèéÍ±¥‘•]¥¹‘½Ý9•Ü ¤4)ì4(€€€ÍÕµ}½™}™É½¹Ð¬¬ì4(€€€™}µ…¹…•È¹É•µ½Ù•É½¹Ð¡™É…µ•}½Õ¹Ð¤ì4)ô4(¼¼É•…°µ…É¥¹…±¥é…Ñ¥½¸¥ÌÉ•µ½Ù•¥¸Í½±Ù•}•É•Ì ¤4)Ù½¥ÍÑ¥µ…Ñ½ÈèéÍ±¥‘•]¥¹‘½Ý=± ¤4)ì4(€€€ÍÕµ}½™}‰…¬¬¬ì4(4(€€€‰½½°Í¡¥™Ñ}‘•ÁÑ €ôÍ½±Ù•É}™±…œ€ôô9=9}1%9H€üÑÉÕ”€è™…±Í”ì4(€€€¥˜€¡Í¡¥™Ñ}‘•ÁÑ ¤4(€€€ì4(€€€€€€€5…ÑÉ¥àÍHÀ°HÄì4(€€€€€€€Y•Ñ½ÈÍ@À°@Äì4(€€€€€€€HÀ€ô‰…­}HÀ€¨É¥lÁtì4(€€€€€€€HÄ€ôIÍlÁt€¨É¥lÁtì4(€€€€€€€@À€ô‰…­}@À€¬‰…­}HÀ€¨Ñ¥lÁtì4(€€€€€€€@Ä€ôAÍlÁt€¬IÍlÁt€¨Ñ¥lÁtì4(€€€€€€€™}µ…¹…•È¹É•µ½Ù•	…­M¡¥™Ñ•ÁÑ ¡HÀ°@À°HÄ°@Ä¤ì4(€€€ô4(€€€•±Í”4(€€€€€€€™}µ…¹…•È¹É•µ½Ù•	…¬ ¤ì4)ô(
+    // change state
+    for (int i = 0; i <= frame_count; i++)
+    {
+        Matrix3d Ri = all_image_frame[rclcpp::Time(Headers[i].stamp).seconds()].R;
+        Vector3d Pi = all_image_frame[rclcpp::Time(Headers[i].stamp).seconds()].T;
+        Ps[i] = Pi;
+        Rs[i] = Ri;
+        all_image_frame[rclcpp::Time(Headers[i].stamp).seconds()].is_key_frame = true;
+    }
+
+    // reset all depth to -1
+    VectorXd dep = f_manager.getDepthVector();
+    for (int i = 0; i < dep.size(); i++)
+        dep[i] = -1;
+    f_manager.clearDepth(dep);
+
+    //triangulat on cam pose , no tic
+    Vector3d TIC_TMP[NUM_OF_CAM];
+    for(int i = 0; i < NUM_OF_CAM; i++)
+        TIC_TMP[i].setZero();
+    ric[0] = RIC[0];
+    f_manager.setRic(ric);
+    f_manager.triangulate(Ps, &(TIC_TMP[0]), &(RIC[0]));
+
+    double s = (x.tail<1>())(0);
+    for (int i = 0; i <= WINDOW_SIZE; i++)
+    {
+        pre_integrations[i]->repropagate(Vector3d::Zero(), Bgs[i]);
+    }
+    for (int i = frame_count; i >= 0; i--)
+        Ps[i] = s * Ps[i] - Rs[i] * TIC[0] - (s * Ps[0] - Rs[0] * TIC[0]);
+    int kv = -1;
+    map<double, ImageFrame>::iterator frame_i;
+    for (frame_i = all_image_frame.begin(); frame_i != all_image_frame.end(); frame_i++)
+    {
+        if(frame_i->second.is_key_frame)
+        {
+            kv++;
+            Vs[kv] = frame_i->second.R * x.segment<3>(kv * 3);
+        }
+    }
+    for (auto &it_per_id : f_manager.feature)
+    {
+        it_per_id.used_num = it_per_id.feature_per_frame.size();
+        if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
+            continue;
+        it_per_id.estimated_depth *= s;
+    }
+
+    Matrix3d R0 = Utility::g2R(g);
+    double yaw = Utility::R2ypr(R0 * Rs[0]).x();
+    R0 = Utility::ypr2R(Eigen::Vector3d{-yaw, 0, 0}) * R0;
+    g = R0 * g;
+    //Matrix3d rot_diff = R0 * Rs[0].transpose();
+    Matrix3d rot_diff = R0;
+    for (int i = 0; i <= frame_count; i++)
+    {
+        Ps[i] = rot_diff * Ps[i];
+        Rs[i] = rot_diff * Rs[i];
+        Vs[i] = rot_diff * Vs[i];
+    }
+    RCLCPP_DEBUG_STREAM(this->get_logger(), "g0     " << g.transpose());
+    RCLCPP_DEBUG_STREAM(this->get_logger(), "my R0  " << Utility::R2ypr(Rs[0]).transpose()); 
+
+    return true;
+}
+
+bool Estimator::relativePose(Matrix3d &relative_R, Vector3d &relative_T, int &l)
+{
+    // find previous frame which contians enough correspondance and parallex with newest frame
+    for (int i = 0; i < WINDOW_SIZE; i++)
+    {
+        vector<pair<Vector3d, Vector3d>> corres;
+        corres = f_manager.getCorresponding(i, WINDOW_SIZE);
+        if (corres.size() > 20)
+        {
+            double sum_parallax = 0;
+            double average_parallax;
+            for (int j = 0; j < int(corres.size()); j++)
+            {
+                Vector2d pts_0(corres[j].first(0), corres[j].first(1));
+                Vector2d pts_1(corres[j].second(0), corres[j].second(1));
+                double parallax = (pts_0 - pts_1).norm();
+                sum_parallax = sum_parallax + parallax;
+
+            }
+            average_parallax = 1.0 * sum_parallax / int(corres.size());
+            if(average_parallax * 460 > 30 && m_estimator.solveRelativeRT(corres, relative_R, relative_T))
+            {
+                l = i;
+                RCLCPP_DEBUG(this->get_logger(), "average_parallax %f choose l %d and newest frame to triangulate the whole structure", average_parallax * 460, l);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void Estimator::solveOdometry()
+{
+    if (frame_count < WINDOW_SIZE)
+        return;
+
+    if (solver_flag == NON_LINEAR)
+    {
+        f_manager.triangulate(Ps, tic, ric);
+        optimization();
+    }
+}
+
+void Estimator::vector2double()
+{
+    for (int i = 0; i <= WINDOW_SIZE; i++)
+    {
+        para_Pose[i][0] = Ps[i].x();
+        para_Pose[i][1] = Ps[i].y();
+        para_Pose[i][2] = Ps[i].z();
+        Quaterniond q{Rs[i]};
+        para_Pose[i][3] = q.x();
+        para_Pose[i][4] = q.y();
+        para_Pose[i][5] = q.z();
+        para_Pose[i][6] = q.w();
+
+        para_SpeedBias[i][0] = Vs[i].x();
+        para_SpeedBias[i][1] = Vs[i].y();
+        para_SpeedBias[i][2] = Vs[i].z();
+
+        para_SpeedBias[i][3] = Bas[i].x();
+        para_SpeedBias[i][4] = Bas[i].y();
+        para_SpeedBias[i][5] = Bas[i].z();
+
+        para_SpeedBias[i][6] = Bgs[i].x();
+        para_SpeedBias[i][7] = Bgs[i].y();
+        para_SpeedBias[i][8] = Bgs[i].z();
+    }
+    for (int i = 0; i < NUM_OF_CAM; i++)
+    {
+        para_Ex_Pose[i][0] = tic[i].x();
+        para_Ex_Pose[i][1] = tic[i].y();
+        para_Ex_Pose[i][2] = tic[i].z();
+        Quaterniond q{ric[i]};
+        para_Ex_Pose[i][3] = q.x();
+        para_Ex_Pose[i][4] = q.y();
+        para_Ex_Pose[i][5] = q.z();
+        para_Ex_Pose[i][6] = q.w();
+    }
+
+    VectorXd dep = f_manager.getDepthVector();
+    for (int i = 0; i < f_manager.gâ€¦622 tokens truncatedâ€¦ara_Ex_Pose[i][4],
+                             para_Ex_Pose[i][5]).toRotationMatrix();
+    }
+
+    VectorXd dep = f_manager.getDepthVector();
+    for (int i = 0; i < f_manager.getFeatureCount(); i++)
+        dep(i) = para_Feature[i][0];
+    f_manager.setDepth(dep);
+    if (ESTIMATE_TD)
+        td = para_Td[0][0];
+}
+
+bool Estimator::failureDetection()
+{
+    if (f_manager.last_track_num < 2)
+    {
+        RCLCPP_ERROR(this->get_logger(), "VINS little feature %d!", f_manager.last_track_num);
+        //return true;
+    }
+    if (Bas[WINDOW_SIZE].norm() > 2.5)
+    {
+        RCLCPP_ERROR(this->get_logger(), "VINS big IMU acc bias estimation %f, restart estimator!", Bas[WINDOW_SIZE].norm());
+        return true;
+    }
+    if (Bgs[WINDOW_SIZE].norm() > 1.0)
+    {
+        RCLCPP_ERROR(this->get_logger(), "VINS big IMU gyr bias estimation %f, restart estimator!", Bgs[WINDOW_SIZE].norm());
+        return true;
+    }
+    if (Vs[WINDOW_SIZE].norm() > 30.0)
+    {
+        RCLCPP_ERROR(this->get_logger(), "VINS big speed %f, restart estimator!", Vs[WINDOW_SIZE].norm());
+        return true;
+    }
+    Vector3d tmp_P = Ps[WINDOW_SIZE];
+    if ((tmp_P - last_P).norm() > 5.0)
+    {
+        RCLCPP_ERROR(this->get_logger(), "VINS big translation, restart estimator!");
+        return true;
+    }
+    if (abs(tmp_P.z() - last_P.z()) > 1)
+    {
+        RCLCPP_ERROR(this->get_logger(), "VINS big z translation, restart estimator!");
+        return true; 
+    }
+    Matrix3d tmp_R = Rs[WINDOW_SIZE];
+    Matrix3d delta_R = tmp_R.transpose() * last_R;
+    Quaterniond delta_Q(delta_R);
+    double delta_angle;
+    delta_angle = acos(delta_Q.w()) * 2.0 / M_PI * 180.0;
+    if (delta_angle > 50)
+    {
+        RCLCPP_ERROR(this->get_logger(), "VINS big delta_angle, moving too fast!");
+        //return true;
+    }
+    return false;
+}
+
+
+void Estimator::optimization()
+{
+    ceres::Problem problem;
+    ceres::LossFunction *loss_function;
+    //loss_function = new ceres::HuberLoss(1.0);
+    loss_function = new ceres::CauchyLoss(1.0);
+    for (int i = 0; i < WINDOW_SIZE + 1; i++)
+    {
+        ceres::LocalParameterization *local_parameterization = new PoseLocalParameterization();
+        problem.AddParameterBlock(para_Pose[i], SIZE_POSE, local_parameterization);
+        problem.AddParameterBlock(para_SpeedBias[i], SIZE_SPEEDBIAS);
+        
+    }
+
+    for (int i = 0; i < NUM_OF_CAM; i++)
+    {
+        ceres::LocalParameterization *local_parameterization = new PoseLocalParameterization();
+        problem.AddParameterBlock(para_Ex_Pose[i], SIZE_POSE, local_parameterization);
+        if (!ESTIMATE_EXTRINSIC)
+        {
+            RCLCPP_DEBUG(this->get_logger(), "fix extinsic param");
+            problem.SetParameterBlockConstant(para_Ex_Pose[i]);
+        }
+        else
+            RCLCPP_DEBUG(this->get_logger(), "estimate extinsic param");
+    }
+    if (ESTIMATE_TD)
+    {
+        problem.AddParameterBlock(para_Td[0], 1);
+        //problem.SetParameterBlockConstant(para_Td[0]);
+    }
+
+    vector2double();
+
+    // marginalization residual
+    if (last_marginalization_info)
+    {
+        // construct new marginlization_factor
+        MarginalizationFactor *marginalization_factor = new MarginalizationFactor(last_marginalization_info);
+        problem.AddResidualBlock(marginalization_factor, NULL,
+                                 last_marginalization_parameter_blocks);
+    }
+
+    // IMU pre-integration residual
+    for (int i = 0; i < WINDOW_SIZE; i++)
+    {
+        int j = i + 1;
+        if (pre_integrations[j]->sum_dt > 10.0)
+            continue;
+        IMUFactor* imu_factor = new IMUFactor(pre_integrations[j]);
+        problem.AddResidualBlock(imu_factor, NULL, para_Pose[i], para_SpeedBias[i], para_Pose[j], para_SpeedBias[j]);
+    }
+
+    // Image feature re-projection residual
+    int f_m_cnt = 0;
+    int feature_index = -1;
+    for (auto &it_per_id : f_manager.feature)
+    {
+        it_per_id.used_num = it_per_id.feature_per_frame.size();
+        if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
+            continue;
+ 
+        ++feature_index;
+
+        int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;
+        
+        Vector3d pts_i = it_per_id.feature_per_frame[0].point;
+
+        for (auto &it_per_frame : it_per_id.feature_per_frame)
+        {
+            imu_j++;
+            if (imu_i == imu_j)
+            {
+                continue;
+            }
+            Vector3d pts_j = it_per_frame.point;
+            if (ESTIMATE_TD)
+            {
+                ProjectionTdFactor *f_td = new ProjectionTdFactor(pts_i, pts_j, it_per_id.feature_per_frame[0].velocity, it_per_frame.velocity,
+                                                                 it_per_id.feature_per_frame[0].cur_td, it_per_frame.cur_td,
+                                                                 it_per_id.feature_per_frame[0].uv.y(), it_per_frame.uv.y());
+                problem.AddResidualBlock(f_td, loss_function, para_Pose[imu_i], para_Pose[imu_j], para_Ex_Pose[0], para_Feature[feature_index], para_Td[0]);
+                
+                // depth is obtained from lidar, skip optimizing it
+                if (it_per_id.lidar_depth_flag == true)
+                    problem.SetParameterBlockConstant(para_Feature[feature_index]);
+            }
+            else
+            {
+                ProjectionFactor *f = new ProjectionFactor(pts_i, pts_j);
+                problem.AddResidualBlock(f, loss_function, para_Pose[imu_i], para_Pose[imu_j], para_Ex_Pose[0], para_Feature[feature_index]);
+
+                // depth is obtained from lidar, skip optimizing it
+                if (it_per_id.lidar_depth_flag == true)
+                    problem.SetParameterBlockConstant(para_Feature[feature_index]);
+            }
+            f_m_cnt++;
+        }
+    }
+
+    ceres::Solver::Options options;
+    options.linear_solver_type = ceres::DENSE_SCHUR;
+    //options.num_threads = 2;
+    options.trust_region_strategy_type = ceres::DOGLEG;
+    options.max_num_iterations = NUM_ITERATIONS;
+    //options.use_explicit_schur_complement = true;
+    //options.minimizer_progress_to_stdout = true;
+    //options.use_nonmonotonic_steps = true;
+
+    if (marginalization_flag == MARGIN_OLD)
+        options.max_solver_time_in_seconds = SOLVER_TIME * 4.0 / 5.0;
+    else
+        options.max_solver_time_in_seconds = SOLVER_TIME;
+
+    ceres::Solver::Summary summary;
+    ceres::Solve(options, &problem, &summary);
+
+    double2vector();
+
+    if (marginalization_flag == MARGIN_OLD)
+    {
+        MarginalizationInfo *marginalization_info = new MarginalizationInfo();
+        vector2double();
+
+        if (last_marginalization_info)
+        {
+            vector<int> drop_set;
+            for (int i = 0; i < static_cast<int>(last_marginalization_parameter_blocks.size()); i++)
+            {
+                if (last_marginalization_parameter_blocks[i] == para_Pose[0] ||
+                    last_marginalization_parameter_blocks[i] == para_SpeedBias[0])
+                    drop_set.push_back(i);
+            }
+            // construct new marginlization_factor
+            MarginalizationFactor *marginalization_factor = new MarginalizationFactor(last_marginalization_info);
+            ResidualBlockInfo *residual_block_info = new ResidualBlockInfo(marginalization_factor, NULL,
+                                                                           last_marginalization_parameter_blocks,
+                                                                           drop_set);
+
+            marginalization_info->addResidualBlockInfo(residual_block_info);
+        }
+
+        {
+            if (pre_integrations[1]->sum_dt < 10.0)
+            {
+                IMUFactor* imu_factor = new IMUFactor(pre_integrations[1]);
+                ResidualBlockInfo *residual_block_info = new ResidualBlockInfo(imu_factor, NULL,
+                                                                           vector<double *>{para_Pose[0], para_SpeedBias[0], para_Pose[1], para_SpeedBias[1]},
+                                                                           vector<int>{0, 1});
+                marginalization_info->addResidualBlockInfo(residual_block_info);
+            }
+        }
+
+        {
+            int feature_index = -1;
+            for (auto &it_per_id : f_manager.feature)
+            {
+                it_per_id.used_num = it_per_id.feature_per_frame.size();
+                if (!(it_per_id.used_num >= 2 && it_per_id.start_frame < WINDOW_SIZE - 2))
+                    continue;
+
+                ++feature_index;
+
+                int imu_i = it_per_id.start_frame, imu_j = imu_i - 1;
+                if (imu_i != 0)
+                    continue;
+
+                Vector3d pts_i = it_per_id.feature_per_frame[0].point;
+
+                for (auto &it_per_frame : it_per_id.feature_per_frame)
+                {
+                    imu_j++;
+                    if (imu_i == imu_j)
+                        continue;
+
+                    Vector3d pts_j = it_per_frame.point;
+                    if (ESTIMATE_TD)
+                    {
+                        ProjectionTdFactor *f_td = new ProjectionTdFactor(pts_i, pts_j, it_per_id.feature_per_frame[0].velocity, it_per_frame.velocity,
+                                                                          it_per_id.feature_per_frame[0].cur_td, it_per_frame.cur_td,
+                                                                          it_per_id.feature_per_frame[0].uv.y(), it_per_frame.uv.y());
+                        ResidualBlockInfo *residual_block_info = new ResidualBlockInfo(f_td, loss_function,
+                                                                                        vector<double *>{para_Pose[imu_i], para_Pose[imu_j], para_Ex_Pose[0], para_Feature[feature_index], para_Td[0]},
+                                                                                        vector<int>{0, 3});
+                        marginalization_info->addResidualBlockInfo(residual_block_info);
+                    }
+                    else
+                    {
+                        ProjectionFactor *f = new ProjectionFactor(pts_i, pts_j);
+                        ResidualBlockInfo *residual_block_info = new ResidualBlockInfo(f, loss_function,
+                                                                                       vector<double *>{para_Pose[imu_i], para_Pose[imu_j], para_Ex_Pose[0], para_Feature[feature_index]},
+                                                                                       vector<int>{0, 3});
+                        marginalization_info->addResidualBlockInfo(residual_block_info);
+                    }
+                }
+            }
+        }
+
+        TicToc t_pre_margin;
+        marginalization_info->preMarginalize();
+        RCLCPP_DEBUG(this->get_logger(), "pre marginalization %f ms", t_pre_margin.toc());
+        
+        TicToc t_margin;
+        marginalization_info->marginalize();
+        RCLCPP_DEBUG(this->get_logger(), "marginalization %f ms", t_margin.toc());
+
+        std::unordered_map<long, double *> addr_shift;
+        for (int i = 1; i <= WINDOW_SIZE; i++)
+        {
+            addr_shift[reinterpret_cast<long>(para_Pose[i])] = para_Pose[i - 1];
+            addr_shift[reinterpret_cast<long>(para_SpeedBias[i])] = para_SpeedBias[i - 1];
+        }
+        for (int i = 0; i < NUM_OF_CAM; i++)
+            addr_shift[reinterpret_cast<long>(para_Ex_Pose[i])] = para_Ex_Pose[i];
+        if (ESTIMATE_TD)
+        {
+            addr_shift[reinterpret_cast<long>(para_Td[0])] = para_Td[0];
+        }
+        vector<double *> parameter_blocks = marginalization_info->getParameterBlocks(addr_shift);
+
+        if (last_marginalization_info)
+            delete last_marginalization_info;
+        last_marginalization_info = marginalization_info;
+        last_marginalization_parameter_blocks = parameter_blocks;
+        
+    }
+    else
+    {
+        if (last_marginalization_info &&
+            std::count(std::begin(last_marginalization_parameter_blocks), std::end(last_marginalization_parameter_blocks), para_Pose[WINDOW_SIZE - 1]))
+        {
+
+            MarginalizationInfo *marginalization_info = new MarginalizationInfo();
+            vector2double();
+            if (last_marginalization_info)
+            {
+                vector<int> drop_set;
+                for (int i = 0; i < static_cast<int>(last_marginalization_parameter_blocks.size()); i++)
+                {
+                    assert(last_marginalization_parameter_blocks[i] != para_SpeedBias[WINDOW_SIZE - 1]);
+                    if (last_marginalization_parameter_blocks[i] == para_Pose[WINDOW_SIZE - 1])
+                        drop_set.push_back(i);
+                }
+                // construct new marginlization_factor
+                MarginalizationFactor *marginalization_factor = new MarginalizationFactor(last_marginalization_info);
+                ResidualBlockInfo *residual_block_info = new ResidualBlockInfo(marginalization_factor, NULL,
+                                                                               last_marginalization_parameter_blocks,
+                                                                               drop_set);
+
+                marginalization_info->addResidualBlockInfo(residual_block_info);
+            }
+
+            TicToc t_pre_margin;
+            RCLCPP_DEBUG(this->get_logger(), "begin marginalization");
+            marginalization_info->preMarginalize();
+            RCLCPP_DEBUG(this->get_logger(), "end pre marginalization, %f ms", t_pre_margin.toc());
+
+            TicToc t_margin;
+            RCLCPP_DEBUG(this->get_logger(), "begin marginalization");
+            marginalization_info->marginalize();
+            RCLCPP_DEBUG(this->get_logger(), "end marginalization, %f ms", t_margin.toc());
+            
+            std::unordered_map<long, double *> addr_shift;
+            for (int i = 0; i <= WINDOW_SIZE; i++)
+            {
+                if (i == WINDOW_SIZE - 1)
+                    continue;
+                else if (i == WINDOW_SIZE)
+                {
+                    addr_shift[reinterpret_cast<long>(para_Pose[i])] = para_Pose[i - 1];
+                    addr_shift[reinterpret_cast<long>(para_SpeedBias[i])] = para_SpeedBias[i - 1];
+                }
+                else
+                {
+                    addr_shift[reinterpret_cast<long>(para_Pose[i])] = para_Pose[i];
+                    addr_shift[reinterpret_cast<long>(para_SpeedBias[i])] = para_SpeedBias[i];
+                }
+            }
+            for (int i = 0; i < NUM_OF_CAM; i++)
+                addr_shift[reinterpret_cast<long>(para_Ex_Pose[i])] = para_Ex_Pose[i];
+            if (ESTIMATE_TD)
+            {
+                addr_shift[reinterpret_cast<long>(para_Td[0])] = para_Td[0];
+            }
+            
+            vector<double *> parameter_blocks = marginalization_info->getParameterBlocks(addr_shift);
+            if (last_marginalization_info)
+                delete last_marginalization_info;
+            last_marginalization_info = marginalization_info;
+            last_marginalization_parameter_blocks = parameter_blocks;
+            
+        }
+    }
+}
+
+void Estimator::slideWindow()
+{
+    TicToc t_margin;
+    if (marginalization_flag == MARGIN_OLD)
+    {
+        double t_0 = rclcpp::Time(Headers[0].stamp).seconds();
+        back_R0 = Rs[0];
+        back_P0 = Ps[0];
+        if (frame_count == WINDOW_SIZE)
+        {
+            for (int i = 0; i < WINDOW_SIZE; i++)
+            {
+                Rs[i].swap(Rs[i + 1]);
+
+                std::swap(pre_integrations[i], pre_integrations[i + 1]);
+
+                dt_buf[i].swap(dt_buf[i + 1]);
+                linear_acceleration_buf[i].swap(linear_acceleration_buf[i + 1]);
+                angular_velocity_buf[i].swap(angular_velocity_buf[i + 1]);
+
+                Headers[i] = Headers[i + 1];
+                Ps[i].swap(Ps[i + 1]);
+                Vs[i].swap(Vs[i + 1]);
+                Bas[i].swap(Bas[i + 1]);
+                Bgs[i].swap(Bgs[i + 1]);
+            }
+            Headers[WINDOW_SIZE] = Headers[WINDOW_SIZE - 1];
+            Ps[WINDOW_SIZE] = Ps[WINDOW_SIZE - 1];
+            Vs[WINDOW_SIZE] = Vs[WINDOW_SIZE - 1];
+            Rs[WINDOW_SIZE] = Rs[WINDOW_SIZE - 1];
+            Bas[WINDOW_SIZE] = Bas[WINDOW_SIZE - 1];
+            Bgs[WINDOW_SIZE] = Bgs[WINDOW_SIZE - 1];
+
+            delete pre_integrations[WINDOW_SIZE];
+            pre_integrations[WINDOW_SIZE] = new IntegrationBase{acc_0, gyr_0, Bas[WINDOW_SIZE], Bgs[WINDOW_SIZE]};
+
+            dt_buf[WINDOW_SIZE].clear();
+            linear_acceleration_buf[WINDOW_SIZE].clear();
+            angular_velocity_buf[WINDOW_SIZE].clear();
+
+            if (true || solver_flag == INITIAL)
+            {
+                map<double, ImageFrame>::iterator it_0;
+                it_0 = all_image_frame.find(t_0);
+                delete it_0->second.pre_integration;
+                it_0->second.pre_integration = nullptr;
+ 
+                for (map<double, ImageFrame>::iterator it = all_image_frame.begin(); it != it_0; ++it)
+                {
+                    if (it->second.pre_integration)
+                        delete it->second.pre_integration;
+                    it->second.pre_integration = NULL;
+                }
+
+                all_image_frame.erase(all_image_frame.begin(), it_0);
+                all_image_frame.erase(t_0);
+
+            }
+            slideWindowOld();
+        }
+    }
+    else
+    {
+        if (frame_count == WINDOW_SIZE)
+        {
+            for (unsigned int i = 0; i < dt_buf[frame_count].size(); i++)
+            {
+                double tmp_dt = dt_buf[frame_count][i];
+                Vector3d tmp_linear_acceleration = linear_acceleration_buf[frame_count][i];
+                Vector3d tmp_angular_velocity = angular_velocity_buf[frame_count][i];
+
+                pre_integrations[frame_count - 1]->push_back(tmp_dt, tmp_linear_acceleration, tmp_angular_velocity);
+
+                dt_buf[frame_count - 1].push_back(tmp_dt);
+                linear_acceleration_buf[frame_count - 1].push_back(tmp_linear_acceleration);
+                angular_velocity_buf[frame_count - 1].push_back(tmp_angular_velocity);
+            }
+
+            Headers[frame_count - 1] = Headers[frame_count];
+            Ps[frame_count - 1] = Ps[frame_count];
+            Vs[frame_count - 1] = Vs[frame_count];
+            Rs[frame_count - 1] = Rs[frame_count];
+            Bas[frame_count - 1] = Bas[frame_count];
+            Bgs[frame_count - 1] = Bgs[frame_count];
+
+            delete pre_integrations[WINDOW_SIZE];
+            pre_integrations[WINDOW_SIZE] = new IntegrationBase{acc_0, gyr_0, Bas[WINDOW_SIZE], Bgs[WINDOW_SIZE]};
+
+            dt_buf[WINDOW_SIZE].clear();
+            linear_acceleration_buf[WINDOW_SIZE].clear();
+            angular_velocity_buf[WINDOW_SIZE].clear();
+
+            slideWindowNew();
+        }
+    }
+}
+
+// real marginalization is removed in solve_ceres()
+void Estimator::slideWindowNew()
+{
+    sum_of_front++;
+    f_manager.removeFront(frame_count);
+}
+// real marginalization is removed in solve_ceres()
+void Estimator::slideWindowOld()
+{
+    sum_of_back++;
+
+    bool shift_depth = solver_flag == NON_LINEAR ? true : false;
+    if (shift_depth)
+    {
+        Matrix3d R0, R1;
+        Vector3d P0, P1;
+        R0 = back_R0 * ric[0];
+        R1 = Rs[0] * ric[0];
+        P0 = back_P0 + back_R0 * tic[0];
+        P1 = Ps[0] + Rs[0] * tic[0];
+        f_manager.removeBackShiftDepth(R0, P0, R1, P1);
+    }
+    else
+        f_manager.removeBack();
+}

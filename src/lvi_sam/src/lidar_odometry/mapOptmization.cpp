@@ -291,4 +291,535 @@ public:
                 throw std::runtime_error(
                     "HOME is not set; savePCDDirectory must be absolute");
             }
-            savePCDDirectory = std::string(home) ã^¶ÖÚ$z{-®éÜj×–æFW„g&öÒÒÆö÷–æFW…VWVU¶•Òæf—'7C°Ğ¢–çB–æFW…FòÒÆö÷–æFW…VWVU¶•Òç6V6öæC°Ğ¢wG6Ó£¥÷6S2÷6T&WGvVVâÒÆö÷÷6UVWVU¶•Ó°Ğ¢WFòæö—6T&WGvVVâÒÆö÷æö—6UVWVU¶•Ó°Ğ¢wE4Öw&‚æFB„&WGvVVäf7F÷#Å÷6S3â†–æFW„g&öÒÂ–æFW…FòÂ÷6T&WGvVVâÂæö—6T&WGvVVâ’“°Ğ¢ĞĞ Ğ¢Æö÷–æFW…VWVRæ6ÆV"‚“°Ğ¢Æö÷÷6UVWVRæ6ÆV"‚“°Ğ¢Æö÷æö—6UVWVRæ6ÆV"‚“°Ğ¢Æö÷—46Æ÷6VBÒG'VS°Ğ¢ĞĞ Ğ¢fö–B6fT¶W”g&ÖW4æDf7F÷"‚’°Ğ¢–b‡6fTg&ÖR‚’ÓÒfÇ6R’&WGW&ã°Ğ Ğ¢òòöFöÒf7F÷ Ğ¢FDöFöÔf7F÷"‚“°Ğ Ğ¢òòw2f7F÷ Ğ¢FDu4f7F÷"‚“°Ğ Ğ¢òò÷F–öæÂ6–×VÆF÷"òv†VVÂÖöFöÖWG'’÷6Rf7F÷"âF†—2—2¶W@Ğ¢òò6W&FRg&öÒF†R%D²òu2F‚æB—2F—6&ÆVB'’FVfVÇBàĞ¢FDW‡FW&æÅ÷6Tf7F÷"‚“°Ğ Ğ¢òòÆö÷f7F÷ Ğ¢FDÆö÷f7F÷"‚“°Ğ Ğ¢òò6÷WBÃÂ"¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢"ÃÂVæFÃ°Ğ¢òòwE4Öw&‚ç&–çB‚$uE4Òw&ƒ¥Æâ"“°Ğ Ğ¢òòWFFR•4ĞĞ¢—6ÒÓçWFFR†wE4Öw&‚Â–æ—F–ÄW7F–ÖFR“°Ğ¢—6ÒÓçWFFR‚“°Ğ Ğ¢–b†Æö÷—46Æ÷6VBÓÒG'VR’°Ğ¢—6ÒÓçWFFR‚“°Ğ¢—6ÒÓçWFFR‚“°Ğ¢—6ÒÓçWFFR‚“°Ğ¢—6ÒÓçWFFR‚“°Ğ¢—6ÒÓçWFFR‚“°Ğ¢ĞĞ Ğ¢wE4Öw&‚ç&W6—¦Rƒ“°Ğ¢–æ—F–ÄW7F–ÖFRæ6ÆV"‚“°Ğ Ğ¢òò6fR¶W’÷6W0Ğ¢ö–çEG—RF†—5÷6S4C°Ğ¢ö–çEG—U÷6RF†—5÷6SdC°Ğ¢÷6S2ÆFW7DW7F–ÖFS°Ğ Ğ¢—6Ô7W'&VçDW7F–ÖFRÒ—6ÒÓæ6Æ7VÆFTW7F–ÖFR‚“°Ğ¢ÆFW7DW7F–ÖFRÒ—6Ô7W'&VçDW7F–ÖFRæCÅ÷6S3â†—6Ô7W'&VçDW7F–ÖFRç6—¦R‚’Ò“°Ğ¢òò6÷WBÃÂ"¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢"ÃÂVæFÃ°Ğ¢òò—6Ô7W'&VçDW7F–ÖFRç&–çB‚$7W'&VçBW7F–ÖFS¢"“°Ğ Ğ¢F†—5÷6S4Bç‚ÒÆFW7DW7F–ÖFRçG&ç6ÆF–öâ‚’ç‚‚“°Ğ¢F†—5÷6S4Bç’ÒÆFW7DW7F–ÖFRçG&ç6ÆF–öâ‚’ç’‚“°Ğ¢F†—5÷6S4Bç¢ÒÆFW7DW7F–ÖFRçG&ç6ÆF–öâ‚’ç¢‚“°Ğ¢F†—5÷6S4Bæ–çFVç6—G’Ò6Æ÷VD¶W•÷6W34BÓç6—¦R‚“²òòF†—26â&RW6VB2–æFW€Ğ¢6Æ÷VD¶W•÷6W34BÓçW6…ö&6²‡F†—5÷6S4B“°Ğ Ğ¢F†—5÷6SdBç‚ÒF†—5÷6S4Bçƒ°Ğ¢F†—5÷6SdBç’ÒF†—5÷6S4Bç“°Ğ¢F†—5÷6SdBç¢ÒF†—5÷6S4Bç£°Ğ¢F†—5÷6SdBæ–çFVç6—G’ÒF†—5÷6S4Bæ–çFVç6—G“²òòF†—26â&RW6VB2–æFW€Ğ¢F†—5÷6SdBç&öÆÂÒÆFW7DW7F–ÖFRç&÷FF–öâ‚’ç&öÆÂ‚“°Ğ¢F†—5÷6SdBç—F6‚ÒÆFW7DW7F–ÖFRç&÷FF–öâ‚’ç—F6‚‚“°Ğ¢F†—5÷6SdBç–rÒÆFW7DW7F–ÖFRç&÷FF–öâ‚’ç–r‚“°Ğ¢F†—5÷6SdBçF–ÖRÒF–ÖTÆ6W$–æfô7W#°Ğ¢6Æ÷VD¶W•÷6W3dBÓçW6…ö&6²‡F†—5÷6SdB“°Ğ Ğ¢òò6÷WBÃÂ"¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢¢"ÃÂVæFÃ°Ğ¢òò6÷WBÃÂ%÷6R6÷f&–æ6S¢"ÃÂVæFÃ°Ğ¢òò6÷WBÃÂ—6ÒÓæÖ&v–æÄ6÷f&–æ6R†—6Ô7W'&VçDW7F–ÖFRç6—¦R‚’Ó’ÃÂVæFÂÃÂVæFÃ°Ğ¢÷6T6÷f&–æ6RÒ—6ÒÓæÖ&v–æÄ6÷f&–æ6R†—6Ô7W'&VçDW7F–ÖFRç6—¦R‚’Ò“°Ğ Ğ¢òò6fRWFFVBG&ç6f÷&ĞĞ¢G&ç6f÷&ÕFö&TÖVE³ÒÒÆFW7DW7F–ÖFRç&÷FF–öâ‚’ç&öÆÂ‚“°Ğ¢G&ç6f÷&ÕFö&TÖVE³ÒÒÆFW7DW7F–ÖFRç&÷FF–öâ‚’ç—F6‚‚“°Ğ¢G&ç6f÷&ÕFö&TÖVE³%ÒÒÆFW7DW7F–ÖFRç&÷FF–öâ‚’ç–r‚“°Ğ¢G&ç6f÷&ÕFö&TÖVE³5ÒÒÆFW7DW7F–ÖFRçG&ç6ÆF–öâ‚’ç‚‚“°Ğ¢G&ç6f÷&ÕFö&TÖVE³EÒÒÆFW7DW7F–ÖFRçG&ç6ÆF–öâ‚’ç’‚“°Ğ¢G&ç6f÷&ÕFö&TÖVE³UÒÒÆFW7DW7F–ÖFRçG&ç6ÆF–öâ‚’ç¢‚“°Ğ Ğ¢òò6fRÆÂF†R&V6V—fVBVFvRæB7W&bö–çG0Ğ¢6Ã£¥ö–çD6Æ÷VCÅö–çEG—Sã£¥G"F†—46÷&æW$¶W”g&ÖR†æWr6Ã£¥ö–çD6Æ÷VCÅö–çEG—Sâ‚’“°Ğ¢6Ã£¥ö–çD6Æ÷VCÅö–çEG—Sã£¥G"F†—57W&d¶W”g&ÖR†æWr6Ã£¥ö–çD6Æ÷VCÅö–çEG—Sâ‚’“°Ğ¢6Ã£¦6÷•ö–çD6Æ÷VB‚¦Æ6W$6Æ÷VD6÷&æW$Æ7DE2Â§F†—46÷&æW$¶W”g&ÖR“°Ğ¢6Ã£¦6÷•ö–çD6Æ÷VB‚¦Æ6W$6Æ÷VE7W&dÆ7DE2Â§F†—57W&d¶W”g&ÖR“°Ğ Ğ¢òò6fR¶W’g&ÖR6Æ÷V@Ğ¢6÷&æW$6Æ÷VD¶W”g&ÖW2çW6…ö&6²‡F†—46÷&æW$¶W”g&ÖR“°Ğ¢7W&d6Æ÷VD¶W”g&ÖW2çW6…ö&6²‡F†—57W&d¶W”g&ÖR“°Ğ Ğ¢òò6fRF‚f÷"f—7VÆ—¦F–öàĞ¢WFFUF‚‡F†—5÷6SdB“°Ğ Ğ¢–çB7W&6çBÒ6Æ÷VD¶W•÷6W34BÓç6—¦R‚’Ò°Ğ¢–b†Æö÷6Æ÷7W&TVæ&ÆTfÆr’°Ğ¢7FC£¦Æö6µöwV&CÇ7FC£¦×WFWƒâ66ä6öçFW‡DÆö6²†×G…66ä6öçFW‡B“°Ğ¢òò66â6öçFW‡BÆö÷FWFV7F÷"Òv—6V÷ Ğ¢òòÒ4”ätÄUõ44åôeTÄÃ¢W6–ærF÷vç6×ÆVB÷&–v–æÂö–çB6Æ÷VB‚ögVÆÅö6Æ÷VE÷&ö¦V7FVB²F÷vç6×Æ–ærĞ¢òòÒ4”ätÄUõ44åôdTC¢W6–ær7W&f6RfVGW&R2â–çWBö–çB6Æ÷VBf÷"66â6öçFW‡Bƒ##ãBã¢6†V6¶VB—Bv÷&·2âĞ¢òòÒÕTÅD•õ44åôdTC¢W6–æræV$¶W–g&ÖW2†&V6W6R×VÅ&â66âFöW2æ÷B†fR&W–öæB&Vv–öâÂ6òFò6öÇfRF†—2—77VRâââĞ¢6öç7B44–çWEG—R65ö–çWE÷G—RÒ44–çWEG—S£¥4”ätÄUõ44åôeTÄÃ²òò6†ævRF†—0Ğ Ğ¢–b‡65ö–çWE÷G—RÓÒ44–çWEG—S£¥4”ätÄUõ44åôeTÄÂ’°Ğ¢64ÖævW"æÖ¶TæE6fU66æ6öçFW‡DæD¶W—2‚¦Æ6W$6Æ÷VE&tE2“°Ğ¢ÒVÇ6R–b‡65ö–çWE÷G—RÓÒ44–çWEG—S£¥4”ätÄUõ44åôdTB’°Ğ¢64ÖævW"æÖ¶TæE6fU66æ6öçFW‡DæD¶W—2‚§F†—57W&d¶W”g&ÖR“°Ğ¢ÒVÇ6R–b‡65ö–çWE÷G—RÓÒ44–çWEG—S£¤ÕTÅD•õ44åôdTB’°Ğ¢6Ã£¥ö–çD6Æ÷VCÅö–çEG—Sã£¥G"×VÇF”¶W”g&ÖTfVGW&T6Æ÷VB†æWr6Ã£¥ö–çD6Æ÷VCÅö–çEG—Sâ‚’“°Ğ¢Æö÷f–æDæV$¶W–g&ÖW2†×VÇF”¶W”g&ÖTfVGW&T6Æ÷VBÂ7W&6çBÂ†—7F÷'”¶W–g&ÖU6V&6„çVÒ“°Ğ¢64ÖævW"æÖ¶TæE6fU66æ6öçFW‡DæD¶W—2‚¦×VÇF”¶W”g&ÖTfVGW&T6Æ÷VB“°Ğ¢ĞĞ Ğ¢òò6fR62FFĞ¢–b‡6fU4B’°Ğ¢6öç7BWFòb7W'%÷66BÒ64ÖævW"ævWD6öç7E&Ve&V6VçE44B‚“°Ğ¢7FC£§7G&–ær7W'%÷66EöæöFUö–G‚ÒE¦W&÷2†7W&6çB“°Ğ¢6fU44B‡6fU4DF—&V7F÷'’²%44G2ò"²7W'%÷66EöæöFUö–G‚²"ç66B"Â7W'%÷66B“°Ğ¢ĞĞ¢ĞĞ Ğ¢–b‡6fU4B’°Ğ¢6fU4D–dæ÷DV×G’€Ğ¢6fU4DF—&V7F÷'’²$6÷&æW$Öò"²7FC£§Fõ÷7G&–ær†7W&6çB’²"ç6B"ÀĞ¢§F†—46÷&æW$¶W”g&ÖR“°Ğ¢6fU4D–dæ÷DV×G’€Ğ¢6fU4DF—&V7F÷'’²%7W&dÖò"²7FC£§Fõ÷7G&–ær†7W&6çB’²"ç6B"ÀĞ¢§F†—57W&d¶W”g&ÖR“°Ğ¢6fU4D–dæ÷DV×G’€Ğ¢6fU4DF—&V7F÷'’²%66ç2ò"²7FC£§Fõ÷7G&–ær†7W&6çB’²"ç6B"ÀĞ¢¦Æ6W$6Æ÷VE&tE2“°Ğ¢ĞĞ¢ĞĞ Ğ¢fö–B6÷'&V7E÷6W2‚’°Ğ¢–b†6Æ÷VD¶W•÷6W34BÓçö–çG2æV×G’‚’’&WGW&ã°Ğ Ğ¢–b†Æö÷—46Æ÷6VBÓÒG'VR’°Ğ¢òò6ÆV"Ö66†PĞ¢Æ6W$6Æ÷VDÖ6öçF–æW"æ6ÆV"‚“°Ğ¢òò6ÆV"F€Ğ¢vÆö&ÅF‚ç÷6W2æ6ÆV"‚“°Ğ¢òòWFFR¶W’÷6W0Ğ¢–çBçVÕ÷6W2Ò—6Ô7W'&VçDW7F–ÖFRç6—¦R‚“°Ğ¢f÷"†–çB’Ò²’ÂçVÕ÷6W3²²¶’’°Ğ¢6Æ÷VD¶W•÷6W34BÓçö–çG5¶•Òç‚Ò—6Ô7W'&VçDW7F–ÖFRæCÅ÷6S3â†’’çG&ç6ÆF–öâ‚’ç‚‚“°Ğ¢6Æ÷VD¶W•÷6W34BÓçö–çG5¶•Òç’Ò—6Ô7W'&VçDW7F–ÖFRæCÅ÷6S3â†’’çG&ç6ÆF–öâ‚’ç’‚“°Ğ¢6Æ÷VD¶W•÷6W34BÓçö–çG5¶•Òç¢Ò—6Ô7W'&VçDW7F–ÖFRæCÅ÷6S3â†’’çG&ç6ÆF–öâ‚’ç¢‚“°Ğ Ğ¢6Æ÷VD¶W•÷6W3dBÓçö–çG5¶•Òç‚Ò6Æ÷VD¶W•÷6W34BÓçö–çG5¶•Òçƒ°Ğ¢6Æ÷VD¶W•÷6W3dBÓçö–çG5¶•Òç’Ò6Æ÷VD¶W•÷6W34BÓçö–çG5¶•Òç“°Ğ¢6Æ÷VD¶W•÷6W3dBÓçö–çG5¶•Òç¢Ò6Æ÷VD¶W•÷6W34BÓçö–çG5¶•Òç£°Ğ¢6Æ÷VD¶W•÷6W3dBÓçö–çG5¶•Òç&öÆÂÒ—6Ô7W'&VçDW7F–ÖFRæCÅ÷6S3â†’’ç&÷FF–öâ‚’ç&öÆÂ‚“°Ğ¢6Æ÷VD¶W•÷6W3dBÓçö–çG5¶•Òç—F6‚Ò—6Ô7W'&VçDW7F–ÖFRæCÅ÷6S3â†’’ç&÷FF–öâ‚’ç—F6‚‚“°Ğ¢6Æ÷VD¶W•÷6W3dBÓçö–çG5¶•Òç–rÒ—6Ô7W'&VçDW7F–ÖFRæCÅ÷6S3â†’’ç&÷FF–öâ‚’ç–r‚“°Ğ Ğ¢WFFUF‚†6Æ÷VD¶W•÷6W3dBÓçö–çG5¶•Ò“°Ğ¢ĞĞ Ğ¢Æö÷—46Æ÷6VBÒfÇ6S°Ğ¢ĞĞ¢ĞĞ Ğ¢fö–BWFFUF‚†6öç7Bö–çEG—U÷6Rb÷6Uö–â’°Ğ¢vVöÖWG'•ö×6w3£¦×6s£¥÷6U7F×VB÷6U÷7F×VC°Ğ¢÷6U÷7F×VBæ†VFW"ç7F×Ò&6Æ7£¥F–ÖR‡÷6Uö–âçF–ÖR¢S’“°Ğ¢÷6U÷7F×VBæ†VFW"æg&ÖUö–BÒöFöÖWG'”g&ÖS°Ğ¢÷6U÷7F×VBç÷6Rç÷6—F–öâç‚Ò÷6Uö–âçƒ°Ğ¢÷6U÷7F×VBç÷6Rç÷6—F–öâç’Ò÷6Uö–âç“°Ğ¢÷6U÷7F×VBç÷6Rç÷6—F–öâç¢Ò÷6Uö–âç£°Ğ¢Fc#£¥VFW&æ–öâ°Ğ¢ç6WE%’‡÷6Uö–âç&öÆÂÂ÷6Uö–âç—F6‚Â÷6Uö–âç–r“°Ğ¢÷6U÷7F×VBç÷6Ræ÷&–VçFF–öâç‚Òç‚‚“°Ğ¢÷6U÷7F×VBç÷6Ræ÷&–VçFF–öâç’Òç’‚“°Ğ¢÷6U÷7F×VBç÷6Ræ÷&–VçFF–öâç¢Òç¢‚“°Ğ¢÷6U÷7F×VBç÷6Ræ÷&–VçFF–öâçrÒçr‚“°Ğ Ğ¢vÆö&ÅF‚ç÷6W2çW6…ö&6²‡÷6U÷7F×VB“°Ğ¢ĞĞ Ğ¢fö–BV&Æ—6„öFöÖWG'’‚’°Ğ¢òòV&Æ—6‚öFöÖWG'’f÷"$õ2†vÆö&ÂĞ¢æeö×6w3£¦×6s£¤öFöÖWG'’Æ6W$öFöÖWG'•$õ3°Ğ¢Æ6W$öFöÖWG'•$õ2æ†VFW"ç7F×ÒF–ÖTÆ6W$–æfõ7F×°Ğ¢Æ6W$öFöÖWG'•$õ2æ†VFW"æg&ÖUö–BÒöFöÖWG'”g&ÖS°Ğ¢Æ6W$öFöÖWG'•$õ2æ6†–ÆEög&ÖUö–BÒ&öFöÕöÖ–ær#°Ğ¢Æ6W$öFöÖWG'•$õ2ç÷6Rç÷6Rç÷6—F–öâç‚ÒG&ç6f÷&ÕFö&TÖVE³5Ó°Ğ¢Æ6W$öFöÖWG'•$õ2ç÷6Rç÷6Rç÷6—F–öâç’ÒG&ç6f÷&ÕFö&TÖVE³EÓ°Ğ¢Æ6W$öFöÖWG'•$õ2ç÷6Rç÷6Rç÷6—F–öâç¢ÒG&ç6f÷&ÕFö&TÖVE³UÓ°Ğ¢Fc#£¥VFW&æ–öâVE÷Fc°Ğ¢VE÷Fbç6WE%’‡G&ç6f÷&ÕFö&TÖVE³ÒÂG&ç6f÷&ÕFö&TÖVE³ÒÂG&ç6f÷&ÕFö&TÖVE³%Ò“°Ğ¢vVöÖWG'•ö×6w3£¦×6s£¥VFW&æ–öâVEö×6s°Ğ¢Fc#£¦6öçfW'B‡VE÷FbÂVEö×6r“°Ğ¢Æ6W$öFöÖWG'•$õ2ç÷6Rç÷6Ræ÷&–VçFF–öâÒVEö×6s°Ğ¢V$Æ6W$öFöÖWG'”vÆö&ÂÓçV&Æ—6‚†Æ6W$öFöÖWG'•$õ2“°Ğ Ğ¢òòV&Æ—6‚D`Ğ¢VE÷Fbç6WE%’‡G&ç6f÷&ÕFö&TÖVE³ÒÂG&ç6f÷&ÕFö&TÖVE³ÒÂG&ç6f÷&ÕFö&TÖVE³%Ò“°Ğ¢Fc#£¥G&ç6f÷&ÒEööFöÕ÷FõöÆ–F"ÒFc#£¥G&ç6f÷&Ò‡VE÷FbÂFc#£¥fV7F÷#2‡G&ç6f÷&ÕFö&TÖVE³5ÒÂG&ç6f÷&ÕFö&TÖVE³EÒÂG&ç6f÷&ÕFö&TÖVE³UÒ’“°Ğ¢Fc#£¥F–ÖUö–çBF–ÖU÷ö–çBÒFc%÷&÷3£¦g&öÕ&6Æ7‡F–ÖTÆ6W$–æfõ7F×“°Ğ¢Fc#£¥7F×VCÇFc#£¥G&ç6f÷&ÓâFV×ööFöÕ÷FõöÆ–F"‡EööFöÕ÷FõöÆ–F"ÂF–ÖU÷ö–çBÂöFöÖWG'”g&ÖR“°Ğ¢vVöÖWG'•ö×6w3£¦×6s£¥G&ç6f÷&Õ7F×VBG&ç5ööFöÕ÷FõöÆ–F#°Ğ¢Fc#£¦6öçfW'B‡FV×ööFöÕ÷FõöÆ–F"ÂG&ç5ööFöÕ÷FõöÆ–F"“°Ğ¢G&ç5ööFöÕ÷FõöÆ–F"æ6†–ÆEög&ÖUö–BÒ&Æ–F%öÆ–æ²#°Ğ¢–b‡V&Æ—6„Ö–ætöFöÕDb’'"Óç6VæEG&ç6f÷&Ò‡G&ç5ööFöÕ÷FõöÆ–F"“°Ğ Ğ¢òòV&Æ—6‚öFöÖWG'’f÷"$õ2†–æ7&VÖVçFÂĞ¢7FF–2&ööÂÆ7D–æ7&TöFöÕV$fÆrÒfÇ6S°Ğ¢7FF–2æeö×6w3£¦×6s£¤öFöÖWG'’Æ6W$öFöÔ–æ7&VÖVçFÃ²òò–æ7&VÖVçFÂöFöÖWG'’×6pĞ¢7FF–2V–vVã£¤ff–æS6b–æ7&TöFöÔff–æS²òò–æ7&VÖVçFÂöFöÖWG'’–âff–æPĞ¢–b†Æ7D–æ7&TöFöÕV$fÆrÓÒfÇ6R’°Ğ¢Æ7D–æ7&TöFöÕV$fÆrÒG'VS°Ğ¢Æ6W$öFöÔ–æ7&VÖVçFÂÒÆ6W$öFöÖWG'•$õ3°Ğ¢–æ7&TöFöÔff–æRÒG&ç3$ff–æS6b‡G&ç6f÷&ÕFö&TÖVB“°Ğ¢ÒVÇ6R°Ğ¢V–vVã£¤ff–æS6bff–æT–æ7&RÒ–æ7&VÖVçFÄöFöÖWG'”ff–æTg&öçBæ–çfW'6R‚’¢–æ7&VÖVçFÄöFöÖWG'”ff–æT&6³°Ğ¢–æ7&TöFöÔff–æRÒ–æ7&TöFöÔff–æR¢ff–æT–æ7&S°Ğ¢fÆöB‚Â’Â¢Â&öÆÂÂ—F6‚Â–s°Ğ¢6Ã£¦vWEG&ç6ÆF–öäæDWVÆW$ævÆW2†–æ7&TöFöÔff–æRÂ‚Â’Â¢Â&öÆÂÂ—F6‚Â–r“°Ğ¢–b†6Æ÷VD–æfòæ–×Uöf–Æ&ÆRÓÒG'VR’°Ğ¢–b‡7FC£¦'2†6Æ÷VD–æfòæ–×U÷—F6…ö–æ—B’ÂãB’°Ğ¢F÷V&ÆR–×UvV–v‡BÒã°Ğ¢Fc#£¥VFW&æ–öâ–×UVFW&æ–öã°Ğ¢Fc#£¥VFW&æ–öâG&ç6f÷&ÕVFW&æ–öã°Ğ¢F÷V&ÆR&öÆÄÖ–BÂ—F6„Ö–BÂ–tÖ–C°Ğ Ğ¢òò6ÆW'&öÆÀĞ¢G&ç6f÷&ÕVFW&æ–öâç6WE%’‡&öÆÂÂÂ“°Ğ¢–×UVFW&æ–öâç6WE%’†6Æ÷VD–æfòæ–×U÷&öÆÅö–æ—BÂÂ“°Ğ¢Fc#£¤ÖG&—ƒ7ƒ2‡G&ç6f÷&ÕVFW&æ–öâç6ÆW'†–×UVFW&æ–öâÂ–×UvV–v‡B’’ævWE%’‡&öÆÄÖ–BÂ—F6„Ö–BÂ–tÖ–B“°Ğ¢&öÆÂÒ&öÆÄÖ–C°Ğ Ğ¢òò6ÆW'—F6€Ğ¢G&ç6f÷&ÕVFW&æ–öâç6WE%’ƒÂ—F6‚Â“°Ğ¢–×UVFW&æ–öâç6WE%’ƒÂ6Æ÷VD–æfòæ–×U÷—F6…ö–æ—BÂ“°Ğ¢Fc#£¤ÖG&—ƒ7ƒ2‡G&ç6f÷&ÕVFW&æ–öâç6ÆW'†–×UVFW&æ–öâÂ–×UvV–v‡B’’ævWE%’‡&öÆÄÖ–BÂ—F6„Ö–BÂ–tÖ–B“°Ğ¢—F6‚Ò—F6„Ö–C°Ğ¢ĞĞ¢ĞĞ¢Æ6W$öFöÔ–æ7&VÖVçFÂæ†VFW"ç7F×ÒF–ÖTÆ6W$–æfõ7F×°Ğ¢Æ6W$öFöÔ–æ7&VÖVçFÂæ†VFW"æg&ÖUö–BÒöFöÖWG'”g&ÖS°Ğ¢Æ6W$öFöÔ–æ7&VÖVçFÂæ6†–ÆEög&ÖUö–BÒ&öFöÕöÖ–ær#°Ğ¢Æ6W$öFöÔ–æ7&VÖVçFÂç÷6Rç÷6Rç÷6—F–öâç‚Òƒ°Ğ¢Æ6W$öFöÔ–æ7&VÖVçFÂç÷6Rç÷6Rç÷6—F–öâç’Ò“°Ğ¢Æ6W$öFöÔ–æ7&VÖVçFÂç÷6Rç÷6Rç÷6—F–öâç¢Ò£°Ğ¢Fc#£¥VFW&æ–öâVE÷Fc°Ğ¢VE÷Fbç6WE%’‡&öÆÂÂ—F6‚Â–r“°Ğ¢vVöÖWG'•ö×6w3£¦×6s£¥VFW&æ–öâVEö×6s°Ğ¢Fc#£¦6öçfW'B‡VE÷FbÂVEö×6r“°Ğ¢Æ6W$öFöÔ–æ7&VÖVçFÂç÷6Rç÷6Ræ÷&–VçFF–öâÒVEö×6s°Ğ¢–b†—4FVvVæW&FRĞ¢Æ6W$öFöÔ–æ7&VÖVçFÂç÷6Ræ6÷f&–æ6U³ÒÒ°Ğ¢VÇ6PĞ¢Æ6W$öFöÔ–æ7&VÖVçFÂç÷6Ræ6÷f&–æ6U³ÒÒ°Ğ¢ĞĞ¢V$Æ6W$öFöÖWG'”–æ7&VÖVçFÂÓçV&Æ—6‚†Æ6W$öFöÔ–æ7&VÖVçFÂ“°Ğ¢ĞĞ Ğ¢fö–BV&Æ—6„g&ÖW2‚’°Ğ¢–b†6Æ÷VD¶W•÷6W34BÓçö–çG2æV×G’‚’’&WGW&ã°Ğ¢òòV&Æ—6‚¶W’÷6W0Ğ¢V&Æ—6„6Æ÷VB‡V$¶W•÷6W2Â6Æ÷VD¶W•÷6W34BÂF–ÖTÆ6W$–æfõ7F×ÂöFöÖWG'”g&ÖR“°Ğ¢òòV&Æ—6‚7W'&÷VæF–ær¶W’g&ÖW0Ğ¢V&Æ—6„6Æ÷VB‡V%&V6VçD¶W”g&ÖW2ÂÆ6W$6Æ÷VE7W&dg&öÔÖE2ÂF–ÖTÆ6W$–æfõ7F×ÂöFöÖWG'”g&ÖR“°Ğ¢òòV&Æ—6‚&Vv—7FW&VB¶W’g&ÖPĞ¢–b‡V%&V6VçD¶W”g&ÖRÓævWE÷7V'67&—F–öåö6÷VçB‚’Ò’°Ğ¢6Ã£¥ö–çD6Æ÷VCÅö–çEG—Sã£¥G"6Æ÷VD÷WB†æWr6Ã£¥ö–çD6Æ÷VCÅö–çEG—Sâ‚’“°Ğ¢ö–çEG—U÷6RF†—5÷6SdBÒG&ç3%ö–çEG—U÷6R‡G&ç6f÷&ÕFö&TÖVB“°Ğ¢¦6Æ÷VD÷WB³Ò§G&ç6f÷&Õö–çD6Æ÷VB†Æ6W$6Æ÷VD6÷&æW$Æ7DE2ÂgF†—5÷6SdB“°Ğ¢¦6Æ÷VD÷WB³Ò§G&ç6f÷&Õö–çD6Æ÷VB†Æ6W$6Æ÷VE7W&dÆ7DE2ÂgF†—5÷6SdB“°Ğ¢V&Æ—6„6Æ÷VB‡V%&V6VçD¶W”g&ÖRÂ6Æ÷VD÷WBÂF–ÖTÆ6W$–æfõ7F×ÂöFöÖWG'”g&ÖR“°Ğ¢ĞĞ¢òòV&Æ—6‚&Vv—7FW&VB†–v‚×&W2&r6Æ÷V@Ğ¢òò–b‡V$6Æ÷VE&Vv—7FW&VE&rÓævWE÷7V'67&—F–öåö6÷VçB‚’Ò’°Ğ¢òò6Ã£¥ö–çD6Æ÷VCÅö–çEG—Sã£¥G"6Æ÷VD÷WB†æWr6Ã£¥ö–çD6Æ÷VCÅö–çEG—Sâ‚’“°Ğ¢òò6Ã£¦g&öÕ$õ4×6r†6Æ÷VD–æfòæ6Æ÷VEöFW6¶WvVBÂ¦6Æ÷VD÷WB“°Ğ¢òòö–çEG—U÷6RF†—5÷6SdBÒG&ç3%ö–çEG—U÷6R‡G&ç6f÷&ÕFö&TÖVB“°Ğ¢òò¦6Æ÷VD÷WBÒ§G&ç6f÷&Õö–çD6Æ÷VB†6Æ÷VD÷WBÂgF†—5÷6SdB“°Ğ¢òòV&Æ—6„6Æ÷VB‡V$6Æ÷VE&Vv—7FW&VE&rÂ6Æ÷VD÷WBÂF–ÖTÆ6W$–æfõ7F×ÂöFöÖWG'”g&ÖR“°Ğ¢òòĞĞ¢òòV&Æ—6‚F€Ğ¢–b‡V%F‚ÓævWE÷7V'67&—F–öåö6÷VçB‚’Ò’°Ğ¢vÆö&ÅF‚æ†VFW"ç7F×ÒF–ÖTÆ6W$–æfõ7F×°Ğ¢vÆö&ÅF‚æ†VFW"æg&ÖUö–BÒöFöÖWG'”g&ÖS°Ğ¢V%F‚ÓçV&Æ—6‚†vÆö&ÅF‚“°Ğ¢ĞĞ¢ĞĞ§Ó°Ğ Ğ¦–çBÖ–â†–çB&v2Â6†"¢¢&wb’°Ğ¢&6Æ7£¦–æ—B†&v2Â&wb“°Ğ Ğ¢&6Æ7£¤æöFT÷F–öç2÷F–öç3°Ğ¢÷F–öç2çW6Uö–çG&÷&ö6W75ö6öÖ×2‡G'VR“°Ğ¢&6Æ7£¦W†V7WF÷'3£¥6–ævÆUF‡&VFVDW†V7WF÷"W†V3°Ğ Ğ¢WFòÔòÒ7FC£¦Ö¶U÷6†&VCÆÖ÷F–Ö—¦F–öãâ†÷F–öç2“°Ğ¢W†V2æFEöæöFR„Ôò“°Ğ Ğ¢$4Ä5ô”ädò‡&6Æ7£¦vWEöÆövvW"‚'&6Æ7"’Â%Ã35³³3&ÒÒÒÒÓâÖ÷F–Ö—¦F–öâ7F'FVBåÃ35³Ò"“°Ğ Ğ¢7FC£§F‡&VBÆö÷F‡&VB‚fÖ÷F–Ö—¦F–öã£¦Æö÷6Æ÷7W&UF‡&VBÂÔò“°Ğ¢7FC£§F‡&VBf—7VÆ—¦TÖF‡&VB‚fÖ÷F–Ö—¦F–öã£§f—7VÆ—¦TvÆö&ÄÖF‡&VBÂÔò“°Ğ Ğ¢W†V2ç7–â‚“°Ğ Ğ¢&6Æ7£§6‡WFF÷vâ‚“°Ğ Ğ¢Æö÷F‡&VBæ¦ö–â‚“°Ğ¢f—7VÆ—¦TÖF‡&VBæ¦ö–â‚“°Ğ Ğ¢&WGW&â°Ğ§ĞĞ 
+            savePCDDirectory = std::string(home) + "/" + savePCDDirectory;
+        }
+        if (!savePCDDirectory.empty() && savePCDDirectory.back() != '/')
+            savePCDDirectory += '/';
+        if (savePCD) {
+            if (savePCDDirectory.empty()) {
+                throw std::runtime_error("savePCD is enabled but savePCDDirectory is empty");
+            }
+            std::cout << "save pcd to: " << savePCDDirectory << std::endl;
+            if (!createDirectoryIfNotExists(savePCDDirectory) ||
+                !createDirectoryIfNotExists(savePCDDirectory + "Scans/") ||
+                !createDirectoryIfNotExists(savePCDDirectory + "SCDs/") ||
+                !createDirectoryIfNotExists(savePCDDirectory + "SurfMap/") ||
+                !createDirectoryIfNotExists(savePCDDirectory + "CornerMap/")) {
+                throw std::runtime_error(
+                    "Failed to prepare LIO-SAM PCD output directory: " +
+                    savePCDDirectory);
+            }
+        }
+
+        InitLocationMode();
+
+        if (gpsCovThreshold <= 0.0f || gpsVarianceFloor <= 0.0f) {
+            throw std::runtime_error(
+                "gpsCovThreshold and gpsVarianceFloor must be positive");
+        }
+        gpsTimeTolerance = std::max(0.01f, gpsTimeTolerance);
+        gpsQueueSize = std::max(1, gpsQueueSize);
+        if (useRTKInitialization && !useRTKAssist) {
+            throw std::runtime_error(
+                "Loc.useRTKInitialization requires Loc.useRTKAssist=true");
+        }
+        if (rtkUseHeading && rtkYawVarianceThreshold <= 0.0f) {
+            throw std::runtime_error(
+                "Loc.rtkYawVarianceThreshold must be positive when RTK heading is enabled");
+        }
+
+        // Mapping GPS factors and localization RTK assistance are independent
+        // consumers of the same map-aligned odometry interface. Subscribe when
+        // either feature is enabled; do not make RTK initialization depend on
+        // useGpsFactor.
+        if (useGpsFactor || useRTKAssist) {
+            const std::string expectedFrame =
+                LocEnableFlag && !rtkExpectedFrame.empty()
+                    ? rtkExpectedFrame
+                    : gpsExpectedFrame;
+            if (expectedFrame.empty()) {
+                RCLCPP_WARN(
+                    get_logger(),
+                    "RTK/GPS fusion is enabled without an expected frame; "
+                    "set gpsExpectedFrame or Loc.rtkExpectedFrame");
+            }
+            RCLCPP_INFO(
+                get_logger(),
+                "RTK/GPS input: topic=%s frame=%s GPS-factor=%s localization-assist=%s covariance<=%.3f time-tolerance=%.3f s",
+                gpsTopic.c_str(),
+                expectedFrame.empty() ? "<unchecked>" : expectedFrame.c_str(),
+                useGpsFactor ? "on" : "off",
+                useRTKAssist ? "on" : "off",
+                gpsCovThreshold, gpsTimeTolerance);
+            subGPS = create_subscription<nav_msgs::msg::Odometry>(
+                gpsTopic, rclcpp::SensorDataQoS().keep_last(200),
+                std::bind(&mapOptimization::gpsHandler, this,
+                          std::placeholders::_1));
+        }
+
+        srvForceRelocalize = create_service<std_srvs::srv::Trigger>(
+            "/lio_sam/localization/force_relocalize",
+            std::bind(
+                &mapOptimization::forceRelocalizeHandler,
+                this,
+                std::placeholders::_1,
+                std::placeholders::_2));
+    }
+
+    void allocateMemory() {
+        cloudKeyPoses3D.reset(new pcl::PointCloud<PointType>());
+        cloudKeyPoses6D.reset(new pcl::PointCloud<PointTypePose>());
+        copy_cloudKeyPoses3D.reset(new pcl::PointCloud<PointType>());
+        copy_cloudKeyPoses6D.reset(new pcl::PointCloud<PointTypePose>());
+
+        kdtreeSurroundingKeyPoses.reset(new pcl::KdTreeFLANN<PointType>());
+        kdtreeHistoryKeyPoses.reset(new pcl::KdTreeFLANN<PointType>());
+
+        laserCloudCornerLast.reset(new pcl::PointCloud<PointType>());    // corner feature set from odoOptimization
+        laserCloudSurfLast.reset(new pcl::PointCloud<PointType>());      // surf feature set from odoOptimization
+        laserCloudCornerLastDS.reset(new pcl::PointCloud<PointType>());  // downsampled corner featuer set from odoOptimization
+        laserCloudSurfLastDS.reset(new pcl::PointCloud<PointType>());    // downsampled surf featuer set from odoOptimization
+
+        laserCloudCornerLastDSFiltered.reset(new pcl::PointCloud<PointType>());
+        laserCloudSurfLastDSFiltered.reset(new pcl::PointCloud<PointType>());
+        dynamicFilterKeptPoints.reset(new pcl::PointCloud<PointType>());
+        dynamicFilterRejectedPoints.reset(new pcl::PointCloud<PointType>());
+
+        laserCloudOri.reset(new pcl::PointCloud<PointType>());
+        coeffSel.reset(new pcl::PointCloud<PointType>());
+
+        laserCloudOriCornerVec.resize(N_SCAN * Horizon_SCAN);
+        coeffSelCornerVec.resize(N_SCAN * Hoâ€¦28715 tokens truncatedâ€¦        gps_x - transformTobeMapped[3],
+                    gps_y - transformTobeMapped[4]);
+                if (gpsInnovationThreshold > 0.0f &&
+                    positionInnovation > gpsInnovationThreshold) {
+                    RCLCPP_WARN_THROTTLE(
+                        get_logger(), *get_clock(), 2000,
+                        "Rejecting GPS factor: %.3f m innovation exceeds %.3f m",
+                        positionInnovation, gpsInnovationThreshold);
+                    continue;
+                }
+
+                // Add GPS every a few meters
+                PointType curGPSPoint;
+                curGPSPoint.x = gps_x;
+                curGPSPoint.y = gps_y;
+                curGPSPoint.z = gps_z;
+                if (gpsFactorDistance > 0.0f && hasLastGPSPoint &&
+                    pointDistance(curGPSPoint, lastGPSPoint) < gpsFactorDistance)
+                    continue;
+                else {
+                    lastGPSPoint = curGPSPoint;
+                    hasLastGPSPoint = true;
+                }
+
+                gtsam::Vector Vector3(3);
+                Vector3 << max(noise_x, gpsVarianceFloor),
+                           max(noise_y, gpsVarianceFloor),
+                           max(noise_z, gpsVarianceFloor);
+                noiseModel::Base::shared_ptr gps_noise =
+                    noiseModel::Diagonal::Variances(Vector3);
+                if (gpsUseRobustNoise) {
+                    gps_noise = gtsam::noiseModel::Robust::Create(
+                        gtsam::noiseModel::mEstimator::Huber::Create(
+                            std::max(0.1f, gpsRobustKernelScale)),
+                        gps_noise);
+                }
+                gtsam::GPSFactor gps_factor(
+                    cloudKeyPoses3D->size(),
+                    gtsam::Point3(gps_x, gps_y, gps_z), gps_noise);
+                gtSAMgraph.add(gps_factor);
+
+                aLoopIsClosed = true;
+                break;
+            }
+        }
+    }
+
+    void addExternalPoseFactor() {
+        if (!useExternalPoseFactor || cloudKeyPoses3D->points.empty()) {
+            return;
+        }
+        std::lock_guard<std::mutex> lock(mtxExternalPose);
+        if (externalPoseQueue.empty()) return;
+
+        while (!externalPoseQueue.empty()) {
+            const double poseTime =
+                stamp2Sec(externalPoseQueue.front().header.stamp);
+            if (poseTime < timeLaserInfoCur - 0.2) {
+                externalPoseQueue.pop_front();
+                continue;
+            }
+            if (poseTime > timeLaserInfoCur + 0.2) return;
+
+            const nav_msgs::msg::Odometry external =
+                externalPoseQueue.front();
+            externalPoseQueue.pop_front();
+            const auto& position = external.pose.pose.position;
+            const auto& orientation = external.pose.pose.orientation;
+            if (!std::isfinite(position.x) ||
+                !std::isfinite(position.y) ||
+                !std::isfinite(position.z) ||
+                !std::isfinite(orientation.x) ||
+                !std::isfinite(orientation.y) ||
+                !std::isfinite(orientation.z) ||
+                !std::isfinite(orientation.w)) {
+                continue;
+            }
+            const double quaternionNorm = std::sqrt(
+                orientation.x * orientation.x +
+                orientation.y * orientation.y +
+                orientation.z * orientation.z +
+                orientation.w * orientation.w);
+            if (quaternionNorm < 1e-6) continue;
+
+            const gtsam::Rot3 externalRotation = gtsam::Rot3::Quaternion(
+                orientation.w / quaternionNorm,
+                orientation.x / quaternionNorm,
+                orientation.y / quaternionNorm,
+                orientation.z / quaternionNorm);
+            const gtsam::Pose3 externalPose(
+                externalRotation,
+                gtsam::Point3(position.x, position.y, position.z));
+            gtsam::Vector poseVariances(6);
+            poseVariances <<
+                max(externalPoseRotationVariance, 1e-9f),
+                max(externalPoseRotationVariance, 1e-9f),
+                max(externalPoseRotationVariance, 1e-9f),
+                max(externalPosePositionVariance, 1e-9f),
+                max(externalPosePositionVariance, 1e-9f),
+                max(externalPosePositionVariance, 1e-9f);
+            gtSAMgraph.add(PriorFactor<Pose3>(
+                cloudKeyPoses3D->size(), externalPose,
+                noiseModel::Diagonal::Variances(poseVariances)));
+            aLoopIsClosed = true;
+            RCLCPP_INFO_ONCE(
+                get_logger(),
+                "Using non-GPS external pose factors from %s",
+                externalPoseTopic.c_str());
+            break;
+        }
+    }
+
+    void addLoopFactor() {
+        if (loopIndexQueue.empty()) return;
+
+        for (int i = 0; i < (int)loopIndexQueue.size(); ++i) {
+            int indexFrom = loopIndexQueue[i].first;
+            int indexTo = loopIndexQueue[i].second;
+            gtsam::Pose3 poseBetween = loopPoseQueue[i];
+            auto noiseBetween = loopNoiseQueue[i];
+            gtSAMgraph.add(BetweenFactor<Pose3>(indexFrom, indexTo, poseBetween, noiseBetween));
+        }
+
+        loopIndexQueue.clear();
+        loopPoseQueue.clear();
+        loopNoiseQueue.clear();
+        aLoopIsClosed = true;
+    }
+
+    void saveKeyFramesAndFactor() {
+        if (saveFrame() == false) return;
+
+        // odom factor
+        addOdomFactor();
+
+        // gps factor
+        addGPSFactor();
+
+        // Optional simulator / wheel-odometry pose factor. This is kept
+        // separate from the RTK / GPS path and is disabled by default.
+        addExternalPoseFactor();
+
+        // loop factor
+        addLoopFactor();
+
+        // cout << "****************************************************" << endl;
+        // gtSAMgraph.print("GTSAM Graph:\n");
+
+        // update iSAM
+        isam->update(gtSAMgraph, initialEstimate);
+        isam->update();
+
+        if (aLoopIsClosed == true) {
+            isam->update();
+            isam->update();
+            isam->update();
+            isam->update();
+            isam->update();
+        }
+
+        gtSAMgraph.resize(0);
+        initialEstimate.clear();
+
+        // save key poses
+        PointType thisPose3D;
+        PointTypePose thisPose6D;
+        Pose3 latestEstimate;
+
+        isamCurrentEstimate = isam->calculateEstimate();
+        latestEstimate = isamCurrentEstimate.at<Pose3>(isamCurrentEstimate.size() - 1);
+        // cout << "****************************************************" << endl;
+        // isamCurrentEstimate.print("Current estimate: ");
+
+        thisPose3D.x = latestEstimate.translation().x();
+        thisPose3D.y = latestEstimate.translation().y();
+        thisPose3D.z = latestEstimate.translation().z();
+        thisPose3D.intensity = cloudKeyPoses3D->size();  // this can be used as index
+        cloudKeyPoses3D->push_back(thisPose3D);
+
+        thisPose6D.x = thisPose3D.x;
+        thisPose6D.y = thisPose3D.y;
+        thisPose6D.z = thisPose3D.z;
+        thisPose6D.intensity = thisPose3D.intensity;  // this can be used as index
+        thisPose6D.roll = latestEstimate.rotation().roll();
+        thisPose6D.pitch = latestEstimate.rotation().pitch();
+        thisPose6D.yaw = latestEstimate.rotation().yaw();
+        thisPose6D.time = timeLaserInfoCur;
+        cloudKeyPoses6D->push_back(thisPose6D);
+
+        // cout << "****************************************************" << endl;
+        // cout << "Pose covariance:" << endl;
+        // cout << isam->marginalCovariance(isamCurrentEstimate.size()-1) << endl << endl;
+        poseCovariance = isam->marginalCovariance(isamCurrentEstimate.size() - 1);
+
+        // save updated transform
+        transformTobeMapped[0] = latestEstimate.rotation().roll();
+        transformTobeMapped[1] = latestEstimate.rotation().pitch();
+        transformTobeMapped[2] = latestEstimate.rotation().yaw();
+        transformTobeMapped[3] = latestEstimate.translation().x();
+        transformTobeMapped[4] = latestEstimate.translation().y();
+        transformTobeMapped[5] = latestEstimate.translation().z();
+
+        // save all the received edge and surf points
+        pcl::PointCloud<PointType>::Ptr thisCornerKeyFrame(new pcl::PointCloud<PointType>());
+        pcl::PointCloud<PointType>::Ptr thisSurfKeyFrame(new pcl::PointCloud<PointType>());
+        pcl::copyPointCloud(*laserCloudCornerLastDS, *thisCornerKeyFrame);
+        pcl::copyPointCloud(*laserCloudSurfLastDS, *thisSurfKeyFrame);
+
+        // save key frame cloud
+        cornerCloudKeyFrames.push_back(thisCornerKeyFrame);
+        surfCloudKeyFrames.push_back(thisSurfKeyFrame);
+
+        // save path for visualization
+        updatePath(thisPose6D);
+
+        int curcnt = cloudKeyPoses3D->size() - 1;
+        if (loopClosureEnableFlag) {
+            std::lock_guard<std::mutex> scanContextLock(mtxScanContext);
+            // Scan Context loop detector - giseop
+            // - SINGLE_SCAN_FULL: using downsampled original point cloud (/full_cloud_projected + downsampling)
+            // - SINGLE_SCAN_FEAT: using surface feature as an input point cloud for scan context (2020.04.01: checked it works.)
+            // - MULTI_SCAN_FEAT: using NearKeyframes (because a MulRan scan does not have beyond region, so to solve this issue ... )
+            const SCInputType sc_input_type = SCInputType::SINGLE_SCAN_FULL;  // change this
+
+            if (sc_input_type == SCInputType::SINGLE_SCAN_FULL) {
+                scManager.makeAndSaveScancontextAndKeys(*laserCloudRawDS);
+            } else if (sc_input_type == SCInputType::SINGLE_SCAN_FEAT) {
+                scManager.makeAndSaveScancontextAndKeys(*thisSurfKeyFrame);
+            } else if (sc_input_type == SCInputType::MULTI_SCAN_FEAT) {
+                pcl::PointCloud<PointType>::Ptr multiKeyFrameFeatureCloud(new pcl::PointCloud<PointType>());
+                loopFindNearKeyframes(multiKeyFrameFeatureCloud, curcnt, historyKeyframeSearchNum);
+                scManager.makeAndSaveScancontextAndKeys(*multiKeyFrameFeatureCloud);
+            }
+
+            // save sc data
+            if (savePCD) {
+                const auto& curr_scd = scManager.getConstRefRecentSCD();
+                std::string curr_scd_node_idx = padZeros(curcnt);
+                saveSCD(savePCDDirectory + "SCDs/" + curr_scd_node_idx + ".scd", curr_scd);
+            }
+        }
+
+        if (savePCD) {
+            savePCDIfNotEmpty(
+                savePCDDirectory + "CornerMap/" + std::to_string(curcnt) + ".pcd",
+                *thisCornerKeyFrame);
+            savePCDIfNotEmpty(
+                savePCDDirectory + "SurfMap/" + std::to_string(curcnt) + ".pcd",
+                *thisSurfKeyFrame);
+            savePCDIfNotEmpty(
+                savePCDDirectory + "Scans/" + std::to_string(curcnt) + ".pcd",
+                *laserCloudRawDS);
+        }
+    }
+
+    void correctPoses() {
+        if (cloudKeyPoses3D->points.empty()) return;
+
+        if (aLoopIsClosed == true) {
+            // clear map cache
+            laserCloudMapContainer.clear();
+            // clear path
+            globalPath.poses.clear();
+            // update key poses
+            int numPoses = isamCurrentEstimate.size();
+            for (int i = 0; i < numPoses; ++i) {
+                cloudKeyPoses3D->points[i].x = isamCurrentEstimate.at<Pose3>(i).translation().x();
+                cloudKeyPoses3D->points[i].y = isamCurrentEstimate.at<Pose3>(i).translation().y();
+                cloudKeyPoses3D->points[i].z = isamCurrentEstimate.at<Pose3>(i).translation().z();
+
+                cloudKeyPoses6D->points[i].x = cloudKeyPoses3D->points[i].x;
+                cloudKeyPoses6D->points[i].y = cloudKeyPoses3D->points[i].y;
+                cloudKeyPoses6D->points[i].z = cloudKeyPoses3D->points[i].z;
+                cloudKeyPoses6D->points[i].roll = isamCurrentEstimate.at<Pose3>(i).rotation().roll();
+                cloudKeyPoses6D->points[i].pitch = isamCurrentEstimate.at<Pose3>(i).rotation().pitch();
+                cloudKeyPoses6D->points[i].yaw = isamCurrentEstimate.at<Pose3>(i).rotation().yaw();
+
+                updatePath(cloudKeyPoses6D->points[i]);
+            }
+
+            aLoopIsClosed = false;
+        }
+    }
+
+    void updatePath(const PointTypePose& pose_in) {
+        geometry_msgs::msg::PoseStamped pose_stamped;
+        pose_stamped.header.stamp = rclcpp::Time(pose_in.time * 1e9);
+        pose_stamped.header.frame_id = odometryFrame;
+        pose_stamped.pose.position.x = pose_in.x;
+        pose_stamped.pose.position.y = pose_in.y;
+        pose_stamped.pose.position.z = pose_in.z;
+        tf2::Quaternion q;
+        q.setRPY(pose_in.roll, pose_in.pitch, pose_in.yaw);
+        pose_stamped.pose.orientation.x = q.x();
+        pose_stamped.pose.orientation.y = q.y();
+        pose_stamped.pose.orientation.z = q.z();
+        pose_stamped.pose.orientation.w = q.w();
+
+        globalPath.poses.push_back(pose_stamped);
+    }
+
+    void publishOdometry() {
+        // Publish odometry for ROS (global)
+        nav_msgs::msg::Odometry laserOdometryROS;
+        laserOdometryROS.header.stamp = timeLaserInfoStamp;
+        laserOdometryROS.header.frame_id = odometryFrame;
+        laserOdometryROS.child_frame_id = "odom_mapping";
+        laserOdometryROS.pose.pose.position.x = transformTobeMapped[3];
+        laserOdometryROS.pose.pose.position.y = transformTobeMapped[4];
+        laserOdometryROS.pose.pose.position.z = transformTobeMapped[5];
+        tf2::Quaternion quat_tf;
+        quat_tf.setRPY(transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]);
+        geometry_msgs::msg::Quaternion quat_msg;
+        tf2::convert(quat_tf, quat_msg);
+        laserOdometryROS.pose.pose.orientation = quat_msg;
+        pubLaserOdometryGlobal->publish(laserOdometryROS);
+
+        // Publish TF
+        quat_tf.setRPY(transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]);
+        tf2::Transform t_odom_to_lidar = tf2::Transform(quat_tf, tf2::Vector3(transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5]));
+        tf2::TimePoint time_point = tf2_ros::fromRclcpp(timeLaserInfoStamp);
+        tf2::Stamped<tf2::Transform> temp_odom_to_lidar(t_odom_to_lidar, time_point, odometryFrame);
+        geometry_msgs::msg::TransformStamped trans_odom_to_lidar;
+        tf2::convert(temp_odom_to_lidar, trans_odom_to_lidar);
+        trans_odom_to_lidar.child_frame_id = "lidar_link";
+        if (publishMappingOdomTF) br->sendTransform(trans_odom_to_lidar);
+
+        // Publish odometry for ROS (incremental)
+        static bool lastIncreOdomPubFlag = false;
+        static nav_msgs::msg::Odometry laserOdomIncremental;  // incremental odometry msg
+        static Eigen::Affine3f increOdomAffine;               // incremental odometry in affine
+        if (lastIncreOdomPubFlag == false) {
+            lastIncreOdomPubFlag = true;
+            laserOdomIncremental = laserOdometryROS;
+            increOdomAffine = trans2Affine3f(transformTobeMapped);
+        } else {
+            Eigen::Affine3f affineIncre = incrementalOdometryAffineFront.inverse() * incrementalOdometryAffineBack;
+            increOdomAffine = increOdomAffine * affineIncre;
+            float x, y, z, roll, pitch, yaw;
+            pcl::getTranslationAndEulerAngles(increOdomAffine, x, y, z, roll, pitch, yaw);
+            if (cloudInfo.imu_available == true) {
+                if (std::abs(cloudInfo.imu_pitch_init) < 1.4) {
+                    double imuWeight = 0.1;
+                    tf2::Quaternion imuQuaternion;
+                    tf2::Quaternion transformQuaternion;
+                    double rollMid, pitchMid, yawMid;
+
+                    // slerp roll
+                    transformQuaternion.setRPY(roll, 0, 0);
+                    imuQuaternion.setRPY(cloudInfo.imu_roll_init, 0, 0);
+                    tf2::Matrix3x3(transformQuaternion.slerp(imuQuaternion, imuWeight)).getRPY(rollMid, pitchMid, yawMid);
+                    roll = rollMid;
+
+                    // slerp pitch
+                    transformQuaternion.setRPY(0, pitch, 0);
+                    imuQuaternion.setRPY(0, cloudInfo.imu_pitch_init, 0);
+                    tf2::Matrix3x3(transformQuaternion.slerp(imuQuaternion, imuWeight)).getRPY(rollMid, pitchMid, yawMid);
+                    pitch = pitchMid;
+                }
+            }
+            laserOdomIncremental.header.stamp = timeLaserInfoStamp;
+            laserOdomIncremental.header.frame_id = odometryFrame;
+            laserOdomIncremental.child_frame_id = "odom_mapping";
+            laserOdomIncremental.pose.pose.position.x = x;
+            laserOdomIncremental.pose.pose.position.y = y;
+            laserOdomIncremental.pose.pose.position.z = z;
+            tf2::Quaternion quat_tf;
+            quat_tf.setRPY(roll, pitch, yaw);
+            geometry_msgs::msg::Quaternion quat_msg;
+            tf2::convert(quat_tf, quat_msg);
+            laserOdomIncremental.pose.pose.orientation = quat_msg;
+            if (isDegenerate)
+                laserOdomIncremental.pose.covariance[0] = 1;
+            else
+                laserOdomIncremental.pose.covariance[0] = 0;
+        }
+        pubLaserOdometryIncremental->publish(laserOdomIncremental);
+    }
+
+    void publishFrames() {
+        if (cloudKeyPoses3D->points.empty()) return;
+        // publish key poses
+        publishCloud(pubKeyPoses, cloudKeyPoses3D, timeLaserInfoStamp, odometryFrame);
+        // Publish surrounding key frames
+        publishCloud(pubRecentKeyFrames, laserCloudSurfFromMapDS, timeLaserInfoStamp, odometryFrame);
+        // publish registered key frame
+        if (pubRecentKeyFrame->get_subscription_count() != 0) {
+            pcl::PointCloud<PointType>::Ptr cloudOut(new pcl::PointCloud<PointType>());
+            PointTypePose thisPose6D = trans2PointTypePose(transformTobeMapped);
+            *cloudOut += *transformPointCloud(laserCloudCornerLastDS, &thisPose6D);
+            *cloudOut += *transformPointCloud(laserCloudSurfLastDS, &thisPose6D);
+            publishCloud(pubRecentKeyFrame, cloudOut, timeLaserInfoStamp, odometryFrame);
+        }
+        // publish registered high-res raw cloud
+        // if (pubCloudRegisteredRaw->get_subscription_count() != 0) {
+        //     pcl::PointCloud<PointType>::Ptr cloudOut(new pcl::PointCloud<PointType>());
+        //     pcl::fromROSMsg(cloudInfo.cloud_deskewed, *cloudOut);
+        //     PointTypePose thisPose6D = trans2PointTypePose(transformTobeMapped);
+        //     *cloudOut = *transformPointCloud(cloudOut, &thisPose6D);
+        //     publishCloud(pubCloudRegisteredRaw, cloudOut, timeLaserInfoStamp, odometryFrame);
+        // }
+        // publish path
+        if (pubPath->get_subscription_count() != 0) {
+            globalPath.header.stamp = timeLaserInfoStamp;
+            globalPath.header.frame_id = odometryFrame;
+            pubPath->publish(globalPath);
+        }
+    }
+};
+
+int main(int argc, char** argv) {
+    rclcpp::init(argc, argv);
+
+    rclcpp::NodeOptions options;
+    options.use_intra_process_comms(true);
+    rclcpp::executors::SingleThreadedExecutor exec;
+
+    auto MO = std::make_shared<mapOptimization>(options);
+    exec.add_node(MO);
+
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "\033[1;32m----> Map Optimization Started.\033[0m");
+
+    std::thread loopthread(&mapOptimization::loopClosureThread, MO);
+    std::thread visualizeMapThread(&mapOptimization::visualizeGlobalMapThread, MO);
+
+    exec.spin();
+
+    rclcpp::shutdown();
+
+    loopthread.join();
+    visualizeMapThread.join();
+
+    return 0;
+}
