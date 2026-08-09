@@ -130,21 +130,37 @@ public:
         laserOdometry.pose.pose.orientation = t.transform.rotation;
         pubImuOdometry->publish(laserOdometry);
 
-        // publish tf
-        if (lidarFrame != baselinkFrame) {
-            try {
-                tf2::fromMsg(tfBuffer->lookupTransform(lidarFrame, baselinkFrame, rclcpp::Time(0)), lidar2Baselink);
-            } catch (const tf2::TransformException& ex) {
-                RCLCPP_ERROR(get_logger(), "%s", ex.what());
-            }
-            tf2::Stamped<tf2::Transform> tb(tCur * lidar2Baselink, tf2_ros::fromMsg(odomMsg->header.stamp), odometryFrame);
-            tCur = tb;
-        }
-        geometry_msgs::msg::TransformStamped ts;
-        tf2::convert(tCur, ts);
-        ts.child_frame_id = baselinkFrame;
+        // TF is an integration output, not an estimator input.  In
+        // algorithm-only tests it can be disabled without requiring a robot
+        // description.  Never compose a failed lookup result: doing so would
+        // turn a missing platform TF into an invalid odom -> base transform.
         if (publishFusedBaseTF && (!requireFreshLidarOdomForTF || lidarOdomFresh)) {
-            tfBroadcaster->sendTransform(ts);
+            bool baseTransformAvailable = true;
+            if (lidarFrame != baselinkFrame) {
+                try {
+                    tf2::fromMsg(
+                        tfBuffer->lookupTransform(
+                            lidarFrame, baselinkFrame, rclcpp::Time(0)),
+                        lidar2Baselink);
+                    tf2::Stamped<tf2::Transform> tb(
+                        tCur * lidar2Baselink,
+                        tf2_ros::fromMsg(odomMsg->header.stamp),
+                        odometryFrame);
+                    tCur = tb;
+                } catch (const tf2::TransformException& ex) {
+                    baseTransformAvailable = false;
+                    RCLCPP_WARN_THROTTLE(
+                        get_logger(), *get_clock(), 2000,
+                        "Skip fused base TF; transform %s -> %s is unavailable: %s",
+                        baselinkFrame.c_str(), lidarFrame.c_str(), ex.what());
+                }
+            }
+            if (baseTransformAvailable) {
+                geometry_msgs::msg::TransformStamped ts;
+                tf2::convert(tCur, ts);
+                ts.child_frame_id = baselinkFrame;
+                tfBroadcaster->sendTransform(ts);
+            }
         } else if (publishFusedBaseTF && requireFreshLidarOdomForTF) {
             RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
                                  "Skip fused TF: lidar odometry is stale by %.3f s",

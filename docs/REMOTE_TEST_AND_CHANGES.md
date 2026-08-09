@@ -135,8 +135,8 @@ ros2 launch lvi_sam run.launch.py \
   mode:=mapping \
   scene:=generic \
   enable_visual:=false \
+  publish_fused_tf:=false \
   pcd_directory:=/home/$USER/maps/lvi_test \
-  robot_description_file:=/absolute/path/to/robot.urdf.xacro \
   use_sim_time:=false
 ```
 
@@ -207,15 +207,17 @@ ros2 launch lvi_sam run.launch.py \
   mode:=mapping \
   scene:=generic \
   enable_visual:=true \
+  enable_rviz:=true \
+  image_topic:=/camera/color/image_raw \
   camera_params_file:=$(ros2 pkg prefix lvi_sam)/share/lvi_sam/config/params_camera.yaml \
   pcd_directory:=/home/$USER/maps/visual_test \
-  robot_description_file:=/absolute/path/to/robot.urdf.xacro
+  publish_fused_tf:=false
 ```
 
 检查数据链：
 
 ```bash
-ros2 topic hz /camera/image_raw
+ros2 topic hz /camera/color/image_raw
 ros2 topic hz /odometry/imu
 ros2 topic hz /lio_sam/deskew/cloud_deskewed
 ros2 topic echo /lvi_sam/vins/loop/match_frame --once
@@ -284,7 +286,7 @@ uname -a
 printenv ROS_DISTRO
 ros2 doctor --report
 ros2 bag record \
-  /livox/lidar /IMU_data /camera/image_raw /gps/lio_sam_odom \
+  /livox/lidar /IMU_data /camera/color/image_raw /gps/lio_sam_odom \
   /lio_sam/mapping/odometry /lio_sam/localization/state
 ```
 

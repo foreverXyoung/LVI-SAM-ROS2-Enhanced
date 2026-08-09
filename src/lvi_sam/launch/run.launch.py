@@ -40,6 +40,10 @@ def generate_launch_description():
         default_value=os.path.join(pkg_dir, 'config', 'params_camera.yaml'),
         description='VIS(camera) 参数文件')
 
+    image_topic_arg = DeclareLaunchArgument(
+        'image_topic', default_value='/camera/color/image_raw',
+        description='VIS 输入图像话题；覆盖 camera 参数文件中的 image_topic')
+
     imu_topic_arg = DeclareLaunchArgument(
         'imu_topic', default_value='/IMU_data',
         description='LIS 与 VIS 共用的 sensor_msgs/Imu 话题')
@@ -51,6 +55,19 @@ def generate_launch_description():
     enable_visual_arg = DeclareLaunchArgument(
         'enable_visual', default_value='true',
         description='是否启动 visual_feature、estimator 和 loop 三个视觉节点')
+
+    enable_rviz_arg = DeclareLaunchArgument(
+        'enable_rviz', default_value='true',
+        description='是否使用工程内置配置启动 RViz2')
+
+    rviz_config_arg = DeclareLaunchArgument(
+        'rviz_config_file',
+        default_value=os.path.join(pkg_dir, 'config', 'rviz2.rviz'),
+        description='RViz2 配置文件')
+
+    rviz_fixed_frame_arg = DeclareLaunchArgument(
+        'rviz_fixed_frame', default_value='odom',
+        description='RViz2 Fixed Frame；当前算法输出默认使用 odom')
 
     robot_description_arg = DeclareLaunchArgument(
         'robot_description_file', default_value='',
@@ -69,20 +86,32 @@ def generate_launch_description():
         'publish_map_odom_static', default_value='false',
         description='是否发布 map->odom 静态变换；仅在没有其他 map->odom 发布者时启用')
 
+    publish_fused_tf_arg = DeclareLaunchArgument(
+        'publish_fused_tf', default_value='true',
+        description='是否发布 odom->base_link；关闭时算法不查询平台 TF tree')
+
     def launch_setup(context):
         mode = LaunchConfiguration('mode').perform(context).strip().lower()
         scene = LaunchConfiguration('scene').perform(context).strip().lower()
         lidar_params = LaunchConfiguration('lidar_params_file').perform(context)
         camera_params = LaunchConfiguration('camera_params_file').perform(context)
+        image_topic = LaunchConfiguration('image_topic').perform(context)
         imu_topic = LaunchConfiguration('imu_topic').perform(context)
         gps_topic = LaunchConfiguration('gps_topic').perform(context)
         enable_visual = LaunchConfiguration('enable_visual').perform(
             context).strip().lower()
+        enable_rviz = LaunchConfiguration('enable_rviz').perform(
+            context).strip().lower()
+        rviz_config = LaunchConfiguration('rviz_config_file').perform(context)
+        rviz_fixed_frame = LaunchConfiguration(
+            'rviz_fixed_frame').perform(context)
         robot_description_file = LaunchConfiguration(
             'robot_description_file').perform(context)
         pcd_directory = LaunchConfiguration('pcd_directory').perform(context)
         use_sim_time = LaunchConfiguration('use_sim_time').perform(context)
         publish_map_odom = LaunchConfiguration('publish_map_odom_static').perform(context)
+        publish_fused_tf = LaunchConfiguration(
+            'publish_fused_tf').perform(context).strip().lower()
 
         if mode not in ('mapping', 'localization'):
             raise RuntimeError('mode must be mapping or localization: ' + mode)
@@ -90,6 +119,10 @@ def generate_launch_description():
             raise RuntimeError('scene must be generic, charging or gazebo: ' + scene)
         if enable_visual not in ('true', 'false'):
             raise RuntimeError('enable_visual must be true or false')
+        if enable_rviz not in ('true', 'false'):
+            raise RuntimeError('enable_rviz must be true or false')
+        if publish_fused_tf not in ('true', 'false'):
+            raise RuntimeError('publish_fused_tf must be true or false')
         if not lidar_params:
             config_name = (
                 'params_' + mode + '.yaml'
@@ -100,6 +133,8 @@ def generate_launch_description():
             raise RuntimeError('LIS parameter file does not exist: ' + lidar_params)
         if enable_visual == 'true' and not os.path.isfile(camera_params):
             raise RuntimeError('VIS parameter file does not exist: ' + camera_params)
+        if enable_rviz == 'true' and not os.path.isfile(rviz_config):
+            raise RuntimeError('RViz configuration file does not exist: ' + rviz_config)
 
         # LIS 节点共享的覆盖参数（pcd 目录 + 仿真时间）
         # yaml 中 loadPCDDirectory 位于 Loc 参数组；launch_ros 会将该
@@ -107,6 +142,7 @@ def generate_launch_description():
         lis_common = [
             {'use_sim_time': use_sim_time == 'true'},
             {'imuTopic': imu_topic},
+            {'publishFusedBaseTF': publish_fused_tf == 'true'},
             {'savePCDDirectory': pcd_directory},
             {'Loc': {'loadPCDDirectory': pcd_directory}},
         ]
@@ -115,6 +151,7 @@ def generate_launch_description():
         vis_common = [
             {'use_sim_time': use_sim_time == 'true'},
             {'imu_topic': imu_topic},
+            {'image_topic': image_topic},
         ]
 
         nodes = []
@@ -196,6 +233,18 @@ def generate_launch_description():
             parameters=[camera_params] + vis_common,
             remappings=[]))
 
+        # RViz is independent from the camera/VIS pipeline.  Keep it enabled
+        # by default for on-robot validation, while allowing headless launches
+        # to opt out with enable_rviz:=false.
+        nodes.append(Node(
+            package='rviz2',
+            executable='rviz2',
+            name='lvi_sam_rviz2',
+            output='screen',
+            condition=IfCondition(LaunchConfiguration('enable_rviz')),
+            arguments=['-d', rviz_config, '-f', rviz_fixed_frame],
+            parameters=[{'use_sim_time': use_sim_time == 'true'}]))
+
         return nodes
 
     return LaunchDescription([
@@ -203,12 +252,17 @@ def generate_launch_description():
         scene_arg,
         lidar_params_arg,
         camera_params_arg,
+        image_topic_arg,
         imu_topic_arg,
         gps_topic_arg,
         enable_visual_arg,
+        enable_rviz_arg,
+        rviz_config_arg,
+        rviz_fixed_frame_arg,
         robot_description_arg,
         pcd_dir_arg,
         use_sim_time_arg,
         publish_map_odom_arg,
+        publish_fused_tf_arg,
         OpaqueFunction(function=launch_setup),
     ])

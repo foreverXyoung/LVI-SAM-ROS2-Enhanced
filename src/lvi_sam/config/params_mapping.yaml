@@ -97,7 +97,9 @@
 
     # CPU Params
     numberOfCores: 8                              # number of cores for mapping optimization
-    mappingProcessInterval: 0.10
+    # Process every accepted MID-360 frame.  A 0.10 s threshold drops frames
+    # whenever the nominal 10 Hz period jitters slightly below 0.10 s.
+    mappingProcessInterval: 0.0
 
     # Surrounding map
     surroundingkeyframeAddingDistThreshold: 0.2   # 2. meters, regulate keyframe adding threshold

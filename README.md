@@ -85,7 +85,8 @@ LVI-SAM-ROS2-Enhanced/                 # colcon 工作区根（即本仓库根�
 - **机器人 URDF / xacro**：必须提供 `base_link → livox_frame → imu_link`（以及相机 `camera*` 帧）
   的 TF 链。`run.launch.py` 通过 `robot_description_file` 启动参数接收，并可选启动
   `robot_state_publisher`。请使用你机器人的真实外参替换。
-- **相机驱动**：VIS 需要 `/camera/image_raw`（sensor_msgs/Image）与相机内参。
+- **相机驱动**：VIS 默认订阅 `/camera/color/image_raw`（sensor_msgs/Image）；可通过
+  `image_topic` 启动参数覆盖。相机模型、分辨率、内参与外参必须使用实机标定值。
 - **IMU 话题**：LIS 与 VIS 默认共用 `/IMU_data`，类型必须是 `sensor_msgs/Imu`。
   若现场驱动使用其他话题，通过入口 launch 的 `imu_topic` 一次性覆盖 LIS 与 VIS。
 
@@ -131,10 +132,13 @@ source install/setup.bash
 # 启动激光驱动（livox_ros_driver2，自带 MID360 launch）
 ros2 launch livox_ros_driver2 msg_MID360_launch.py   # 或你的平台对应 launch
 
-# 启动 LIS + VIS（话题接线已内置 remap）
+# 启动 LIS + VIS + RViz2（视觉与 RViz 默认开启，均可独立关闭）
 ros2 launch lvi_sam run.launch.py \
     robot_description_file:=/path/to/your_robot.urdf.xacro
 ```
+
+无图形界面的远程终端使用 `enable_rviz:=false`；仅测试激光链路时再加
+`enable_visual:=false`。
 
 主要话题（节选）：
 

@@ -6,7 +6,7 @@
       PROJECT_NAME: "lvi_sam"
       # 与 LIS 共用同一条标准 sensor_msgs/Imu 数据，避免双 IMU 时间基准和噪声模型不一致。
       imu_topic: "/IMU_data"
-      image_topic: "/camera/image_raw"
+      image_topic: "/camera/color/image_raw"
       # 激光去畸变点云：对应 fork mapOptmization 发布的 /lio_sam/deskew/cloud_deskewed
       point_cloud_topic: "/lio_sam/deskew/cloud_deskewed"
 

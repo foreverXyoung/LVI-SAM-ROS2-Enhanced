@@ -98,12 +98,17 @@ ros2 launch lvi_sam run.launch.py \
 | `scene` | `generic` | `generic`、`charging` 或 `gazebo`；与 `mode` 组合选择 YAML |
 | `lidar_params_file` | 空 | 可选显式 LIS 参数文件；非空时优先于 `mode/scene` |
 | `camera_params_file` | `config/params_camera.yaml` | VIS 参数 |
+| `image_topic` | `/camera/color/image_raw` | VIS 输入图像话题；覆盖相机参数文件中的同名配置 |
 | `imu_topic` | `/IMU_data` | LIS 与 VIS 共用的标准 `sensor_msgs/Imu` 话题；驱动发布 `/livox/imu` 时可在此统一覆盖 |
 | `gps_topic` | 空 | 可选 map 对齐 `nav_msgs/Odometry` RTK/GPS 话题；非空时覆盖 YAML |
 | `enable_visual` | `true` | 无相机或仅验证激光链路时设为 `false` |
+| `enable_rviz` | `true` | 默认启动工程 RViz2；无桌面或纯 SSH 环境设为 `false` |
+| `rviz_config_file` | `config/rviz2.rviz` | RViz2 配置文件 |
+| `rviz_fixed_frame` | `odom` | RViz2 Fixed Frame；当前实机算法输出默认使用 `odom` |
 | `pcd_directory` | `/tmp/lvi_sam_maps` | 先验地图读取 / 建图输出目录，**覆盖 yaml 内默认值** |
 | `use_sim_time` | `false` | 仿真（Gazebo）置 `true` |
 | `publish_map_odom_static` | `false` | 是否发布 `map→odom` 静态变换；仅在确认没有其他 TF 发布者时启用 |
+| `publish_fused_tf` | `true` | 是否发布 `odom→base_link`；纯算法测试设为 `false`，此时不会查询平台 TF tree |
 
 > 也可用 [`scripts/run.sh`](../scripts/run.sh) 透传参数：
 > `bash scripts/run.sh robot_description_file:=/path/to/robot.urdf.xacro use_sim_time:=true`
