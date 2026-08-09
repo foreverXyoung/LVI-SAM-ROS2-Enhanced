@@ -63,7 +63,8 @@ git status --short
 ```bash
 source /opt/ros/humble/setup.bash
 bash scripts/install_deps.sh
-bash scripts/build.sh --clean
+# 第一阶段只验证 MID-360 + IMU + Scan Context + 建图/重定位
+bash scripts/build.sh --lidar-only --clean
 source install/setup.bash
 ```
 
@@ -73,6 +74,10 @@ source install/setup.bash
 ros2 pkg prefix lvi_sam
 ros2 pkg executables lvi_sam
 ```
+
+第一阶段应看到 `lvi_sam_imuPreintegration` 与 `lvi_sam_mapOptimization`。相机标定完成后，
+再运行 `bash scripts/build.sh --clean` 构建完整 VIS；Orin 的 OpenCV ABI 核验见
+[`DEPLOY_ORIN.md`](DEPLOY_ORIN.md#3-opencv-冲突决策orin-头号坑)。
 
 应至少看到：
 

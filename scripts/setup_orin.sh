@@ -87,18 +87,13 @@ echo
 c_step "3) OpenCV 冲突自检（Orin 高危坑）"
 _sys_cv="$(pkg-config --modversion opencv4 2>/dev/null || echo 'N/A')"
 c_info "系统 OpenCV (pkg-config opencv4): $_sys_cv"
-_cv_bridge_so="$(ldconfig -p 2>/dev/null | grep -m1 'libcv_bridge.so' | awk '{print $NF}')"
+_cv_bridge_so="/opt/ros/${ROS_DISTRO:-humble}/lib/libcv_bridge.so"
 if [ -n "$_cv_bridge_so" ] && [ -f "$_cv_bridge_so" ]; then
-  _linked_cv="$(strings "$_cv_bridge_so" 2>/dev/null | grep -m1 '^opencv' || echo 'N/A')"
+  _linked_cv="$(ldd "$_cv_bridge_so" 2>/dev/null | grep -m1 'libopencv_core' | awk '{print $1}' || echo 'N/A')"
   c_info "cv_bridge 链接的 OpenCV: $_linked_cv"
-  if [ "$_sys_cv" != "N/A" ] && [ "$_linked_cv" != "N/A" ] && [ "$_sys_cv" != "$_linked_cv" ]; then
-    c_err "系统 OpenCV ($_sys_cv) 与 cv_bridge 链接的 ($_linked_cv) 主版本不一致！"
-    c_warn "请在 build.sh 设 OpenCV_DIR 指向系统 OpenCV（默认 KEEP_SYSTEM=1 会自动处理），详见 docs/DEPLOY_ORIN.md §3。"
-  else
-    c_ok "OpenCV 版本一致，无需特殊处理。"
-  fi
+  c_info "两套 OpenCV 可以共存；build.sh 默认优先 cv_bridge 对应的 ROS ABI。"
 else
-  c_info "cv_bridge 尚未编译或不在缓存；编完后再查。保持默认 KEEP_SYSTEM=1 即可。"
+  c_info "未找到 ROS cv_bridge；仅激光测试可使用 build.sh --lidar-only。"
 fi
 echo
 

@@ -65,26 +65,29 @@ JetPack 系统已自带 **CUDA 版 OpenCV（常 4.8 / 4.10）**；装 `ros-humbl
 
 `setup_orin.sh` 第 3 步已打印系统 OpenCV 与 cv_bridge 链接版本。
 
-**我们的默认策略（推荐，零额外操作）**：**沿用系统 CUDA 版 OpenCV**。
-`build.sh` 在 aarch64 上会自动查找系统 `OpenCVConfig.cmake` 并向 CMake 传入 `OpenCV_DIR`，
-让 cv_bridge 与本项目节点都用同一份（CUDA 加速对 VIS 特征/光流更友好）。
+**默认策略（推荐，零额外操作）**：使用 ROS 预编译 `cv_bridge` 所对应的发行版 OpenCV。
+项目 CMake 会优先选择 `/usr/lib/<multiarch>/cmake/opencv4`，避免把 ROS 的 OpenCV 4.5 与
+`/usr/local` 的 4.8/4.10 链入同一个节点。当前 VIS 代码使用 CPU OpenCV API，因此默认方案
+不会关闭一条已经启用的 CUDA 图像处理路径。
 
-**备选（仅当默认策略报错时）**：改用 apt 的 4.5.4
+**仅激光首测（强烈推荐）**：完全不构建 VIS/cv_bridge，缩短编译并隔离相机 ABI：
 ```bash
-KEEP_SYSTEM=0 bash scripts/build.sh
-# 或手动指定 OpenCV_DIR 指向 apt 版 cmake 目录
-# OpenCV_DIR=/usr/lib/aarch64-linux-gnu/cmake/opencv4 bash scripts/build.sh
+bash scripts/build.sh --lidar-only --clean
+```
+
+**高级选项**：若确实需要 `/usr/local` 的 CUDA OpenCV，必须先把 `cv_bridge` 用同一 OpenCV
+重新编译，再显式执行：
+```bash
+KEEP_SYSTEM=1 OpenCV_DIR=/usr/local/lib/cmake/opencv4 bash scripts/build.sh --clean
 ```
 
 **通过标志**（编译后 / 运行前）：
 ```bash
-# 确认 cv_bridge 与系统 OpenCV 主版本一致
-pkg-config --modversion opencv4
-strings $(ldconfig -p | grep -m1 libcv_bridge.so | awk '{print $NF}') | grep -m1 '^opencv'
-# 二者主版本号应相同（如均为 4.10 或均为 4.5）
+# 一个可执行文件中只能出现一套 OpenCV ABI（例如全部为 4.5d）
+ldd install/lvi_sam/lib/lvi_sam/visual_feature_node | grep opencv | sort -u
 ```
-> ⚠️待真机验证：CUDA 版 OpenCV 是否与你装的 `cv_bridge` 完全 ABI 兼容。
-> 若出现运行期 `cv::` 崩溃，第一步就是回到这里切 `KEEP_SYSTEM=0`。
+若链接器再次提示 `libopencv_*.so.4.5d may conflict with libopencv_*.so.408`，不要启动 VIS；
+清理缓存并按默认策略重编译。
 
 ---
 

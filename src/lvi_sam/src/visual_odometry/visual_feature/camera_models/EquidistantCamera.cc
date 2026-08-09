@@ -668,7 +668,7 @@ EquidistantCamera::setParameters(const EquidistantCamera::Parameters& parameters
 void
 EquidistantCamera::readParameters(const std::vector<double>& parameterVec)
 {
-    if (parameterVec.size() != parameterCount())
+    if (parameterVec.size() != static_cast<std::size_t>(parameterCount()))
     {
         return;
     }

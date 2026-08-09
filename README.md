@@ -108,7 +108,8 @@ bash scripts/setup.sh
 
 # 或分步：
 #   bash scripts/install_deps.sh   # apt + GTSAM(源码) + Livox-SDK2(源码) + rosdep
-#   bash scripts/build.sh          # colcon build（含 livox_ros_driver2 子模块）
+#   bash scripts/build.sh          # 全量构建 LIS + VIS
+#   bash scripts/build.sh --lidar-only --clean  # 首轮上车：只构建 LIS，隔离相机/OpenCV
 #   bash scripts/run.sh            # 启动 LIS + VIS
 ```
 
@@ -117,7 +118,8 @@ bash scripts/setup.sh
 ```bash
 source /opt/ros/humble/setup.bash
 rosdep install --from-paths src --ignore-src -y --skip-keys gtsam
-colcon build --symlink-install --packages-up-to lvi_sam
+colcon build --symlink-install --packages-up-to lvi_sam \
+  --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_VISUAL=ON
 source install/setup.bash
 ```
 

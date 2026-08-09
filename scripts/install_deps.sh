@@ -156,14 +156,14 @@ if [ "$IS_ORIN" -eq 1 ]; then
   c_info "===== AGX Orin OpenCV 冲突自检 ====="
   _sys_cv="$(pkg-config --modversion opencv4 2>/dev/null || echo 'N/A')"
   c_info "系统 OpenCV (pkg-config opencv4): $_sys_cv"
-  _cv_bridge_so="$(ldconfig -p 2>/dev/null | grep -m1 'libcv_bridge.so' | awk '{print $NF}')"
+  _cv_bridge_so="/opt/ros/${ROS_DISTRO}/lib/libcv_bridge.so"
   if [ -n "$_cv_bridge_so" ] && [ -f "$_cv_bridge_so" ]; then
-    _linked_cv="$(strings "$_cv_bridge_so" 2>/dev/null | grep -m1 '^opencv' || echo 'N/A')"
+    _linked_cv="$(ldd "$_cv_bridge_so" 2>/dev/null | grep -m1 'libopencv_core' | awk '{print $1}' || echo 'N/A')"
     c_info "cv_bridge 实际链接的 OpenCV: $_linked_cv"
   else
-    c_info "cv_bridge 尚未编译（先 build 后再查），或不在 ldconfig 缓存。"
+    c_info "未找到 ROS cv_bridge；仅激光测试可使用 build.sh --lidar-only。"
   fi
-  c_warn "若二者主版本不一致（如 4.10 vs 4.5），编译/运行前需在 build.sh 设 OpenCV_DIR，详见 docs/DEPLOY_ORIN.md §3。"
+  c_info "两套 OpenCV 可以共存；build.sh 默认优先 cv_bridge 对应的 ROS ABI。"
 fi
 
 c_ok "依赖安装完成。下一步：bash scripts/build.sh"

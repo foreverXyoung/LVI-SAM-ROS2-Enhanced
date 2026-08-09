@@ -134,7 +134,7 @@ public:
         if (lidarFrame != baselinkFrame) {
             try {
                 tf2::fromMsg(tfBuffer->lookupTransform(lidarFrame, baselinkFrame, rclcpp::Time(0)), lidar2Baselink);
-            } catch (tf2::TransformException ex) {
+            } catch (const tf2::TransformException& ex) {
                 RCLCPP_ERROR(get_logger(), "%s", ex.what());
             }
             tf2::Stamped<tf2::Transform> tb(tCur * lidar2Baselink, tf2_ros::fromMsg(odomMsg->header.stamp), odometryFrame);

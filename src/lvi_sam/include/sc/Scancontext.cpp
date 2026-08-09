@@ -15,13 +15,9 @@ float rad2deg(float radians) { return radians * 180.0 / M_PI; }
 float deg2rad(float degrees) { return degrees * M_PI / 180.0; }
 
 float xy2theta(const float& _x, const float& _y) {
-    if ((_x >= 0) & (_y >= 0)) return (180 / M_PI) * atan(_y / _x);
-
-    if ((_x < 0) & (_y >= 0)) return 180 - ((180 / M_PI) * atan(_y / (-_x)));
-
-    if ((_x < 0) & (_y < 0)) return 180 + ((180 / M_PI) * atan(_y / _x));
-
-    if ((_x >= 0) & (_y < 0)) return 360 - ((180 / M_PI) * atan((-_y) / _x));
+    float angle = rad2deg(std::atan2(_y, _x));
+    if (angle < 0.0F) angle += 360.0F;
+    return angle;
 }
 
 MatrixXd circshift(MatrixXd& _mat, int _num_shift) {

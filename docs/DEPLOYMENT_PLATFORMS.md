@@ -68,11 +68,13 @@ Ubuntu 22.04 无 GTSAM apt 包，须源码编译（脚本/ Docker 均从 `borgla
   当你再 `apt install ros-humble-desktop` 或 `libopencv-dev` 时，可能出现：
   - 版本并存导致 `cv_bridge` 链接的 OpenCV 与实际运行的不一致 → 运行期 `cv::xxx` 符号未定义 / ABI 崩溃；
   - 已知案例（Autoware on Orin 指南）明确要求**卸载 JetPack 自带 OpenCV、降级到 4.5.4** 才能编译通过。
-- **应对候选**：
-  1. **保持系统 OpenCV 不动**，编译时通过 `OpenCV_DIR` 指向 JetPack 的 OpenCV 配置，让 `cv_bridge` 与你的节点都用同一份；
-  2. 或按 Autoware 做法降版本（但会失去 CUDA 加速的 OpenCV，对 VIS 图像前端不友好）。
+- **默认应对**：保持两套安装不动，但让本项目优先链接 ROS `cv_bridge` 对应的 apt OpenCV；
+  首轮激光测试用 `bash scripts/build.sh --lidar-only --clean`，完全不构建/链接 `cv_bridge`。
+- **CUDA OpenCV 备选**：只有在用同一 CUDA OpenCV 重编了 `cv_bridge` 后，才能将本项目显式指向
+  `/usr/local` 的 OpenCV 配置。
 - **风险**：高（Orin 上最常见的"编得过跑不起来"元凶）。
-- **⚠️待真机验证**：选方案 1 还是 2，取决于是否需要 OpenCV 的 CUDA 加速（VIS 光流/特征提取若能用 CUDA 版 OpenCV 更好）。**这是上板后第一个要拍板的事**。
+- 当前 VIS 实现使用 CPU OpenCV API，没有已经启用的 `cv::cuda` 路径，因此 ROS ABI 一致性优先于
+  保留 `/usr/local` 版本的潜在 CUDA 能力。
 
 ### 2.5 CUDA / cuDNN / TensorRT
 - **Orin**：JetPack 已预装，路径在 `/usr/local/cuda`。**容器**内若用 L4T 镜像（`nvcr.io/nvidia/l4t-*`）则自带；

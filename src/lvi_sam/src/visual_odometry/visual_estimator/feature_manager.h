@@ -19,17 +19,15 @@ class FeaturePerFrame
 {
   public:
     FeaturePerFrame(const Eigen::Matrix<double, 8, 1> &_point, double td)
-    {
-        point.x() = _point(0);
-        point.y() = _point(1);
-        point.z() = _point(2);
-        uv.x() = _point(3);
-        uv.y() = _point(4);
-        velocity.x() = _point(5); 
-        velocity.y() = _point(6); 
-        depth = _point(7);
-        cur_td = td;
-    }
+        : cur_td(td),
+          point(_point.head<3>()),
+          uv(_point.segment<2>(3)),
+          velocity(_point.segment<2>(5)),
+          z(_point(2)),
+          is_used(false),
+          parallax(0.0),
+          dep_gradient(0.0),
+          depth(_point(7)) {}
     double cur_td;
     Vector3d point;
     Vector2d uv;
@@ -61,7 +59,9 @@ class FeaturePerId
 
     FeaturePerId(int _feature_id, int _start_frame, double _measured_depth)
         : feature_id(_feature_id), start_frame(_start_frame),
-          used_num(0), estimated_depth(-1.0), lidar_depth_flag(false), solve_flag(0) 
+          used_num(0), is_outlier(false), is_margin(false),
+          estimated_depth(-1.0), lidar_depth_flag(false), solve_flag(0),
+          gt_p(Vector3d::Zero())
     {
         if (_measured_depth > 0)
         {

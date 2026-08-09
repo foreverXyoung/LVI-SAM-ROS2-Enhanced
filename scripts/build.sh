@@ -6,8 +6,9 @@
 #   - colcon build --symlink-install --packages-up-to lvi_sam
 #     （会自动先编 livox_ros_driver2，再编 lvi_sam：LIS + VIS）
 #
-# 用法：  bash scripts/build.sh            # 全量
-#        bash scripts/build.sh --clean    # 先清理再编
+# 用法： bash scripts/build.sh                         # 全量（LIS + VIS）
+#       bash scripts/build.sh --clean                 # 先清理再编
+#       bash scripts/build.sh --lidar-only --clean    # 只编 LIS，首轮上车推荐
 #
 set -euo pipefail
 
@@ -32,6 +33,23 @@ source "/opt/ros/$ROS_DISTRO/setup.bash"
 
 cd "$WS_ROOT"
 
+CLEAN_BUILD=0
+BUILD_VISUAL=ON
+for arg in "$@"; do
+  case "$arg" in
+    --clean) CLEAN_BUILD=1 ;;
+    --lidar-only) BUILD_VISUAL=OFF ;;
+    -h|--help)
+      echo "用法: bash scripts/build.sh [--clean] [--lidar-only]"
+      exit 0
+      ;;
+    *)
+      echo "[ERR ] 未知参数: $arg" >&2
+      exit 2
+      ;;
+  esac
+done
+
 # Ensure the driver dependency is available.  A robot workspace may already
 # provide a tested livox_ros_driver2 in a sourced underlay; in that case do not
 # force a second source copy into this repository.
@@ -46,7 +64,7 @@ if [ ! -f src/livox_ros_driver2/package.xml ]; then
   fi
 fi
 
-if [ "${1:-}" = "--clean" ]; then
+if [ "$CLEAN_BUILD" = "1" ]; then
   c_info "清理 build/install/log ..."
   rm -rf build install log
 fi
@@ -54,12 +72,11 @@ fi
 # ---------- Orin(AGX Orin/Jetson) 专属：OpenCV 冲突处理 ----------
 # JetPack 系统自带 CUDA 版 OpenCV（4.8/4.10），ros-humble 还会装 4.5.4，二者并存时
 # cv_bridge 与本项目节点可能因链接不同版本在运行期 ABI 崩溃。
-# 策略（默认 KEEP_SYSTEM=1，沿用系统 CUDA 版 OpenCV）：
-#   - 自动查找系统 opencv4 的 OpenCVConfig.cmake，并传递标准 CMake 变量 OpenCV_DIR；
-#   - 若自动查找失败或想改用 4.5.4，可设 OpenCV_DIR=/usr/lib/x86_64-linux-gnu/cmake/opencv4（x86）
-#     或 apt 版路径，或设 KEEP_SYSTEM=0 交给 apt 的 4.5.4。
+# 策略（默认 KEEP_SYSTEM=0，优先 ROS/cv_bridge 使用的发行版 OpenCV）：
+#   - KEEP_SYSTEM=0 时由项目 CMake 自动选择 /usr/lib/<multiarch> 的 ROS 兼容版本；
+#   - KEEP_SYSTEM=1 仅用于已针对 /usr/local OpenCV 重编 cv_bridge 的高级环境。
 if [ "$IS_ORIN" -eq 1 ]; then
-  KEEP_SYSTEM="${KEEP_SYSTEM:-1}"
+  KEEP_SYSTEM="${KEEP_SYSTEM:-0}"
   if [ -n "${OPENCV_DIR:-}" ] && [ -z "${OpenCV_DIR:-}" ]; then
     c_warn "OPENCV_DIR 已弃用，自动转换为标准变量 OpenCV_DIR。"
     OpenCV_DIR="$OPENCV_DIR"
@@ -96,12 +113,15 @@ if [ "$IS_ORIN" -eq 1 ]; then
 fi
 
 c_info "colcon build（packages-up-to lvi_sam）..."
-CMAKE_ARGS=(-DCMAKE_BUILD_TYPE=Release)
+CMAKE_ARGS=(-DCMAKE_BUILD_TYPE=Release "-DBUILD_VISUAL=$BUILD_VISUAL")
 if command -v ccache >/dev/null 2>&1; then
   CMAKE_ARGS+=(-DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache)
 fi
 if [ -n "${OpenCV_DIR:-}" ]; then
   CMAKE_ARGS+=("-DOpenCV_DIR=$OpenCV_DIR")
+fi
+if [ "$IS_ORIN" -eq 1 ] && [ "${KEEP_SYSTEM:-0}" = "1" ]; then
+  CMAKE_ARGS+=(-DLVI_SAM_PREFER_ROS_OPENCV=OFF)
 fi
 colcon build --symlink-install --packages-up-to lvi_sam \
   --parallel-workers "$COLCON_JOBS" \
