@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.5)
 project(lvi_sam)
 
+if(POLICY CMP0074)
+  cmake_policy(SET CMP0074 NEW)
+endif()
+
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release)
 endif()
@@ -30,7 +34,10 @@ find_package(tf2_ros REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(PCL REQUIRED)
 find_package(pcl_ros REQUIRED)
-find_package(GTSAM 4.0.3 EXACT REQUIRED)  # Keep the source install and build-time ABI aligned.
+# LIO/LVI-SAM uses APIs available throughout the GTSAM 4.x line.  Keep 4.0.3
+# as the reproducible installer default, but accept an existing 4.1.x system
+# package used by deployed robot workspaces.
+find_package(GTSAM 4.0 REQUIRED)
 find_package(Eigen3 REQUIRED)        # 修复：原 LVI-SAM-ROS2 硬编码 /opt/eigen，改为标准 find_package
 find_package(OpenMP REQUIRED)
 find_package(Ceres REQUIRED)         # VIS(VINS) 需要

@@ -255,5 +255,5 @@ docker run -it --rm --net=host --privileged -v /dev:/dev lvi-sam-orin bash
 | `scripts/install_deps.sh` | 加 ccache；GTSAM Orin 并行限 4；aarch64 检测与 OpenCV 自检 |
 | `scripts/build.sh` | aarch64 自动 OpenCV 匹配（`OpenCV_DIR`）+ ccache + 并行限 4；`KEEP_SYSTEM` 开关 |
 | `src/lvi_sam/launch/run.launch.py` | 修复 `Loc.loadPCDDirectory` 嵌套覆盖（旧扁平写法无效，导致 Orin 地图路径指向 `/home/lighter/...`） |
-| `src/lvi_sam/CMakeLists.txt` | `find_package(GTSAM 4.0.3 REQUIRED)`（锁定版本，与脚本/Docker 一致） |
+| `src/lvi_sam/CMakeLists.txt` | 接受现有 GTSAM 4.0/4.1；脚本与 Docker 的可复现默认版本仍为 4.0.3。 |
 | `docs/DEPLOY_ORIN.md`（本文件） | 一步步 Orin 部署手册 |

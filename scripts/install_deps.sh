@@ -64,11 +64,11 @@ INSTALLED_GTSAM_VERSION=""
 if [ -f "$GTSAM_VERSION_FILE" ]; then
   INSTALLED_GTSAM_VERSION="$(grep -m1 -E 'set\(PACKAGE_VERSION "[^"]+"' "$GTSAM_VERSION_FILE" | cut -d'"' -f2 || true)"
 fi
-if [ "$INSTALLED_GTSAM_VERSION" = "4.0.3" ]; then
-  c_ok "GTSAM 4.0.3 已安装，跳过源码编译"
+if [ "$INSTALLED_GTSAM_VERSION" = "4.0.3" ] || [[ "$INSTALLED_GTSAM_VERSION" == 4.1.* ]]; then
+  c_ok "GTSAM $INSTALLED_GTSAM_VERSION 已安装且兼容，跳过源码编译"
 else
   if [ -n "$INSTALLED_GTSAM_VERSION" ]; then
-    c_warn "检测到 GTSAM $INSTALLED_GTSAM_VERSION，本项目要求精确版本 4.0.3，将安装兼容版本。"
+    c_warn "检测到 GTSAM $INSTALLED_GTSAM_VERSION；部署脚本将安装推荐版本 4.0.3。"
   fi
   # ---- swap 检测：ARM/Jetson 上源码编译 GTSAM 极易 OOM，务必先确认 swap ----
   _mem_kb="$(grep MemTotal /proc/meminfo | awk '{print $2}')"

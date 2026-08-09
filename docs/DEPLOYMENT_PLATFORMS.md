@@ -134,7 +134,7 @@ Ubuntu 22.04 无 GTSAM apt 包，须源码编译（脚本/ Docker 均从 `borgla
 |---|---|---|---|---|
 | 1 | Dockerfile 硬编码 `FROM ros:humble`（x86） | 高 | `FROM` 参数化为 `BASE_IMAGE`，Orin 用 L4T 镜像 + 加构建注释 | `Dockerfile` |
 | 2 | `install_deps.sh` 无 swap 检测，Orin 编 GTSAM 易 OOM | 高 | 新增 swap 检测：内存 <16GB 且无 swap 时告警并给出 32GB 创建命令 | `scripts/install_deps.sh` |
-| 3 | `find_package(GTSAM REQUIRED)` 无版本约束 | 中 | **建议**显式约束 `4.0.3`（与脚本/ Docker 一致），避免误装 4.2 引入 API 漂移 | `src/lvi_sam/CMakeLists.txt:32`（待执行，见下） |
+| 3 | GTSAM 版本兼容 | 中 | 构建接受机器人现有的 4.0/4.1，脚本/Docker 默认安装 4.0.3；升级更高版本前应重新编译验证 | `src/lvi_sam/CMakeLists.txt` |
 | 4 | OpenCV 冲突未在任何脚本处理 | 高（Orin） | 在 `docs/ENVIRONMENT.md` 与本文 §2.4 写明应对，运行时人工拍板 | 文档 |
 
 > 第 3 项（CMake 版本约束）属于代码改动，影响编译行为；本次先写入文档与计划，
