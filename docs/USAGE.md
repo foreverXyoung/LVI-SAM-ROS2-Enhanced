@@ -44,7 +44,7 @@ LIS 与 VIS 都依赖正确的 TF。必须提供包含以下链路的 URDF（xac
 
 ```bash
 # MID360 示例
-ros2 launch livox_ros_driver2 msg_MID360.launch.py
+ros2 launch livox_ros_driver2 msg_MID360_launch.py
 # 确认话题存在：
 ros2 topic list | grep -E "/livox/lidar|/IMU_data"
 ```

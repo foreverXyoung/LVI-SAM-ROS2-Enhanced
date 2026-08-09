@@ -32,10 +32,18 @@ source "/opt/ros/$ROS_DISTRO/setup.bash"
 
 cd "$WS_ROOT"
 
-# 确保子模块
+# Ensure the driver dependency is available.  A robot workspace may already
+# provide a tested livox_ros_driver2 in a sourced underlay; in that case do not
+# force a second source copy into this repository.
 if [ ! -f src/livox_ros_driver2/package.xml ]; then
-  c_info "初始化子模块 livox_ros_driver2 ..."
-  git submodule update --init --recursive
+  if command -v ros2 >/dev/null 2>&1 && ros2 pkg prefix livox_ros_driver2 >/dev/null 2>&1; then
+    _livox_prefix="$(ros2 pkg prefix livox_ros_driver2)"
+    c_ok "使用已安装的 livox_ros_driver2: $_livox_prefix"
+    c_warn "本仓库的 Livox 子模块未初始化；当前构建将复用已 source 的驱动版本。"
+  else
+    c_info "初始化子模块 livox_ros_driver2 ..."
+    git submodule update --init --recursive
+  fi
 fi
 
 if [ "${1:-}" = "--clean" ]; then

@@ -117,7 +117,7 @@ ros2 run tf2_ros tf2_echo base_link imu_link
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 
-ros2 launch livox_ros_driver2 msg_MID360.launch.py
+ros2 launch livox_ros_driver2 msg_MID360_launch.py
 ```
 
 另开终端：

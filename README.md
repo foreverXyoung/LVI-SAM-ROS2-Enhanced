@@ -127,7 +127,7 @@ source install/setup.bash
 
 ```bash
 # 启动激光驱动（livox_ros_driver2，自带 MID360 launch）
-ros2 launch livox_ros_driver2 msg_MID360.launch.py   # 或你的平台对应 launch
+ros2 launch livox_ros_driver2 msg_MID360_launch.py   # 或你的平台对应 launch
 
 # 启动 LIS + VIS（话题接线已内置 remap）
 ros2 launch lvi_sam run.launch.py \
@@ -170,7 +170,7 @@ ros2 launch lvi_sam run.launch.py \
 | [`docs/REMOTE_TEST_AND_CHANGES.md`](docs/REMOTE_TEST_AND_CHANGES.md) | **本次修改说明与远程测试手册**：拉取、编译、分阶段建图/定位、视觉、RTK、验收及已知边界。 |
 | [`scripts/setup.sh`](scripts/setup.sh) | 一键编排：子模块初始化 → 依赖安装 → 编译。 |
 | [`scripts/install_deps.sh`](scripts/install_deps.sh) | 安装系统/ROS 依赖，并源码编译安装 GTSAM 与 Livox-SDK2（重跑安全）。 |
-| [`scripts/build.sh`](scripts/build.sh) | `colcon build --symlink-install --packages-up-to lvi_sam`（自动先编 `livox_ros_driver2`）。 |
+| [`scripts/build.sh`](scripts/build.sh) | `colcon build --symlink-install --packages-up-to lvi_sam`；优先复用已 source 的 `livox_ros_driver2`，否则初始化并编译子模块。 |
 | [`scripts/run.sh`](scripts/run.sh) | source 环境并 `ros2 launch lvi_sam run.launch.py`，支持透传参数。 |
 | [`Dockerfile`](Dockerfile) / [`docker-compose.yml`](docker-compose.yml) | 可复现的容器化环境（ros:humble + 全部依赖 + 编译）。 |
 

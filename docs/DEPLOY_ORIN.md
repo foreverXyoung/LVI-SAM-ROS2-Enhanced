@@ -144,7 +144,7 @@ ls install/lvi_sam/lib/lvi_sam/
 source /opt/ros/humble/setup.bash
 source install/setup.bash
 # 用工程内或你已有的 MID360 launch（需指定 MID360 的 user_config 与 IP）
-ros2 launch livox_ros_driver2 msg_MID360.launch.py
+ros2 launch livox_ros_driver2 msg_MID360_launch.py
 ```
 
 **通过标志**（另开终端）：
