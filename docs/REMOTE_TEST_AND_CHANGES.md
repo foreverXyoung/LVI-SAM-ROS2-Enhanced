@@ -225,6 +225,10 @@ ros2 topic echo /lvi_sam/vins/loop/match_frame --once
 
 `match_frame` 只在 DBoW2/BRIEF 找到并验证回环时发布，因此短时间没有消息不代表节点异常。应同时观察三个视觉节点日志、特征跟踪图和 VINS 里程计是否连续。
 
+当前实机默认相机配置来自 `/camera/color/camera_info`：`640x400`、PINHOLE/plumb_bob。
+在相机—IMU与雷达—相机外参完成实机标定前，配置会优化相机—IMU初值，并默认关闭
+LiDAR 深度注入；此阶段只用于验证视觉特征与 VIO 数据链，不作为最终融合精度结论。
+
 当前版本会保存相机原始数据的设计约定和地图清单入口，但没有实现跨进程持久化 DBoW2/BRIEF 数据库；跨会话全局重定位仍由 Scan Context + ICP 主导。不要把“在线视觉回环可用”误认为“重启后可用视觉地图重定位”。
 
 ### 4.5 第五阶段：RTK 建图和定位
