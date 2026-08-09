@@ -575,7 +575,70 @@ void Estimator::vector2double()
     }
 
     VectorXd dep = f_manager.getDepthVector();
-    for (int i = 0; i < f_manager.g…622 tokens truncated…ara_Ex_Pose[i][4],
+    for (int i = 0; i < f_manager.getFeatureCount(); i++)
+        para_Feature[i][0] = dep(i);
+    
+    if (ESTIMATE_TD)
+        para_Td[0][0] = td;
+}
+
+void Estimator::double2vector()
+{
+    Vector3d origin_R0 = Utility::R2ypr(Rs[0]);
+    Vector3d origin_P0 = Ps[0];
+
+    if (failure_occur)
+    {
+        origin_R0 = Utility::R2ypr(last_R0);
+        origin_P0 = last_P0;
+        failure_occur = 0;
+    }
+    Vector3d origin_R00 = Utility::R2ypr(Quaterniond(para_Pose[0][6],
+                                                      para_Pose[0][3],
+                                                      para_Pose[0][4],
+                                                      para_Pose[0][5]).toRotationMatrix());
+    double y_diff = origin_R0.x() - origin_R00.x();
+    //TODO
+    Matrix3d rot_diff = Utility::ypr2R(Vector3d(y_diff, 0, 0));
+    if (abs(abs(origin_R0.y()) - 90) < 1.0 || abs(abs(origin_R00.y()) - 90) < 1.0)
+    {
+        RCLCPP_DEBUG(this->get_logger(), "euler singular point!");
+        rot_diff = Rs[0] * Quaterniond(para_Pose[0][6],
+                                       para_Pose[0][3],
+                                       para_Pose[0][4],
+                                       para_Pose[0][5]).toRotationMatrix().transpose();
+    }
+
+    for (int i = 0; i <= WINDOW_SIZE; i++)
+    {
+
+        Rs[i] = rot_diff * Quaterniond(para_Pose[i][6], para_Pose[i][3], para_Pose[i][4], para_Pose[i][5]).normalized().toRotationMatrix();
+        
+        Ps[i] = rot_diff * Vector3d(para_Pose[i][0] - para_Pose[0][0],
+                                para_Pose[i][1] - para_Pose[0][1],
+                                para_Pose[i][2] - para_Pose[0][2]) + origin_P0;
+
+        Vs[i] = rot_diff * Vector3d(para_SpeedBias[i][0],
+                                    para_SpeedBias[i][1],
+                                    para_SpeedBias[i][2]);
+
+        Bas[i] = Vector3d(para_SpeedBias[i][3],
+                          para_SpeedBias[i][4],
+                          para_SpeedBias[i][5]);
+
+        Bgs[i] = Vector3d(para_SpeedBias[i][6],
+                          para_SpeedBias[i][7],
+                          para_SpeedBias[i][8]);
+    }
+
+    for (int i = 0; i < NUM_OF_CAM; i++)
+    {
+        tic[i] = Vector3d(para_Ex_Pose[i][0],
+                          para_Ex_Pose[i][1],
+                          para_Ex_Pose[i][2]);
+        ric[i] = Quaterniond(para_Ex_Pose[i][6],
+                             para_Ex_Pose[i][3],
+                             para_Ex_Pose[i][4],
                              para_Ex_Pose[i][5]).toRotationMatrix();
     }
 
