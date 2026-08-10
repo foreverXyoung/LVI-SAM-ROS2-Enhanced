@@ -32,7 +32,11 @@ c_err(){  echo -e "\033[1;31m[ERR ]\033[0m  $*"; }
 c_info "检测 ROS 2 ($ROS_DISTRO) 环境 ..."
 if [ -f "/opt/ros/$ROS_DISTRO/setup.bash" ]; then
   # shellcheck disable=SC1091
+  # ROS 的 setup.bash 会引用未设置的变量（如 AMENT_TRACE_SETUP_FILES），
+  # 在 set -u 下会报“未绑定的变量”而中止；临时关闭 nounset 再 source。
+  set +u
   source "/opt/ros/$ROS_DISTRO/setup.bash"
+  set -u
   c_ok "已 source /opt/ros/$ROS_DISTRO/setup.bash"
 else
   c_err "未找到 ROS 2 ($ROS_DISTRO)。请先按 docs/ENVIRONMENT.md 安装 ROS 2 Humble。"

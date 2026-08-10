@@ -19,14 +19,20 @@ if [ ! -f "/opt/ros/$ROS_DISTRO/setup.bash" ]; then
   exit 1
 fi
 # shellcheck disable=SC1091
+# ROS 的 setup.bash 会引用未设置的变量（如 AMENT_TRACE_SETUP_FILES），
+# 在 set -u 下会报“未绑定的变量”而中止；临时关闭 nounset 再 source。
+set +u
 source "/opt/ros/$ROS_DISTRO/setup.bash"
+set -u
 
 if [ ! -f "$WS_ROOT/install/setup.bash" ]; then
   echo "[ERR ] 未找到 install/setup.bash，请先运行 bash scripts/build.sh" >&2
   exit 1
 fi
 # shellcheck disable=SC1091
+set +u
 source "$WS_ROOT/install/setup.bash"
+set -u
 
 echo "[INFO] 启动 lvi_sam run.launch.py $*"
 exec ros2 launch lvi_sam run.launch.py "$@"

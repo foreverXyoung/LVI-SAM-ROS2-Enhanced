@@ -29,7 +29,11 @@ if [ ! -f "/opt/ros/$ROS_DISTRO/setup.bash" ]; then
   exit 1
 fi
 # shellcheck disable=SC1091
+# ROS 的 setup.bash 会引用未设置的变量（如 AMENT_TRACE_SETUP_FILES），
+# 在 set -u 下会报“未绑定的变量”而中止；临时关闭 nounset 再 source。
+set +u
 source "/opt/ros/$ROS_DISTRO/setup.bash"
+set -u
 
 cd "$WS_ROOT"
 
