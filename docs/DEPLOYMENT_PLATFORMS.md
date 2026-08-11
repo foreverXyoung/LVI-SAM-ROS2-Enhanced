@@ -146,7 +146,8 @@ Ubuntu 22.04 无 GTSAM apt 包，须源码编译（脚本/ Docker 均从 `borgla
 - [ ] GTSAM 在 Orin 上编译内存峰值 + 实际时长（确认 32GB swap 是否够）。
 - [ ] `colcon build` 在 Orin 全量编译耗时与是否需 `ccache`。
 - [ ] 实时性：满载时 LIO-SAM 单帧时延、`nvpmodel`/`jetson_clocks` 后的稳定性。
-- [ ] livox_ros_driver2 + Livox-SDK2 在 Orin 的 MID360 实际出数（`/livox/lidar` + 标准 `sensor_msgs/Imu`，并用 `imu_topic` 统一接入）。
+- [ ] livox_ros_driver2 + Livox-SDK2 在 Orin 的 MID360 实际出数（`/livox/lidar` +
+      `/livox/imu`），并用 `imu_source:=mid360` 验证单位转换和 IMU profile。
 - [ ] VIS 三节点在 Orin 的 CPU 占用与温度（长时间运行 `tegrastats`）。
 
 ---

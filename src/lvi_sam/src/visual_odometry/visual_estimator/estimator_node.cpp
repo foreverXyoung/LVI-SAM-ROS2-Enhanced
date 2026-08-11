@@ -256,9 +256,17 @@ void imu_callback(const sensor_msgs::msg::Imu::ConstSharedPtr &imu_msg, Estimato
     }
     last_imu_t = imu_time;
 
+    // Livox MID-360 publishes acceleration in g. Normalize the selected IMU
+    // profile to sensor_msgs SI units before the message enters either the
+    // buffered estimator path or the real-time prediction path.
+    auto normalized_imu = std::make_shared<sensor_msgs::msg::Imu>(*imu_msg);
+    normalized_imu->linear_acceleration.x *= IMU_ACCELERATION_SCALE;
+    normalized_imu->linear_acceleration.y *= IMU_ACCELERATION_SCALE;
+    normalized_imu->linear_acceleration.z *= IMU_ACCELERATION_SCALE;
+
     {
         std::lock_guard<std::mutex> lock(m_buf);
-        imu_buf.push(imu_msg);
+        imu_buf.push(normalized_imu);
         while (imu_buf.size() > kMaxImuQueueSize)
             imu_buf.pop();
     }
@@ -266,8 +274,8 @@ void imu_callback(const sensor_msgs::msg::Imu::ConstSharedPtr &imu_msg, Estimato
 
     {
         std::scoped_lock lock(m_estimator, m_state);
-        predict(imu_msg, estimator);
-        std_msgs::msg::Header header = imu_msg->header;
+        predict(normalized_imu, estimator);
+        std_msgs::msg::Header header = normalized_imu->header;
         if (estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR)
             pubLatestOdometry(tmp_P, tmp_Q, tmp_V, header, estimator.failureCount);
     }

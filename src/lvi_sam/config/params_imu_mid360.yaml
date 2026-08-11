@@ -1,0 +1,40 @@
+/**:
+  ros__parameters:
+    # Livox ROS Driver 2 publishes the MID-360 built-in IMU on this topic.
+    imuTopic: "/livox/imu"
+    imu_topic: "/livox/imu"
+
+    # MID-360 Ethernet IMU acceleration is expressed in g, while LVI-SAM and
+    # sensor_msgs/Imu expect m/s^2. Both LIS and VIS apply this scale once.
+    imuAccelerationScale: 9.80665
+
+    # Initial commissioning values only. Replace them with an Allan-variance
+    # calibration from this exact MID-360 before accuracy evaluation.
+    imuAccNoise: 3.9939570888238808e-03
+    imuGyrNoise: 1.5636343949698187e-03
+    imuAccBiasN: 6.4356659353532566e-05
+    imuGyrBiasN: 3.5640318696367613e-05
+    imuGravity: 9.80511
+
+    # The driver does not provide an attitude estimate. Keep roll/pitch fusion
+    # disabled while retaining gyro integration for point-cloud deskew.
+    imuRPYWeight: 0.0
+
+    # Initial VIS noise values; calibrate before comparing estimator accuracy.
+    acc_n: 0.02
+    gyr_n: 0.01
+    acc_w: 0.002
+    gyr_w: 4.0e-5
+    g_norm: 9.805
+
+    # MID-360 IMU axes have the same directions as its point-cloud axes.
+    # The driver publishes both with livox_frame. Zero lever arm is a safe
+    # commissioning approximation, not a substitute for a measured internal
+    # IMU-origin offset if one becomes available.
+    extrinsicTrans: [0.0, 0.0, 0.0]
+    extrinsicRot: [1.0, 0.0, 0.0,
+                   0.0, 1.0, 0.0,
+                   0.0, 0.0, 1.0]
+    extrinsicRPY: [1.0, 0.0, 0.0,
+                   0.0, 1.0, 0.0,
+                   0.0, 0.0, 1.0]

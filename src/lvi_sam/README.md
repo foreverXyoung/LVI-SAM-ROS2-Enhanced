@@ -16,6 +16,7 @@ src/lvi_sam/
 │   ├── params_mapping.yaml              # LIS 通用建图配置
 │   ├── params_localization.yaml         # LIS 通用先验地图定位配置
 │   ├── params_*_{localization,mapping}.yaml   # 场景/模式变体（gazebo/charging）
+│   ├── params_imu_{external,mid360}.yaml      # 两套 IMU 话题/单位/噪声/外参 profile
 │   ├── params_camera.yaml               # VIS 参数（来自 LVI-SAM-ROS2）
 │   ├── brief_k10L6.bin                  # DBoW2 词表（统一资源解析器加载）
 │   ├── brief_pattern.yaml
@@ -104,10 +105,11 @@ ros2 launch lvi_sam run.launch.py \
   pcd_directory:=/tmp/lvi_sam_maps
 ```
 
-常用参数：`lidar_params_file`（场景/模式 yaml）、`camera_params_file`、`pcd_directory`
+常用参数：`lidar_params_file`（场景/模式 yaml）、`imu_source:=external|mid360`、
+`camera_params_file`、`pcd_directory`
 （覆盖先验地图/输出目录）、`use_sim_time`、`project_name`、`odom_topic` 和
-`publish_map_odom_static`。`imu_topic` 会同时覆盖 LIS 与 VIS 的标准
-`sensor_msgs/Imu` 输入，默认 `/IMU_data`。
+`publish_map_odom_static`。`imu_source` 会同时选择 LIS 与 VIS 的话题、加速度单位和噪声；
+`imu_topic` 只作为临时高级覆盖，不用于在两种物理 IMU 之间切换。
 
 完整接口、依赖与稳定性约束见根目录
 [`docs/INTERFACES_AND_STABILITY.md`](../../docs/INTERFACES_AND_STABILITY.md)。
@@ -116,7 +118,9 @@ ros2 launch lvi_sam run.launch.py \
 
 ## 6. 实机部署前必须确认
 
-1. **IMU 接口**：LIS 与 VIS 现统一订阅 `/IMU_data`，类型为标准 `sensor_msgs/Imu`；若驱动实际发布其他话题或消息类型，须在驱动侧 remap/转换后再接入。
+1. **IMU 接口**：外置 IMU 使用 `imu_source:=external`，MID-360 内置 IMU 使用
+   `imu_source:=mid360`；两者均为 `sensor_msgs/Imu`，但话题、加速度单位、噪声和外参不同。
+   MID-360 视觉测试还必须提供相机到内置 IMU 的专用标定文件。
 2. **相机-IMU-激光外参标定**：`params_camera.yaml` 里的 `extrinsicRotation/Translation`、`lidar_to_cam_*` 为示例值，须按实机标定填入（阶段 4）。
 3. **时间同步**：图像/IMU/雷达时间戳对齐（MID360 已 IMU-雷达硬同步，相机需对齐）。
 4. **先验地图/输出目录**：`pcd_directory` 默认 `/tmp/lvi_sam_maps`；实机请指向实际地图目录（launch 已覆盖 yaml 默认）。建图输出必须使用新目录或空目录，避免旧地图文件混入新地图。

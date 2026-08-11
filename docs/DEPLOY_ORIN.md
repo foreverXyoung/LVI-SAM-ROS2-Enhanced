@@ -252,7 +252,8 @@ docker run -it --rm --net=host --privileged -v /dev:/dev lvi-sam-orin bash
 - [ ] `install_deps.sh` 通过（兼容 GTSAM 4.x / Livox-SDK2 / rosdep）
 - [ ] `validate_config.py` 通过（LIS/VIS 话题、帧、外参数组与 BRIEF pattern 一致）
 - [ ] `build.sh` 通过（5 节点编译成功）
-- [ ] MID360 驱动起，`/livox/lidar` + 标准 IMU 有数据；非 `/IMU_data` 时通过 `imu_topic` 覆盖
+- [ ] MID360 驱动起，`/livox/lidar` + 所选 IMU 有数据；外置 IMU 用
+      `imu_source:=external`，内置 IMU 用 `imu_source:=mid360`
 - [ ] `run.sh` 起 5 个算法节点且无报错；有图形环境时 RViz2 同时启动
 - [ ] 话题接线 ①②③b 全部 `ros2 topic hz` 有数据
 - [ ] 三个 VIS 节点均不链接 `cv_bridge`，且各自只加载一套 OpenCV

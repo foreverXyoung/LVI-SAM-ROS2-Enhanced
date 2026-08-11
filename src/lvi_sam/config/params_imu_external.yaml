@@ -1,0 +1,34 @@
+/**:
+  ros__parameters:
+    # External calibrated IMU profile. Keep the LIS and VIS topic aliases equal.
+    imuTopic: "/IMU_data"
+    imu_topic: "/IMU_data"
+
+    # /IMU_data already reports acceleration in SI units (m/s^2).
+    imuAccelerationScale: 1.0
+
+    # LIS noise model. Replace only with results from the same physical IMU.
+    imuAccNoise: 3.9939570888238808e-03
+    imuGyrNoise: 1.5636343949698187e-03
+    imuAccBiasN: 6.4356659353532566e-05
+    imuGyrBiasN: 3.5640318696367613e-05
+    imuGravity: 9.80511
+    imuRPYWeight: 0.01
+
+    # VIS noise model for the same external IMU.
+    acc_n: 0.02
+    gyr_n: 0.01
+    acc_w: 0.002
+    gyr_w: 4.0e-5
+    g_norm: 9.805
+
+    # IMU origin -> LiDAR origin, expressed in raw external-IMU axes.
+    # These preserve the current generic deployment values. Verify them
+    # against the latest physical calibration before accuracy evaluation.
+    extrinsicTrans: [0.201247, -0.024810, -0.029314]
+    extrinsicRot: [0.861882, -0.007061, -0.507059,
+                  -0.001102,  0.999875, -0.015798,
+                   0.507107,  0.014175,  0.861766]
+    extrinsicRPY: [0.861882, -0.001102,  0.507107,
+                  -0.007061,  0.999875,  0.014175,
+                  -0.507059, -0.015798,  0.861766]

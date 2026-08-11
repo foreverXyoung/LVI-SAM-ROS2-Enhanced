@@ -61,8 +61,9 @@ git submodule update --init --recursive
 `livox_ros_driver2` 可复用机器人总工作区已安装并 source 的版本；缺失时再以
 **git 子模块**引入锁定版本。这样可避免重复驱动包和不必要的 GitHub 子模块下载。驱动提供 MID360 的
 点云和 IMU 数据；点云为 `livox_ros_driver2/msg/CustomMsg`，IMU 必须以
-`sensor_msgs/Imu` 接入。默认统一接口是 `/IMU_data`，也可通过 launch 的
-`imu_topic:=/livox/imu` 同时覆盖 LIS 与 VIS。
+`sensor_msgs/Imu` 接入。外置 IMU 使用 `imu_source:=external`（默认 `/IMU_data`）；
+MID-360 内置 IMU 使用 `imu_source:=mid360`（默认 `/livox/imu`），同时加载原始 `g` 单位
+转换、噪声和 IMU-LiDAR 外参。不要只覆盖 `imu_topic` 来切换物理 IMU。
 
 ---
 

@@ -104,7 +104,8 @@ ros2 launch lvi_sam run.launch.py \
 | `lidar_params_file` | 空 | 可选显式 LIS 参数文件；非空时优先于 `mode/scene` |
 | `camera_params_file` | `config/params_camera.yaml` | VIS 参数 |
 | `image_topic` | `/camera/color/image_raw` | VIS 输入图像话题；覆盖相机参数文件中的同名配置 |
-| `imu_topic` | `/IMU_data` | LIS 与 VIS 共用的标准 `sensor_msgs/Imu` 话题；驱动发布 `/livox/imu` 时可在此统一覆盖 |
+| `imu_source` | `external` | `external` 加载 `/IMU_data` 当前部署 profile；`mid360` 加载 `/livox/imu`、单位转换及同轴外参 profile |
+| `imu_topic` | 空 | 仅用于高级话题覆盖；不会修改单位、噪声和外参，正常切换必须使用 `imu_source` |
 | `odom_topic` | `/odometry/imu` | LIS IMU 预积分输出与 VIS 位姿/尺度先验输入；入口统一覆盖两侧配置 |
 | `project_name` | `lvi_sam` | 仅作为 VIS 话题根；所有视觉内部接口发布到 `/<project_name>/vins/...` |
 | `gps_topic` | 空 | 可选 map 对齐 `nav_msgs/Odometry` RTK/GPS 话题；非空时覆盖 YAML |
@@ -147,6 +148,7 @@ ros2 topic hz /lio_sam/mapping/cloud_registered
 |------|------|------|
 | `/livox/lidar` | `livox_ros_driver2/msg/CustomMsg` | LIS 输入（原始点云） |
 | `/IMU_data` | `sensor_msgs/Imu` | LIS 与 VIS 共用的标定后 IMU |
+| `/livox/imu` | `sensor_msgs/Imu` | 可选 MID-360 内置 IMU；profile 将加速度从 `g` 转为 `m/s²` |
 | `/odometry/imu` | `nav_msgs/Odometry` | **LIS→VIS** 可选位姿/速度/尺度初始化先验 |
 | `/lio_sam/deskew/cloud_deskewed` | `sensor_msgs/PointCloud2` | **LIS→VIS** 激光去畸变深度 |
 | `/lvi_sam/vins/loop/match_frame` | `std_msgs/Float64MultiArray` | **VIS→LIS** 视觉回环候选 `[cur_ts, old_ts]` |
@@ -181,7 +183,18 @@ ros2 topic hz /lio_sam/mapping/cloud_registered
 `*_localization.yaml` / `*_mapping.yaml`（定位/建图模式）。通常通过 `mode` 和 `scene`
 切换；需要自定义文件时再使用 `lidar_params_file`。
 
-### 5.2 `config/params_camera.yaml`（VIS）
+### 5.2 两套 IMU profile
+
+- `params_imu_external.yaml`：默认 `/IMU_data`；保留当前外置 IMU 的部署外参（正式测试前仍需与最新标定核对），输入已经是
+  `m/s²`，所以 `imuAccelerationScale=1.0`。
+- `params_imu_mid360.yaml`：默认 `/livox/imu`；Livox 协议加速度单位为 `g`，所以使用
+  `imuAccelerationScale=9.80665`。MID-360 IMU 与点云轴方向一致，初值为单位旋转；零杆臂和
+  噪声参数仍需通过设备资料、静态采样和 Allan 方差进一步校准。
+- `run.launch.py` 将所选 profile 同时叠加到 LIS 与 VIS，防止两个子系统使用不同单位。
+- MID-360 profile 默认只建议配合 `enable_visual:=false` 调试 LIS。开启 VIS 前必须提供
+  相机到 MID-360 IMU 的专用 `camera_params_file`，不能复用相机到外置 IMU 的外参。
+
+### 5.3 `config/params_camera.yaml`（VIS）
 
 关键字段：
 

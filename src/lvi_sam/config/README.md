@@ -15,6 +15,8 @@
 
 | 文件 | 作用 | 是否直接修改 |
 |---|---|---|
+| `params_imu_external.yaml` | 外置标定 IMU：话题、单位、噪声和 IMU-LiDAR 外参 | 外置 IMU 重新标定后修改 |
+| `params_imu_mid360.yaml` | MID-360 内置 IMU：话题、`g→m/s²`、噪声和同轴外参 | Allan 标定/杆臂测量后修改 |
 | `params_camera.yaml` | VIS 相机、IMU、LiDAR-camera、视觉回环参数 | 完成标定后修改 |
 | `rviz2.rviz` | 默认 RViz 显示项 | 可按显示需求修改 |
 | `brief_k10L6.bin` / `brief_pattern.yaml` | DBoW2/BRIEF 资源 | 一般不修改 |
@@ -40,8 +42,16 @@ ros2 launch lvi_sam run.launch.py \
 # 无桌面或纯激光排障
 ros2 launch lvi_sam run.launch.py \
   scene:=generic mode:=mapping \
+  imu_source:=external \
   enable_visual:=false enable_rviz:=false \
   pcd_directory:=/data/return_station_ws/maps/lidar_check_001
+
+# MID-360 内置 IMU 对比测试（先只测试 LIS）
+ros2 launch lvi_sam run.launch.py \
+  scene:=generic mode:=mapping \
+  imu_source:=mid360 \
+  enable_visual:=false \
+  pcd_directory:=/data/return_station_ws/maps/mid360_imu_001
 ```
 
 只有临时试验或外部配置管理器确实需要时，才使用绝对路径覆盖：
@@ -52,9 +62,10 @@ ros2 launch lvi_sam run.launch.py \
   camera_params_file:=/absolute/path/camera.yaml
 ```
 
-参数优先级为：**launch 显式覆盖 > 选中的 YAML > C++ 声明默认值**。`imu_topic`、
-`odom_topic`、`image_topic`、`gps_topic` 和 `pcd_directory` 属于部署级参数，优先在 launch
-命令中覆盖；算法阈值和标定值留在 YAML 中。
+参数优先级为：**launch 显式覆盖 > IMU profile > 场景/模式 YAML > C++ 声明默认值**。
+正常切换 IMU 使用 `imu_source:=external|mid360`，不要只改 `imu_topic`；后者仅用于临时话题
+重映射，不会改变外参、噪声或单位。`odom_topic`、`image_topic`、`gps_topic` 和
+`pcd_directory` 属于部署级参数；算法阈值和标定值留在 YAML 中。
 
 注意两个名称相近但作用不同的开关：launch 的 `enable_rviz` 控制是否启动 RViz2 进程；LIS
 YAML 顶层的 `useRviz` 控制是否发布较重的点云/轨迹可视化数据。`useRviz` 不能缩进到 `Loc`。
@@ -72,6 +83,19 @@ YAML 顶层的 `useRviz` 控制是否发布较重的点云/轨迹可视化数据
 
 这些字段决定输入解释和地图坐标契约，建图与定位不一致时禁止复用地图。配置预检会自动拒绝
 同一场景中不一致的配置。
+
+IMU 是独立的配置维度：
+
+- `imu_source:=external` 加载 `params_imu_external.yaml`，默认 `/IMU_data`，加速度比例为 `1.0`；
+- `imu_source:=mid360` 加载 `params_imu_mid360.yaml`，默认 `/livox/imu`，将 Livox 原始
+  `g` 单位乘以 `9.80665` 后再送入 LIS/VIS；
+- 两份 profile 必须将话题、噪声、随机游走、重力、姿态权重和 IMU-LiDAR 外参一起修改。
+  禁止仅更换话题；这会把一种 IMU 的数据按另一种 IMU 的标定解释。
+
+MID-360 驱动不提供可用姿态估计，因此 profile 将 `imuRPYWeight` 设为 `0.0`，但仍使用角速度
+进行点云去畸变。内置 IMU 与点云轴方向一致，单位旋转是合理初值；零平移只是未获得内部杆臂
+尺寸时的调试近似。MID-360 与相机之间的外参不同于当前外置 IMU 外参，所以
+`imu_source:=mid360 enable_visual:=true` 时必须另外传入对应的 `camera_params_file`。
 
 ### 3.2 三组外参不能混用
 
@@ -100,6 +124,7 @@ YAML 顶层的 `useRviz` 控制是否发布较重的点云/轨迹可视化数据
 |---|---|---|
 | 输入 | `/livox/lidar` | `livox_ros_driver2/msg/CustomMsg` |
 | 输入 | `/IMU_data` | `sensor_msgs/msg/Imu` |
+| 可选输入 | `/livox/imu` | `sensor_msgs/msg/Imu`（原始加速度为 `g`，由 profile 转换） |
 | 输入 | `/camera/color/image_raw` | `sensor_msgs/msg/Image` |
 | LIS 输出 | `/lio_sam/mapping/odometry` | `nav_msgs/msg/Odometry` |
 | LIS→VIS | `/odometry/imu` | `nav_msgs/msg/Odometry`（含内部兼容元数据） |
@@ -120,6 +145,6 @@ python3 src/lvi_sam/scripts/validate_config.py \
   --config-dir src/lvi_sam/config --lidar-only
 ```
 
-预检覆盖 YAML 重复键、六套活动 LIS 配置、旧兼容配置、同场景建图/定位传感器一致性、旋转矩阵、数值范围、
-LIS/VIS 话题一致性和视觉资源完整性。修改源码目录后，非 `--symlink-install` 工作区需要重新
+预检覆盖 YAML 重复键、六套活动 LIS 配置、两套 IMU profile、旧兼容配置、同场景建图/定位
+传感器一致性、旋转矩阵、数值范围、LIS/VIS 话题一致性和视觉资源完整性。修改源码目录后，非 `--symlink-install` 工作区需要重新
 构建；不要直接编辑 `install/lvi_sam/share/lvi_sam/config`，因为下次构建会覆盖它。

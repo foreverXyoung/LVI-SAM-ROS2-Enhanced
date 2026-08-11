@@ -52,6 +52,10 @@ LIDAR_CONFIGS = (
     "params_gazebo_localization.yaml",
 )
 LEGACY_LIDAR_CONFIG = "params.yaml"
+IMU_PROFILES = (
+    "params_imu_external.yaml",
+    "params_imu_mid360.yaml",
+)
 SHARED_INTERFACE_KEYS = (
     "pointCloudTopic",
     "imuTopic",
@@ -82,6 +86,36 @@ SCENE_SENSOR_KEYS = (
     "extrinsicRot",
     "extrinsicRPY",
     "extrinsicTrans",
+    "imuAccelerationScale",
+    "imuAccNoise",
+    "imuGyrNoise",
+    "imuAccBiasN",
+    "imuGyrBiasN",
+    "imuGravity",
+    "imuRPYWeight",
+)
+
+IMU_PROFILE_LIS_KEYS = (
+    "imuTopic",
+    "imuAccelerationScale",
+    "imuAccNoise",
+    "imuGyrNoise",
+    "imuAccBiasN",
+    "imuGyrBiasN",
+    "imuGravity",
+    "imuRPYWeight",
+    "extrinsicRot",
+    "extrinsicRPY",
+    "extrinsicTrans",
+)
+IMU_PROFILE_VIS_KEYS = (
+    "imu_topic",
+    "imuAccelerationScale",
+    "acc_n",
+    "gyr_n",
+    "acc_w",
+    "gyr_w",
+    "g_norm",
 )
 
 
@@ -214,7 +248,8 @@ def validate_lidar_configs(config_dir: Path, errors: list[str]) -> dict:
                 errors.append(f"{name}: {key} must be a positive integer")
         for key in (
             "imuAccNoise", "imuGyrNoise", "imuAccBiasN", "imuGyrBiasN",
-            "imuGravity", "odometrySurfLeafSize", "mappingCornerLeafSize",
+            "imuGravity", "imuAccelerationScale", "odometrySurfLeafSize",
+            "mappingCornerLeafSize",
             "mappingSurfLeafSize", "surroundingkeyframeAddingDistThreshold",
             "surroundingkeyframeAddingAngleThreshold",
             "surroundingKeyframeDensity", "surroundingKeyframeSearchRadius",
@@ -342,7 +377,85 @@ def validate_lidar_configs(config_dir: Path, errors: list[str]) -> dict:
     return loaded
 
 
-def validate_camera_config(config_dir: Path, lidar_configs: dict, errors: list[str]):
+def validate_imu_profiles(
+    config_dir: Path, lidar_configs: dict, errors: list[str]
+) -> dict:
+    loaded = {}
+    for name in IMU_PROFILES:
+        try:
+            params = load_parameters(config_dir / name)
+        except ValueError as exc:
+            errors.append(str(exc))
+            continue
+        loaded[name] = params
+
+        for key in ("imuTopic", "imu_topic"):
+            value = params.get(key)
+            if not isinstance(value, str) or not value.startswith("/"):
+                errors.append(f"{name}: {key} must be an absolute topic")
+        if params.get("imuTopic") != params.get("imu_topic"):
+            errors.append(f"{name}: imuTopic and imu_topic must be identical")
+
+        for key in (
+            "imuAccelerationScale", "imuAccNoise", "imuGyrNoise",
+            "imuAccBiasN", "imuGyrBiasN", "imuGravity", "acc_n",
+            "gyr_n", "acc_w", "gyr_w", "g_norm",
+        ):
+            if not finite_number(params.get(key)) or float(params[key]) <= 0.0:
+                errors.append(f"{name}: {key} must be finite and greater than 0")
+        if not finite_number(params.get("imuRPYWeight")) or float(
+            params["imuRPYWeight"]
+        ) < 0.0:
+            errors.append(f"{name}: imuRPYWeight must be finite and non-negative")
+
+        validate_vector(errors, name, params, "extrinsicRot", 9)
+        validate_vector(errors, name, params, "extrinsicRPY", 9)
+        validate_vector(errors, name, params, "extrinsicTrans", 3)
+        validate_rotation(errors, name, params, "extrinsicRot")
+        validate_rotation(errors, name, params, "extrinsicRPY")
+
+    external = loaded.get("params_imu_external.yaml")
+    mid360 = loaded.get("params_imu_mid360.yaml")
+    if external is not None:
+        scale = external.get("imuAccelerationScale")
+        if not finite_number(scale) or abs(float(scale) - 1.0) > 1.0e-9:
+            errors.append(
+                "params_imu_external.yaml: SI sensor profile must use "
+                "imuAccelerationScale=1.0"
+            )
+        reference = lidar_configs.get("params_mapping.yaml")
+        if reference is not None:
+            for key in IMU_PROFILE_LIS_KEYS:
+                if external.get(key) != reference.get(key):
+                    errors.append(
+                        f"params_imu_external.yaml: {key} must match the "
+                        "backward-compatible generic LIS defaults"
+                    )
+    if mid360 is not None:
+        scale = mid360.get("imuAccelerationScale")
+        if not finite_number(scale) or not 9.0 <= float(scale) <= 10.0:
+            errors.append(
+                "params_imu_mid360.yaml: raw acceleration in g requires an "
+                "imuAccelerationScale between 9.0 and 10.0"
+            )
+        if mid360.get("imuRPYWeight") != 0.0:
+            errors.append(
+                "params_imu_mid360.yaml: imuRPYWeight must remain 0.0 because "
+                "the driver does not publish an attitude estimate"
+            )
+    if external is not None and mid360 is not None and (
+        external.get("imuTopic") == mid360.get("imuTopic")
+    ):
+        errors.append("external and MID-360 IMU profiles must use distinct topics")
+    return loaded
+
+
+def validate_camera_config(
+    config_dir: Path,
+    lidar_configs: dict,
+    imu_profiles: dict,
+    errors: list[str],
+):
     name = "params_camera.yaml"
     try:
         params = load_parameters(config_dir / name)
@@ -395,7 +508,7 @@ def validate_camera_config(config_dir: Path, lidar_configs: dict, errors: list[s
         errors.append(f"{name}: estimate_extrinsic must be 0, 1 or 2")
     for key in ("F_threshold", "max_solver_time", "keyframe_parallax",
                 "acc_n", "acc_w", "gyr_n", "gyr_w", "g_norm",
-                "loop_sync_tolerance"):
+                "imuAccelerationScale", "loop_sync_tolerance"):
         if not finite_number(params.get(key)) or float(params[key]) <= 0.0:
             errors.append(f"{name}: {key} must be finite and greater than 0")
     for key in ("skip_time", "skip_dist", "rolling_shutter_tr"):
@@ -483,6 +596,15 @@ def validate_camera_config(config_dir: Path, lidar_configs: dict, errors: list[s
         ):
             errors.append(f"{name}: odom_topic must match LIS odomTopic")
 
+    external_imu = imu_profiles.get("params_imu_external.yaml")
+    if external_imu is not None:
+        for key in IMU_PROFILE_VIS_KEYS:
+            if params.get(key) != external_imu.get(key):
+                errors.append(
+                    f"{name}: {key} must match params_imu_external.yaml to "
+                    "preserve the default external-IMU path"
+                )
+
     for key in ("vocabulary_file", "brief_pattern_file", "vins_config_file"):
         value = params.get(key)
         if not isinstance(value, str) or not value:
@@ -541,8 +663,9 @@ def main() -> int:
 
     errors: list[str] = []
     lidar_configs = validate_lidar_configs(config_dir, errors)
+    imu_profiles = validate_imu_profiles(config_dir, lidar_configs, errors)
     if not args.lidar_only:
-        validate_camera_config(config_dir, lidar_configs, errors)
+        validate_camera_config(config_dir, lidar_configs, imu_profiles, errors)
     if errors:
         print("LVI-SAM configuration validation failed:", file=sys.stderr)
         for error in errors:

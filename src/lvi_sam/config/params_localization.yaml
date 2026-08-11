@@ -72,6 +72,7 @@
 
     imuGravity: 9.80511
     imuRPYWeight: 0.01
+    imuAccelerationScale: 1.0
 
     # LiDAR/IMU extrinsic aligned with the current mobile-base URDF and
     # fast_lio/config/mid360.yaml.

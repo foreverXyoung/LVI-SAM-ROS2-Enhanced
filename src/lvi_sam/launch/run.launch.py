@@ -20,6 +20,21 @@ from ament_index_python.packages import (
 import os
 import re
 import xacro
+import yaml
+
+
+def load_ros_parameters(path):
+    """Load the wildcard ROS parameter mapping used by project YAML files."""
+    try:
+        with open(path, 'r', encoding='utf-8') as stream:
+            document = yaml.safe_load(stream)
+        parameters = document['/**']['ros__parameters']
+    except (OSError, UnicodeError, yaml.YAMLError, KeyError, TypeError) as exc:
+        raise RuntimeError(
+            'Cannot read ROS parameter file ' + path + ': ' + str(exc)) from exc
+    if not isinstance(parameters, dict):
+        raise RuntimeError('ROS parameter mapping is invalid: ' + path)
+    return parameters
 
 
 def generate_launch_description():
@@ -49,9 +64,13 @@ def generate_launch_description():
         'image_topic', default_value='/camera/color/image_raw',
         description='VIS 输入图像话题；覆盖 camera 参数文件中的 image_topic')
 
+    imu_source_arg = DeclareLaunchArgument(
+        'imu_source', default_value='external',
+        description='IMU profile: external (/IMU_data) or mid360 (/livox/imu)')
+
     imu_topic_arg = DeclareLaunchArgument(
-        'imu_topic', default_value='/IMU_data',
-        description='LIS 与 VIS 共用的 sensor_msgs/Imu 话题')
+        'imu_topic', default_value='',
+        description='Optional advanced topic override; normally use imu_source')
 
     odom_topic_arg = DeclareLaunchArgument(
         'odom_topic', default_value='/odometry/imu',
@@ -109,6 +128,8 @@ def generate_launch_description():
         lidar_params = LaunchConfiguration('lidar_params_file').perform(context)
         camera_params = LaunchConfiguration('camera_params_file').perform(context)
         image_topic = LaunchConfiguration('image_topic').perform(context).strip()
+        imu_source = LaunchConfiguration('imu_source').perform(
+            context).strip().lower()
         imu_topic = LaunchConfiguration('imu_topic').perform(context).strip()
         odom_topic = LaunchConfiguration('odom_topic').perform(context).strip()
         project_name = LaunchConfiguration('project_name').perform(
@@ -135,6 +156,9 @@ def generate_launch_description():
             raise RuntimeError('mode must be mapping or localization: ' + mode)
         if scene not in ('generic', 'charging', 'gazebo'):
             raise RuntimeError('scene must be generic, charging or gazebo: ' + scene)
+        if imu_source not in ('external', 'mid360'):
+            raise RuntimeError(
+                'imu_source must be external or mid360: ' + imu_source)
         if enable_visual not in ('true', 'false'):
             raise RuntimeError('enable_visual must be true or false')
         if enable_rviz not in ('true', 'false'):
@@ -146,15 +170,8 @@ def generate_launch_description():
                 'publish_map_odom_static must be true or false')
         if use_sim_time not in ('true', 'false'):
             raise RuntimeError('use_sim_time must be true or false')
-        if not imu_topic.strip():
-            raise RuntimeError('imu_topic must not be empty')
         if not odom_topic.strip():
             raise RuntimeError('odom_topic must not be empty')
-        for parameter_name, topic in (
-                ('imu_topic', imu_topic), ('odom_topic', odom_topic),
-                ('image_topic', image_topic), ('gps_topic', gps_topic)):
-            if topic.strip() and not topic.strip().startswith('/'):
-                raise RuntimeError(parameter_name + ' must be an absolute topic')
         if not project_name:
             raise RuntimeError('project_name must not be empty')
         if not re.fullmatch(
@@ -180,11 +197,39 @@ def generate_launch_description():
             raise RuntimeError('lidar_params_file must be an absolute path')
         if not os.path.isfile(lidar_params):
             raise RuntimeError('LIS parameter file does not exist: ' + lidar_params)
+
+        imu_profile = os.path.join(
+            pkg_dir, 'config', 'params_imu_' + imu_source + '.yaml')
+        if not os.path.isfile(imu_profile):
+            raise RuntimeError('IMU profile does not exist: ' + imu_profile)
+        imu_profile_parameters = load_ros_parameters(imu_profile)
+        profile_imu_topic = str(
+            imu_profile_parameters.get('imuTopic', '')).strip()
+        selected_imu_topic = imu_topic if imu_topic else profile_imu_topic
+        if not selected_imu_topic:
+            raise RuntimeError(
+                'Selected IMU profile does not define a non-empty imuTopic')
+        for parameter_name, topic in (
+                ('imu_topic', selected_imu_topic),
+                ('odom_topic', odom_topic), ('image_topic', image_topic),
+                ('gps_topic', gps_topic)):
+            if topic.strip() and not topic.strip().startswith('/'):
+                raise RuntimeError(parameter_name + ' must be an absolute topic')
+
         if enable_visual == 'true':
             if not os.path.isabs(camera_params):
                 raise RuntimeError('camera_params_file must be an absolute path')
             if not os.path.isfile(camera_params):
                 raise RuntimeError('VIS parameter file does not exist: ' + camera_params)
+            default_camera_params = os.path.realpath(
+                os.path.join(pkg_dir, 'config', 'params_camera.yaml'))
+            if (imu_source == 'mid360' and
+                    os.path.realpath(camera_params) == default_camera_params):
+                raise RuntimeError(
+                    'imu_source=mid360 with enable_visual=true requires a '
+                    'camera_params_file calibrated from the camera to the '
+                    'MID-360 IMU. Use enable_visual:=false for LIS-only IMU '
+                    'commissioning or provide that calibration explicitly.')
             missing_visual_nodes = [
                 executable for executable in (
                     'visual_feature_node',
@@ -210,7 +255,7 @@ def generate_launch_description():
         # 嵌套字典规范化为 Loc.loadPCDDirectory。
         lis_common = [
             {'use_sim_time': use_sim_time == 'true'},
-            {'imuTopic': imu_topic},
+            {'imuTopic': selected_imu_topic},
             {'odomTopic': odom_topic},
             {'publishFusedBaseTF': publish_fused_tf == 'true'},
             {'savePCDDirectory': pcd_directory},
@@ -220,7 +265,7 @@ def generate_launch_description():
             lis_common.append({'gpsTopic': gps_topic})
         vis_common = [
             {'use_sim_time': use_sim_time == 'true'},
-            {'imu_topic': imu_topic},
+            {'imu_topic': selected_imu_topic},
             {'odom_topic': odom_topic},
             {'image_topic': image_topic},
             {'PROJECT_NAME': project_name},
@@ -264,14 +309,14 @@ def generate_launch_description():
             executable='lvi_sam_imuPreintegration',
             name='lvi_sam_imuPreintegration',
             output='screen',
-            parameters=[lidar_params] + lis_common))
+            parameters=[lidar_params, imu_profile] + lis_common))
 
         nodes.append(Node(
             package='lvi_sam',
             executable='lvi_sam_mapOptimization',
             name='lvi_sam_mapOptimization',
             output='screen',
-            parameters=[lidar_params] + lis_common,
+            parameters=[lidar_params, imu_profile] + lis_common,
             # ③b：接收 VIS 视觉回环候选（VIS 发布 /lvi_sam/vins/loop/match_frame）
             remappings=[('lio_loop/loop_closure_detection',
                          '/' + project_name + '/vins/loop/match_frame')]))
@@ -285,7 +330,7 @@ def generate_launch_description():
             name='visual_feature_node',
             output='screen',
             condition=IfCondition(LaunchConfiguration('enable_visual')),
-            parameters=[camera_params] + vis_common))
+            parameters=[camera_params, imu_profile] + vis_common))
 
         nodes.append(Node(
             package='lvi_sam',
@@ -294,7 +339,7 @@ def generate_launch_description():
             output='screen',
             condition=IfCondition(LaunchConfiguration('enable_visual')),
             # ① LIS→VIS 里程计先验：发布端和订阅端共用 odom_topic。
-            parameters=[camera_params] + vis_common))
+            parameters=[camera_params, imu_profile] + vis_common))
 
         nodes.append(Node(
             package='lvi_sam',
@@ -302,7 +347,7 @@ def generate_launch_description():
             name='visual_loop_node',
             output='screen',
             condition=IfCondition(LaunchConfiguration('enable_visual')),
-            parameters=[camera_params] + vis_common))
+            parameters=[camera_params, imu_profile] + vis_common))
 
         # RViz is independent from the camera/VIS pipeline.  Keep it enabled
         # by default for on-robot validation, while allowing headless launches
@@ -324,6 +369,7 @@ def generate_launch_description():
         lidar_params_arg,
         camera_params_arg,
         image_topic_arg,
+        imu_source_arg,
         imu_topic_arg,
         odom_topic_arg,
         project_name_arg,

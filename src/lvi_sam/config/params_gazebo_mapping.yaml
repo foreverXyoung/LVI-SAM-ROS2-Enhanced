@@ -52,6 +52,7 @@
     imuGyrBiasN: 3.6e-5
     imuGravity: 9.80511
     imuRPYWeight: 0.01
+    imuAccelerationScale: 1.0
 
     # IMU origin -> LiDAR origin, expressed in the Gazebo IMU axes.
     extrinsicTrans: [0.194406, 0.005998, -0.015194]

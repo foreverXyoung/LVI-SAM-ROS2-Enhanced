@@ -75,6 +75,10 @@ VIS 默认启动是操作策略变化，不是 LIS 算法依赖。未完成相�
   localization 文件。launch 的 `enable_rviz` 与 LIS 数据发布开关已分别说明。
 - 配置预检原先只比较六套 LIS 的公共话题/帧，现进一步核对每个场景的 mapping/localization
   雷达扫描参数和 IMU-LiDAR 外参，并检查旧 `params.yaml` 与通用定位配置一致。
+- 新增 `params_imu_external.yaml` 与 `params_imu_mid360.yaml` 两套 IMU profile，以及
+  `imu_source:=external|mid360` 启动选择。话题、噪声、重力参数、IMU-LiDAR 外参和加速度
+  单位按物理 IMU 成组切换；MID-360 原始 `g` 单位在 LIS 与 VIS 入口统一转换为 `m/s²`。
+  MID-360 开启视觉时必须显式提供相机到内置 IMU 的专用标定文件。
 
 ## 4. 有意改变的运行约束
 

@@ -32,7 +32,7 @@ LIS 当前为兼容合并式前端，`ImageProjection` 与 `FeatureExtraction` �
 ros2 launch lvi_sam run.launch.py \
   mode:=mapping \
   project_name:=lvi_sam \
-  imu_topic:=/IMU_data \
+  imu_source:=external \
   odom_topic:=/odometry/imu \
   image_topic:=/camera/color/image_raw
 ```
@@ -44,7 +44,8 @@ ros2 launch lvi_sam run.launch.py \
 | `mode` | `mapping` | 仅允许 `mapping` / `localization` |
 | `scene` | `generic` | 仅允许 `generic` / `charging` / `gazebo` |
 | `project_name` | `lvi_sam` | 仅作为 VIS 绝对话题根，生成 `/<name>/vins/...`；不作为 ROS 包名 |
-| `imu_topic` | `/IMU_data` | 同时覆盖 LIS 与 VIS，禁止为空 |
+| `imu_source` | `external` | 仅允许 `external` / `mid360`；成组选择话题、单位、噪声和 IMU-LiDAR 外参 |
+| `imu_topic` | 空 | 仅临时覆盖所选 profile 的话题；不得用于切换物理 IMU |
 | `odom_topic` | `/odometry/imu` | LIS 预积分输出与 VIS 先验输入共用，禁止为空 |
 | `image_topic` | `/camera/color/image_raw` | `enable_visual:=true` 时必须有效 |
 | `gps_topic` | 空 | 非空时覆盖 LIS 的 `gpsTopic` |
@@ -68,6 +69,7 @@ URDF/Xacro 都必须使用绝对路径。入口会在创建节点前检查文件
 |---|---|---|---|
 | `/livox/lidar` | `livox_ros_driver2/msg/CustomMsg` | LIS Map | 传感器流；点时间偏移必须属于本帧时间基准 |
 | `/IMU_data` | `sensor_msgs/msg/Imu` | LIS IMU、LIS Map、VIS Estimator | 传感器 QoS；时间戳严格递增；单位为 SI |
+| `/livox/imu` | `sensor_msgs/msg/Imu` | LIS IMU、LIS Map、可选 VIS Estimator | MID-360 原始加速度为 `g`；profile 在各消费者入口转换一次 |
 | `/camera/color/image_raw` | `sensor_msgs/msg/Image` | VIS Feature、VIS Loop | 传感器 QoS；支持 `rgb8/bgr8/rgba8/bgra8/mono8/8UC1` |
 | `gpsTopic` | `nav_msgs/msg/Odometry` | LIS Map | 可选；上游负责 RTK 质量、坐标投影与杆臂补偿 |
 | `externalPoseTopic` | `nav_msgs/msg/Odometry` | LIS Map | 可选外部位姿；按配置门限验收 |
@@ -139,8 +141,10 @@ DBoW2 的近期关键帧排除量和候选分数分别由 `loop_min_index_gap`�
 
 - LiDAR、IMU、camera、RTK 必须使用同一时间基准。若无法硬同步，只有在实测确认后才开启
   `estimate_td`；它不能修复跳变或来自不同系统时钟的数据。
-- `/IMU_data` 的角速度单位为 rad/s、线加速度为 m/s²。非有限值和倒序时间戳会被 VIS
-  丢弃，不能进入优化器。
+- `/IMU_data` 的角速度单位为 rad/s、线加速度为 m/s²；MID-360 `/livox/imu` 的角速度为
+  rad/s、原始线加速度为 `g`。`params_imu_mid360.yaml` 通过
+  `imuAccelerationScale=9.80665` 在 LIS 和 VIS 消费入口各转换一次，算法内部始终使用 m/s²。
+  非有限值和倒序时间戳不能进入优化器。
 - `lidarFrame`、`baselinkFrame`、`odometryFrame`、`mapFrame` 是 LIS 内部及输出契约。
   `publish_fused_tf:=false` 时算法不依赖平台 TF 树完成核心积分，但外参仍必须通过 YAML
   提供正确标定值。
@@ -153,6 +157,10 @@ DBoW2 的近期关键帧排除量和候选分数分别由 `loop_min_index_gap`�
   `lidar_to_cam_*` 属于 LiDAR-camera 标定。为兼容原版保留了该参数名，其严格语义是
   “物理 LiDAR → `vins_body_ros` 虚拟深度帧”的完整 SE(3)，只对原始点云应用一次；
   camera/VINS 与 ROS 轴向之间的固定旋转由公共坐标约定模块统一处理。三组参数不能互相替代。
+- 物理 IMU 切换必须通过 `imu_source` 同时选择 `params_imu_external.yaml` 或
+  `params_imu_mid360.yaml`。MID-360 profile 使用同轴单位旋转和零杆臂作为调试初值，并关闭
+  不存在的姿态观测权重；正式精度测试前仍需标定噪声和可获得的内部杆臂。相机—外置 IMU
+  外参不能复用于相机—MID-360 IMU，后者启用 VIS 时必须提供专用相机参数文件。
 - VIS 使用的 LIS 里程计输入必须表达物理 LiDAR 在 ROS `odom` 中的位姿，线速度必须在
   ROS `odom` 世界坐标系表达。初始化会先应用 LiDAR-camera 外参，再应用固定的
   ROS-odom → VINS-world 坐标约定；速度只做世界坐标转换，不错误叠加传感器外参旋转。

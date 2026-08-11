@@ -57,6 +57,7 @@
       acc_w: 0.002        # accelerometer bias random work noise standard deviation.
       gyr_w: 4.0e-5       # gyroscope bias random work noise standard deviation.
       g_norm: 9.805       #
+      imuAccelerationScale: 1.0  # overridden by the selected IMU profile
 
       # Extrinsic parameter between IMU and Camera. The values below must also
       # be replaced by the robot's calibrated camera/IMU transform.

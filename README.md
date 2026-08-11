@@ -92,8 +92,9 @@ LVI-SAM-ROS2-Enhanced/                 # 可独立作为工作区，也可放入
   `robot_state_publisher`。请使用你机器人的真实外参替换。
 - **相机驱动**：VIS 默认订阅 `/camera/color/image_raw`（sensor_msgs/Image）；可通过
   `image_topic` 启动参数覆盖。相机模型、分辨率、内参与外参必须使用实机标定值。
-- **IMU 话题**：LIS 与 VIS 默认共用 `/IMU_data`，类型必须是 `sensor_msgs/Imu`。
-  若现场驱动使用其他话题，通过入口 launch 的 `imu_topic` 一次性覆盖 LIS 与 VIS。
+- **IMU 选择**：LIS 与 VIS 默认使用 `imu_source:=external`（`/IMU_data`）；测试 MID-360
+  内置 IMU 使用 `imu_source:=mid360`（`/livox/imu`）。两套 profile 同时切换话题、单位、
+  噪声与 IMU-LiDAR 外参，不能只用 `imu_topic` 更换物理 IMU。
 
 ---
 

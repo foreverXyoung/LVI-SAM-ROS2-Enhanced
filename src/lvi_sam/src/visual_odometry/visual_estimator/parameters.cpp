@@ -9,6 +9,7 @@ double INIT_DEPTH;
 double MIN_PARALLAX;
 double ACC_N, ACC_W;
 double GYR_N, GYR_W;
+double IMU_ACCELERATION_SCALE;
 
 std::vector<Eigen::Matrix3d> RIC;
 std::vector<Eigen::Vector3d> TIC;
@@ -56,6 +57,12 @@ void readParameters(std::shared_ptr<rclcpp::Node> n)
     n->get_parameter("imu_topic", IMU_TOPIC);
     if (IMU_TOPIC.empty())
         throw std::runtime_error("imu_topic must not be empty");
+    n->declare_parameter("imuAccelerationScale", 1.0);
+    n->get_parameter("imuAccelerationScale", IMU_ACCELERATION_SCALE);
+    if (!std::isfinite(IMU_ACCELERATION_SCALE) ||
+        IMU_ACCELERATION_SCALE <= 0.0)
+        throw std::runtime_error(
+            "imuAccelerationScale must be finite and greater than 0");
     n->declare_parameter("odom_topic", "/odometry/imu");
     n->get_parameter("odom_topic", ODOM_TOPIC);
     if (ODOM_TOPIC.empty())

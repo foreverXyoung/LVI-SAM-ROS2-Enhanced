@@ -143,6 +143,7 @@ public:
     float imuAccBiasN, imuGyrBiasN;
     float imuGravity;
     float imuRPYWeight;
+    double imuAccelerationScale;
     vector<double> extRotV, extRPYV, extTransV;
     Eigen::Matrix3d extRot, extRPY;
     // IMU-origin -> LiDAR-origin lever arm, expressed in the raw IMU axes.
@@ -285,6 +286,8 @@ public:
         declare_and_get_parameter<float>("imuGyrBiasN", imuGyrBiasN, 7e-5);
         declare_and_get_parameter<float>("imuGravity", imuGravity, 9.80511);
         declare_and_get_parameter<float>("imuRPYWeight", imuRPYWeight, 0.01);
+        declare_and_get_parameter<double>(
+            "imuAccelerationScale", imuAccelerationScale, 1.0);
 
         double ida[] = {1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
         std::vector<double> id(ida, std::end(ida));
@@ -381,11 +384,14 @@ public:
         if (!std::isfinite(imuAccNoise) || !std::isfinite(imuGyrNoise) ||
             !std::isfinite(imuAccBiasN) || !std::isfinite(imuGyrBiasN) ||
             !std::isfinite(imuGravity) || !std::isfinite(imuRPYWeight) ||
+            !std::isfinite(imuAccelerationScale) ||
             imuAccNoise <= 0.0f || imuGyrNoise <= 0.0f ||
             imuAccBiasN <= 0.0f || imuGyrBiasN <= 0.0f ||
-            imuGravity <= 0.0f || imuRPYWeight < 0.0f) {
+            imuGravity <= 0.0f || imuRPYWeight < 0.0f ||
+            imuAccelerationScale <= 0.0) {
             throw std::runtime_error(
-                "IMU noise, bias random walk, and gravity parameters must be positive");
+                "IMU noise, bias random walk, gravity, and acceleration "
+                "scale parameters must be positive");
         }
         if (!std::isfinite(edgeThreshold) || !std::isfinite(surfThreshold) ||
             edgeThreshold <= 0.0f || surfThreshold <= 0.0f ||
@@ -493,8 +499,18 @@ public:
         sensor_msgs::msg::Imu imu_out = imu_in;
         // rotate acceleration
         Eigen::Vector3d acc(imu_in.linear_acceleration.x, imu_in.linear_acceleration.y, imu_in.linear_acceleration.z);
+        acc *= imuAccelerationScale;
 
-        //acc *= imuGravity;
+        const double accelerationNorm = acc.norm();
+        if (std::isfinite(accelerationNorm) &&
+            (accelerationNorm < 0.25 * imuGravity ||
+             accelerationNorm > 4.0 * imuGravity)) {
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 5000,
+                "Scaled IMU acceleration norm %.3f m/s^2 is far from gravity; "
+                "verify imu_source and imuAccelerationScale=%.6f",
+                accelerationNorm, imuAccelerationScale);
+        }
 
         acc = extRot * acc;
         imu_out.linear_acceleration.x = acc.x();

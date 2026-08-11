@@ -25,7 +25,7 @@
 ### 1.3 ROS 2 与 MID360
 
 - 工程包、CMake、安装规则和依赖统一为 ROS 2 Humble 的 `lvi_sam` 包。
-- launch 支持参数文件自动选择、统一 IMU/RTK 话题、可关闭视觉节点、可选 URDF/Xacro 和仿真时间。
+- launch 支持参数文件自动选择、两套 IMU profile、统一 RTK 话题、可关闭视觉节点、可选 URDF/Xacro 和仿真时间。
 - MID360 使用 `livox_ros_driver2/msg/CustomMsg`，并保留原项目已经验证过的 MID360 前端逻辑。
 - 加入传感器类型、扫描规模、量程、体素、IMU 噪声、外参矩阵和 TF 新鲜度的启动期校验，错误配置会尽早失败并给出原因。
 
@@ -52,7 +52,7 @@
   未使用的 `opencv-python`/`numpy`。
 - 新增 `.gitattributes` 固定 ROS/CMake/Python/Shell 文本为 LF，避免从 Windows 提交后在 Orin
   出现脚本解释器 `^M` 或无意义的整文件换行差异。
-- 新增 `scripts/validate_config.py`，`scripts/build.sh` 会在编译前自动核对六套 LIS 配置与
+- 新增 `scripts/validate_config.py`，`scripts/build.sh` 会在编译前自动核对六套 LIS 配置、两套 IMU profile 与
   camera/BRIEF 配置；`--lidar-only` 构建会只核对 LIS。完整契约见
   [INTERFACES_AND_STABILITY.md](INTERFACES_AND_STABILITY.md)。
 - 修复 LIS→VIS 初始化元数据链：图优化重置编号和退化标志不再共用同一语义，IMU 预积分恢复发布
@@ -161,7 +161,8 @@ ros2 pkg executables lvi_sam
 不要直接把示例标定值用于正式运行。至少核对以下内容：
 
 1. `pointCloudTopic` 实际发布 `livox_ros_driver2/msg/CustomMsg`。
-2. `imu_topic` 实际发布 `sensor_msgs/msg/Imu`，时间戳与雷达使用同一时钟基准。
+2. `imu_source` 选择的 profile 与物理 IMU 一致，实际话题发布 `sensor_msgs/msg/Imu`，
+   时间戳与雷达使用同一时钟基准；MID-360 原始加速度约为 `1 g` 是正常现象。
 3. `lidarFrame`、`baselinkFrame`、`odometryFrame`、`mapFrame` 与机器人 TF 树一致。
 4. `extrinsicRot`、`extrinsicRPY`、`extrinsicTrans` 是当前设备的雷达—IMU 标定结果。
 5. 启用视觉时，`params_camera.yaml` 中图像尺寸、模型、内参、畸变和相机—IMU/雷达外参均为当前相机标定结果。
@@ -174,8 +175,10 @@ ros2 pkg executables lvi_sam
 ```bash
 ros2 topic info /livox/lidar -v
 ros2 topic info /IMU_data -v
+ros2 topic info /livox/imu -v
 ros2 topic hz /livox/lidar
 ros2 topic hz /IMU_data
+ros2 topic hz /livox/imu
 ros2 run tf2_ros tf2_echo base_link livox_frame
 ros2 run tf2_ros tf2_echo base_link imu_link
 ```
@@ -202,11 +205,28 @@ source install/setup.bash
 ros2 launch lvi_sam run.launch.py \
   mode:=mapping \
   scene:=generic \
+  imu_source:=external \
   enable_visual:=false \
   publish_fused_tf:=false \
   pcd_directory:=/home/$USER/maps/lvi_test \
   use_sim_time:=false
 ```
+
+保持机器人静止并记录外置 IMU 结果后，使用新的空地图目录切换到 MID-360 内置 IMU：
+
+```bash
+ros2 launch lvi_sam run.launch.py \
+  mode:=mapping \
+  scene:=generic \
+  imu_source:=mid360 \
+  enable_visual:=false \
+  publish_fused_tf:=false \
+  pcd_directory:=/home/$USER/maps/lvi_mid360_imu_test \
+  use_sim_time:=false
+```
+
+两次测试不能复用地图目录。先比较静止漂移、重力模长、姿态和短距离闭环误差，再决定正式
+使用哪一套 IMU；MID-360 profile 的噪声和零杆臂当前仍是调试初值。
 
 运行期间检查：
 
