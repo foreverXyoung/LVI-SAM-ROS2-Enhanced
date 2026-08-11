@@ -230,6 +230,10 @@ ros2 launch lvi_sam run.launch.py \
 
 运行期间检查：
 
+- 若日志出现 `Reordered Livox frame with non-monotonic point offsets`，说明驱动组帧中存在
+  包级时间乱序；转换层已排序并继续处理。该警告持续高频出现时仍应检查网口丢包、时间同步
+  和 Livox ROS Driver 2 版本。
+
 ```bash
 ros2 topic hz /lio_sam/mapping/odometry
 ros2 topic hz /lio_sam/mapping/cloud_registered

@@ -2,6 +2,7 @@
 #include "lvi_sam/internal_odom_metadata.hpp"
 #include <pcl/range_image/range_image.h>
 #include <opencv2/opencv.hpp>
+#include <algorithm>
 #include <array>
 #include <cstdint>
 
@@ -237,8 +238,19 @@ public:
     bool moveFromCustomMsg(const livox_ros_driver2::msg::CustomMsg& Msg,
                            pcl::PointCloud<PointXYZIRT>& cloud) {
         cloud.clear();
-        if (Msg.point_num == 0 || Msg.point_num > Msg.points.size())
+        if (Msg.point_num == 0) {
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 2000,
+                "Discarding Livox frame with point_num=0");
             return false;
+        }
+        if (Msg.point_num > Msg.points.size()) {
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 2000,
+                "Discarding Livox frame with point_num=%u but only %zu points",
+                Msg.point_num, Msg.points.size());
+            return false;
+        }
         cloud.reserve(Msg.point_num);
         PointXYZIRT point;
 
@@ -246,10 +258,11 @@ public:
         cloud.header.stamp = (uint64_t)((Msg.header.stamp.sec * 1e9 + Msg.header.stamp.nanosec) / 1000);
         // cloud.header.seq=Msg.header.seq;
 
+        bool offsetsAreMonotonic = true;
         std::uint32_t previousOffset = 0;
         for (std::uint32_t i = 0; i < Msg.point_num; ++i) {
             if (i > 0 && Msg.points[i].offset_time < previousOffset)
-                return false;
+                offsetsAreMonotonic = false;
             previousOffset = Msg.points[i].offset_time;
             if (!std::isfinite(Msg.points[i].x) ||
                 !std::isfinite(Msg.points[i].y) ||
@@ -264,7 +277,32 @@ public:
             point.ring = Msg.points[i].line;
             cloud.push_back(point);
         }
-        return !cloud.empty();
+        if (cloud.empty()) {
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 2000,
+                "Discarding Livox frame without finite XYZ points "
+                "(point_num=%u)", Msg.point_num);
+            return false;
+        }
+
+        // Livox ROS Driver 2 preserves UDP packet arrival order when it builds
+        // a CustomMsg. Packet reordering or a timestamp correction can
+        // therefore make offset_time non-monotonic even though the frame is
+        // otherwise valid. Deskew needs chronological point times, but it does
+        // not require the driver to have provided that ordering. Stable-sort
+        // the converted points instead of dropping the complete scan.
+        if (!offsetsAreMonotonic) {
+            std::stable_sort(
+                cloud.begin(), cloud.end(),
+                [](const PointXYZIRT& lhs, const PointXYZIRT& rhs) {
+                    return lhs.time < rhs.time;
+                });
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 5000,
+                "Reordered Livox frame with non-monotonic point offsets "
+                "(point_num=%u)", Msg.point_num);
+        }
+        return true;
     }
 
     bool cachePointCloud(const livox_ros_driver2::msg::CustomMsg::SharedPtr &laserCloudMsg) {
