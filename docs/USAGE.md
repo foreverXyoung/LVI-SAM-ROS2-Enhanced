@@ -105,6 +105,8 @@ ros2 launch lvi_sam run.launch.py \
 | `camera_params_file` | `config/params_camera.yaml` | VIS 参数 |
 | `image_topic` | `/camera/color/image_raw` | VIS 输入图像话题；覆盖相机参数文件中的同名配置 |
 | `imu_source` | `external` | `external` 加载 `/IMU_data` 当前部署 profile；`mid360` 加载 `/livox/imu`、单位转换及同轴外参 profile |
+| `imu_params_file` | 空 | 第三种 IMU 的绝对 profile 路径；非空时覆盖 `imu_source` |
+| `mount_params_file` | `config/params_mount_robot.yaml` | `base_link→LiDAR` 安装标定；与 IMU profile 独立 |
 | `imu_topic` | 空 | 仅用于高级话题覆盖；不会修改单位、噪声和外参，正常切换必须使用 `imu_source` |
 | `odom_topic` | `/odometry/imu` | LIS IMU 预积分输出与 VIS 位姿/尺度先验输入；入口统一覆盖两侧配置 |
 | `project_name` | `lvi_sam` | 仅作为 VIS 话题根；所有视觉内部接口发布到 `/<project_name>/vins/...` |
@@ -166,8 +168,8 @@ ros2 topic hz /lio_sam/mapping/cloud_registered
 
 关键字段（节选，按子系统分组）：
 
-- **硬件 / 外参**：`lidarFrame: livox_frame`、`baselinkFrame: base_link`、
-  `extrinsicRot` / `extrinsicRPY`（livox→base 外参）。
+- **硬件接口**：`lidarFrame: livox_frame`、`baselinkFrame: base_link`；传感器与安装
+  标定分别由 IMU profile 和 mount profile 提供。
 - **里程计**：`odomTopic`（已被覆盖为 `odometry/imu`）、`imuTopic: /IMU_data`、
   `pointCloudTopic: /livox/lidar`。
 - **回环**：`loopClosureEnableFlag` 控制回环线程，`scanContextLoopEnableFlag`
@@ -192,10 +194,23 @@ ros2 topic hz /lio_sam/mapping/cloud_registered
   [FAST-LIO 官方 Mid-360 配置](https://github.com/hku-mars/FAST_LIO/blob/main/config/mid360.yaml)
   的 `[-0.011, -0.02329, 0.04412] m` 作为参考初值；若有本机标定结果应优先使用，噪声参数仍需后续标定。
 - `run.launch.py` 将所选 profile 同时叠加到 LIS 与 VIS，防止两个子系统使用不同单位。
+- 新 IMU 可复制任一 profile 并通过 `imu_params_file:=/absolute/path/new_imu.yaml` 加载，
+  不需要修改 launch 的传感器枚举或重新编写 C++。
+- `imuToLidarRotation`、`imuToLidarTranslation` 和
+  `imuOrientationToLidarRotation` 只描述所选 IMU 与 LiDAR 的关系；移动或更换 IMU 时成组修改。
+- `imuOrientationSource=message` 使用 IMU 四元数；`mount` 用于没有可用四元数的内置 IMU。
 - MID-360 profile 默认只建议配合 `enable_visual:=false` 调试 LIS。开启 VIS 前必须提供
   相机到 MID-360 IMU 的专用 `camera_params_file`，不能复用相机到外置 IMU 的外参。
 
-### 5.3 `config/params_camera.yaml`（VIS）
+### 5.3 `config/params_mount_robot.yaml`（机器人安装）
+
+`baseToLidarRotation` 与 `baseToLidarTranslation` 定义完整的 `T_base_lidar`。当前旋转来自
+外置 IMU—LiDAR 标定，并假设外置 IMU 轴向/原点可作为机器人 base 基准，约为
+RPY `[-1.05°, 30.47°, -0.47°]`；最终验收前应核对这一假设。只更换或移动 IMU 不改本文件，
+雷达重新安装或 `base_link` 定义变化时才改。配置存在时融合输出直接使用它计算
+`odom→base_link`，不读取 TF tree。
+
+### 5.4 `config/params_camera.yaml`（VIS）
 
 关键字段：
 

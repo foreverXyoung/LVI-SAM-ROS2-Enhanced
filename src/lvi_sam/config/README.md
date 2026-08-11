@@ -17,6 +17,7 @@
 |---|---|---|
 | `params_imu_external.yaml` | 外置标定 IMU：话题、单位、噪声和 IMU-LiDAR 外参 | 外置 IMU 重新标定后修改 |
 | `params_imu_mid360.yaml` | MID-360 内置 IMU：话题、`g→m/s²`、噪声和同轴外参 | Allan 标定/杆臂测量后修改 |
+| `params_mount_robot.yaml` | 机器人 `base_link→LiDAR` 安装位姿，与所选 IMU 无关 | 雷达重新安装或 base 基准改变后修改 |
 | `params_camera.yaml` | VIS 相机、IMU、LiDAR-camera、视觉回环参数 | 完成标定后修改 |
 | `rviz2.rviz` | 默认 RViz 显示项 | 可按显示需求修改 |
 | `brief_k10L6.bin` / `brief_pattern.yaml` | DBoW2/BRIEF 资源 | 一般不修改 |
@@ -59,13 +60,17 @@ ros2 launch lvi_sam run.launch.py \
 ```bash
 ros2 launch lvi_sam run.launch.py \
   lidar_params_file:=/absolute/path/lidar.yaml \
-  camera_params_file:=/absolute/path/camera.yaml
+  imu_params_file:=/absolute/path/new_imu.yaml \
+  camera_params_file:=/absolute/path/camera.yaml \
+  mount_params_file:=/absolute/path/base_to_lidar.yaml
 ```
 
-参数优先级为：**launch 显式覆盖 > IMU profile > 场景/模式 YAML > C++ 声明默认值**。
+参数优先级为：**launch 显式覆盖 > 安装/IMU profile > 场景/模式 YAML > C++ 声明默认值**。
 正常切换 IMU 使用 `imu_source:=external|mid360`，不要只改 `imu_topic`；后者仅用于临时话题
 重映射，不会改变外参、噪声或单位。`odom_topic`、`image_topic`、`gps_topic` 和
 `pcd_directory` 属于部署级参数；算法阈值和标定值留在 YAML 中。
+接入第三种 IMU 时复制现有 profile，完整填写同一组字段，然后通过绝对路径
+`imu_params_file:=/path/to/params_imu_new.yaml` 加载；不需要修改 launch 或 C++。
 
 注意两个名称相近但作用不同的开关：launch 的 `enable_rviz` 控制是否启动 RViz2 进程；LIS
 YAML 顶层的 `useRviz` 控制是否发布较重的点云/轨迹可视化数据。`useRviz` 不能缩进到 `Loc`。
@@ -78,8 +83,7 @@ YAML 顶层的 `useRviz` 控制是否发布较重的点云/轨迹可视化数据
 
 - `pointCloudTopic`、`imuTopic`、`odomTopic`；
 - `lidarFrame`、`baselinkFrame`、`odometryFrame`、`mapFrame`；
-- `sensor`、`N_SCAN`、`Horizon_SCAN`、`downsampleRate`；
-- `extrinsicRot`、`extrinsicRPY`、`extrinsicTrans`。
+- `sensor`、`N_SCAN`、`Horizon_SCAN`、`downsampleRate`。
 
 这些字段决定输入解释和地图坐标契约，建图与定位不一致时禁止复用地图。配置预检会自动拒绝
 同一场景中不一致的配置。
@@ -92,6 +96,17 @@ IMU 是独立的配置维度：
 - 两份 profile 必须将话题、噪声、随机游走、重力、姿态权重和 IMU-LiDAR 外参一起修改。
   禁止仅更换话题；这会把一种 IMU 的数据按另一种 IMU 的标定解释。
 
+IMU profile 使用三个有方向含义的标定字段：
+
+- `imuToLidarRotation`：原始 IMU 向量到 LiDAR 轴向，满足
+  `v_lidar = R_lidar_imu · v_imu`；
+- `imuToLidarTranslation`：LiDAR 原点在原始 IMU 坐标系中的位置，单位 m；
+- `imuOrientationToLidarRotation`：姿态消息右乘修正，满足
+  `q_world_lidar = q_world_imu · q_imu_lidar`。
+
+`imuOrientationSource=message` 表示使用 IMU 姿态消息；`mount` 表示驱动没有可用姿态，
+启动时使用安装 profile 的 `baseToLidarRotation`，并假设机器人启动时处于水平静止状态。
+
 MID-360 驱动不提供可用姿态估计，因此 profile 将 `imuRPYWeight` 设为 `0.0`，但仍使用角速度
 进行点云去畸变。内置 IMU 与点云采用单位旋转；平移初值采用
 [FAST-LIO 官方 Mid-360 配置](https://github.com/hku-mars/FAST_LIO/blob/main/config/mid360.yaml)
@@ -99,11 +114,16 @@ MID-360 驱动不提供可用姿态估计，因此 profile 将 `imuRPYWeight` �
 应优先覆盖本 profile。MID-360 与相机之间的外参不同于当前外置 IMU 外参，所以
 `imu_source:=mid360 enable_visual:=true` 时必须另外传入对应的 `camera_params_file`。
 
-### 3.2 三组外参不能混用
+### 3.2 四组外参不能混用
 
-- LIS YAML 的 `extrinsicRot` / `extrinsicRPY` / `extrinsicTrans`：IMU 与 LiDAR；
+- IMU profile 的 `imuToLidar*`：所选 IMU 与 LiDAR，移动/更换 IMU 时修改；
+- `params_mount_robot.yaml` 的 `baseToLidar*`：机器人本体与 LiDAR，重新安装雷达时修改；
 - camera YAML 的 `extrinsicRotation` / `extrinsicTranslation`：camera 与 IMU；
 - camera YAML 的 `lidar_to_cam_*`：LiDAR 与视觉虚拟深度帧。
+
+旧 `extrinsicRot` / `extrinsicRPY` / `extrinsicTrans` 仍可被 C++ 读取作为兼容回退，但新部署
+不得继续新增这组模糊参数。加载了安装 profile 后，融合节点直接用 `T_base_lidar` 计算
+`odom→base_link`，不会查询 TF tree；未配置安装 profile 的旧启动方式才回退查询 TF。
 
 标定完成前保持 `use_lidar: 0`、`use_lidar_odometry_prior: 0`、
 `align_camera_lidar_estimation: 0`。建议依次启用视觉单目、LIS 里程计先验、LiDAR 深度，

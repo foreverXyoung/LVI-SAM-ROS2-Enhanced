@@ -56,6 +56,7 @@ IMU_PROFILES = (
     "params_imu_external.yaml",
     "params_imu_mid360.yaml",
 )
+MOUNT_PROFILES = ("params_mount_robot.yaml",)
 SHARED_INTERFACE_KEYS = (
     "pointCloudTopic",
     "imuTopic",
@@ -95,19 +96,6 @@ SCENE_SENSOR_KEYS = (
     "imuRPYWeight",
 )
 
-IMU_PROFILE_LIS_KEYS = (
-    "imuTopic",
-    "imuAccelerationScale",
-    "imuAccNoise",
-    "imuGyrNoise",
-    "imuAccBiasN",
-    "imuGyrBiasN",
-    "imuGravity",
-    "imuRPYWeight",
-    "extrinsicRot",
-    "extrinsicRPY",
-    "extrinsicTrans",
-)
 IMU_PROFILE_VIS_KEYS = (
     "imu_topic",
     "imuAccelerationScale",
@@ -377,9 +365,7 @@ def validate_lidar_configs(config_dir: Path, errors: list[str]) -> dict:
     return loaded
 
 
-def validate_imu_profiles(
-    config_dir: Path, lidar_configs: dict, errors: list[str]
-) -> dict:
+def validate_imu_profiles(config_dir: Path, errors: list[str]) -> dict:
     loaded = {}
     for name in IMU_PROFILES:
         try:
@@ -408,11 +394,26 @@ def validate_imu_profiles(
         ) < 0.0:
             errors.append(f"{name}: imuRPYWeight must be finite and non-negative")
 
-        validate_vector(errors, name, params, "extrinsicRot", 9)
-        validate_vector(errors, name, params, "extrinsicRPY", 9)
-        validate_vector(errors, name, params, "extrinsicTrans", 3)
-        validate_rotation(errors, name, params, "extrinsicRot")
-        validate_rotation(errors, name, params, "extrinsicRPY")
+        validate_vector(errors, name, params, "imuToLidarRotation", 9)
+        validate_vector(
+            errors, name, params, "imuOrientationToLidarRotation", 9
+        )
+        validate_vector(errors, name, params, "imuToLidarTranslation", 3)
+        validate_rotation(errors, name, params, "imuToLidarRotation")
+        validate_rotation(
+            errors, name, params, "imuOrientationToLidarRotation"
+        )
+        if params.get("imuOrientationSource") not in ("message", "mount"):
+            errors.append(
+                f"{name}: imuOrientationSource must be message or mount"
+            )
+        if (
+            params.get("imuOrientationSource") == "mount"
+            and params.get("imuRPYWeight") != 0.0
+        ):
+            errors.append(
+                f"{name}: mount orientation source requires imuRPYWeight=0.0"
+            )
 
     external = loaded.get("params_imu_external.yaml")
     mid360 = loaded.get("params_imu_mid360.yaml")
@@ -423,14 +424,11 @@ def validate_imu_profiles(
                 "params_imu_external.yaml: SI sensor profile must use "
                 "imuAccelerationScale=1.0"
             )
-        reference = lidar_configs.get("params_mapping.yaml")
-        if reference is not None:
-            for key in IMU_PROFILE_LIS_KEYS:
-                if external.get(key) != reference.get(key):
-                    errors.append(
-                        f"params_imu_external.yaml: {key} must match the "
-                        "backward-compatible generic LIS defaults"
-                    )
+        if external.get("imuOrientationSource") != "message":
+            errors.append(
+                "params_imu_external.yaml: calibrated attitude IMU must use "
+                "imuOrientationSource=message"
+            )
     if mid360 is not None:
         scale = mid360.get("imuAccelerationScale")
         if not finite_number(scale) or not 9.0 <= float(scale) <= 10.0:
@@ -443,10 +441,30 @@ def validate_imu_profiles(
                 "params_imu_mid360.yaml: imuRPYWeight must remain 0.0 because "
                 "the driver does not publish an attitude estimate"
             )
+        if mid360.get("imuOrientationSource") != "mount":
+            errors.append(
+                "params_imu_mid360.yaml: driver attitude is unavailable, so "
+                "imuOrientationSource must be mount"
+            )
     if external is not None and mid360 is not None and (
         external.get("imuTopic") == mid360.get("imuTopic")
     ):
         errors.append("external and MID-360 IMU profiles must use distinct topics")
+    return loaded
+
+
+def validate_mount_profiles(config_dir: Path, errors: list[str]) -> dict:
+    loaded = {}
+    for name in MOUNT_PROFILES:
+        try:
+            params = load_parameters(config_dir / name)
+        except ValueError as exc:
+            errors.append(str(exc))
+            continue
+        loaded[name] = params
+        validate_vector(errors, name, params, "baseToLidarRotation", 9)
+        validate_vector(errors, name, params, "baseToLidarTranslation", 3)
+        validate_rotation(errors, name, params, "baseToLidarRotation")
     return loaded
 
 
@@ -663,7 +681,8 @@ def main() -> int:
 
     errors: list[str] = []
     lidar_configs = validate_lidar_configs(config_dir, errors)
-    imu_profiles = validate_imu_profiles(config_dir, lidar_configs, errors)
+    imu_profiles = validate_imu_profiles(config_dir, errors)
+    validate_mount_profiles(config_dir, errors)
     if not args.lidar_only:
         validate_camera_config(config_dir, lidar_configs, imu_profiles, errors)
     if errors:

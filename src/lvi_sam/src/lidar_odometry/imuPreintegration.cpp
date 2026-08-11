@@ -48,14 +48,33 @@ public:
     std::shared_ptr<tf2_ros::TransformBroadcaster> tfBroadcaster;
     std::shared_ptr<tf2_ros::TransformListener> tfListener;
     tf2::Stamped<tf2::Transform> lidar2Baselink;
+    tf2::Transform configuredLidarToBase;
 
     double lidarOdomTime = -1;
     deque<nav_msgs::msg::Odometry> imuOdomQueue;
 
     explicit TransformFusion(const rclcpp::NodeOptions& options)
         : ParamServer("TransformFusionParamServer", options) {
-        tfBuffer = std::make_shared<tf2_ros::Buffer>(get_clock());
-        tfListener = std::make_shared<tf2_ros::TransformListener>(*tfBuffer);
+        if (baseToLidarConfigured) {
+            const tf2::Quaternion rotation(
+                baseToLidarQuaternion.x(), baseToLidarQuaternion.y(),
+                baseToLidarQuaternion.z(), baseToLidarQuaternion.w());
+            const tf2::Transform baseToLidar(
+                rotation,
+                tf2::Vector3(
+                    baseToLidarTranslation.x(), baseToLidarTranslation.y(),
+                    baseToLidarTranslation.z()));
+            configuredLidarToBase = baseToLidar.inverse();
+            RCLCPP_INFO(
+                get_logger(),
+                "Fused base pose will use configured T_base_lidar; TF is not "
+                "an estimator input");
+        } else if (publishFusedBaseTF && lidarFrame != baselinkFrame) {
+            // Backward-compatible fallback for deployments that have not yet
+            // migrated to an explicit mounting profile.
+            tfBuffer = std::make_shared<tf2_ros::Buffer>(get_clock());
+            tfListener = std::make_shared<tf2_ros::TransformListener>(*tfBuffer);
+        }
 
         callbackGroupImuOdometry = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
         callbackGroupLaserOdometry = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
@@ -183,22 +202,30 @@ public:
         if (publishFusedBaseTF && (!requireFreshLidarOdomForTF || lidarOdomFresh)) {
             bool baseTransformAvailable = true;
             if (lidarFrame != baselinkFrame) {
-                try {
-                    tf2::fromMsg(
-                        tfBuffer->lookupTransform(
-                            lidarFrame, baselinkFrame, rclcpp::Time(0)),
-                        lidar2Baselink);
+                if (baseToLidarConfigured) {
                     tf2::Stamped<tf2::Transform> tb(
-                        tCur * lidar2Baselink,
+                        tCur * configuredLidarToBase,
                         tf2_ros::fromMsg(odomMsg->header.stamp),
                         odometryFrame);
                     tCur = tb;
-                } catch (const tf2::TransformException& ex) {
-                    baseTransformAvailable = false;
-                    RCLCPP_WARN_THROTTLE(
-                        get_logger(), *get_clock(), 2000,
-                        "Skip fused base TF; transform %s -> %s is unavailable: %s",
-                        baselinkFrame.c_str(), lidarFrame.c_str(), ex.what());
+                } else {
+                    try {
+                        tf2::fromMsg(
+                            tfBuffer->lookupTransform(
+                                lidarFrame, baselinkFrame, rclcpp::Time(0)),
+                            lidar2Baselink);
+                        tf2::Stamped<tf2::Transform> tb(
+                            tCur * lidar2Baselink,
+                            tf2_ros::fromMsg(odomMsg->header.stamp),
+                            odometryFrame);
+                        tCur = tb;
+                    } catch (const tf2::TransformException& ex) {
+                        baseTransformAvailable = false;
+                        RCLCPP_WARN_THROTTLE(
+                            get_logger(), *get_clock(), 2000,
+                            "Skip fused base TF; transform %s -> %s is unavailable: %s",
+                            baselinkFrame.c_str(), lidarFrame.c_str(), ex.what());
+                    }
                 }
             }
             if (baseTransformAvailable) {
@@ -284,16 +311,17 @@ public:
     int imuPreintegrationResetId = 0;
     double lastCorrectionTime = -1.0;
 
-    // extrinsicTrans is the lever arm from the physical IMU origin to the
+    // imuToLidarTranslation is the lever arm from the physical IMU origin to the
     // LiDAR origin, expressed in the raw IMU axes (the same convention as the
     // URDF-derived IMU -> LiDAR translation and FAST-LIO's extrinsic_T).
     //
     // imuConverter() rotates IMU acceleration and angular velocity into the
-    // LiDAR axes with extRot, so the preintegrated "IMU pose" uses a virtual
+    // LiDAR axes with imuToLidarRotation, so the preintegrated "IMU pose" uses a virtual
     // IMU frame whose axes are parallel to the LiDAR frame.  Rotate the lever
     // arm into those axes before composing poses, then obtain the reverse
     // transform by inversion instead of relying on an ambiguous sign.
-    Eigen::Vector3d imuToLidarTrans = extRot * extTrans;
+    Eigen::Vector3d imuToLidarTrans =
+        imuToLidarRotation * imuToLidarTranslation;
     gtsam::Pose3 imu2Lidar = gtsam::Pose3(
         gtsam::Rot3(1, 0, 0, 0),
         gtsam::Point3(

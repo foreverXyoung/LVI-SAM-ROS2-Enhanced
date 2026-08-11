@@ -80,6 +80,10 @@ VIS 默认启动是操作策略变化，不是 LIS 算法依赖。未完成相�
   单位按物理 IMU 成组切换；MID-360 原始 `g` 单位在 LIS 与 VIS 入口统一转换为 `m/s²`。
   MID-360 的 IMU-LiDAR 旋转和平移参考 FAST-LIO 官方 `mid360.yaml`。
   MID-360 开启视觉时必须显式提供相机到内置 IMU 的专用标定文件。
+- 将原来含义重叠的 IMU/安装外参拆分为两层：IMU profile 使用明确方向的
+  `imuToLidar*` 参数；新增 `params_mount_robot.yaml` 保存 `T_base_lidar`。MID-360 没有
+  有效姿态消息时以安装标定初始化倾角，外置 IMU 继续使用姿态消息。安装参数也用于融合
+  `odom→base_link` 输出，因此新配置不再读取 TF tree；旧参数和 TF 查询只保留兼容回退。
 - Livox `CustomMsg` 的点时间出现包级乱序时，不再丢弃整帧；转换层会对有限点按
   `offset_time` 稳定排序后继续去畸变。空帧、点数越界和全非有限点仍会被明确拒绝。
 

@@ -144,12 +144,24 @@ public:
     float imuGravity;
     float imuRPYWeight;
     double imuAccelerationScale;
-    vector<double> extRotV, extRPYV, extTransV;
-    Eigen::Matrix3d extRot, extRPY;
-    // IMU-origin -> LiDAR-origin lever arm, expressed in the raw IMU axes.
-    // imuPreintegration rotates it with extRot before pose composition.
-    Eigen::Vector3d extTrans;
-    Eigen::Quaterniond extQRPY;
+    // Sensor calibration (changes when the IMU changes or moves).
+    // v_lidar = imuToLidarRotation * v_imu for acceleration and angular rate.
+    Eigen::Matrix3d imuToLidarRotation;
+    // LiDAR origin expressed in the raw IMU frame (metres).
+    Eigen::Vector3d imuToLidarTranslation;
+    // Right-side orientation correction: q_world_lidar =
+    // q_world_imu * imuOrientationToLidarQuaternion.
+    Eigen::Matrix3d imuOrientationToLidarRotation;
+    Eigen::Quaterniond imuOrientationToLidarQuaternion;
+    std::string imuOrientationSource;
+
+    // Platform mounting calibration (does not change when only the IMU is
+    // replaced). T_base_lidar also allows fused odom -> base_link output to be
+    // composed without reading the TF tree.
+    Eigen::Matrix3d baseToLidarRotation;
+    Eigen::Vector3d baseToLidarTranslation;
+    Eigen::Quaterniond baseToLidarQuaternion;
+    bool baseToLidarConfigured = false;
 
     // LOAM
     float edgeThreshold, surfThreshold;
@@ -289,22 +301,91 @@ public:
         declare_and_get_parameter<double>(
             "imuAccelerationScale", imuAccelerationScale, 1.0);
 
-        double ida[] = {1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
-        std::vector<double> id(ida, std::end(ida));
-        declare_and_get_parameter<std::vector<double>>("extrinsicRot", extRotV, id);
-        declare_and_get_parameter<std::vector<double>>("extrinsicRPY", extRPYV, id);
-        declare_and_get_parameter<std::vector<double>>("extrinsicTrans", extTransV, {0.0, 0.0, 0.0});
+        const std::vector<double> identity{
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 0.0, 1.0};
 
-        if (extRotV.size() != 9 || extRPYV.size() != 9 ||
-            extTransV.size() != 3) {
-            throw std::runtime_error(
-                "extrinsicRot/extrinsicRPY/extrinsicTrans must contain "
-                "9/9/3 values respectively");
+        // Legacy aliases remain readable so existing deployments do not stop
+        // working. New profiles must use the descriptive parameter names.
+        std::vector<double> legacyRotV, legacyRPYV, legacyTransV;
+        declare_and_get_parameter<std::vector<double>>(
+            "extrinsicRot", legacyRotV, identity);
+        declare_and_get_parameter<std::vector<double>>(
+            "extrinsicRPY", legacyRPYV, identity);
+        declare_and_get_parameter<std::vector<double>>(
+            "extrinsicTrans", legacyTransV, {0.0, 0.0, 0.0});
+
+        std::vector<double> imuToLidarRotationV;
+        std::vector<double> imuToLidarTranslationV;
+        std::vector<double> imuOrientationToLidarRotationV;
+        std::vector<double> baseToLidarRotationV;
+        std::vector<double> baseToLidarTranslationV;
+        declare_and_get_parameter<std::vector<double>>(
+            "imuToLidarRotation", imuToLidarRotationV, {});
+        declare_and_get_parameter<std::vector<double>>(
+            "imuToLidarTranslation", imuToLidarTranslationV, {});
+        declare_and_get_parameter<std::vector<double>>(
+            "imuOrientationToLidarRotation",
+            imuOrientationToLidarRotationV, {});
+        declare_and_get_parameter<std::string>(
+            "imuOrientationSource", imuOrientationSource, "message");
+        declare_and_get_parameter<std::vector<double>>(
+            "baseToLidarRotation", baseToLidarRotationV, {});
+        declare_and_get_parameter<std::vector<double>>(
+            "baseToLidarTranslation", baseToLidarTranslationV, {});
+
+        const bool usingLegacyImuCalibration =
+            imuToLidarRotationV.empty() ||
+            imuToLidarTranslationV.empty() ||
+            imuOrientationToLidarRotationV.empty();
+        if (imuToLidarRotationV.empty()) imuToLidarRotationV = legacyRotV;
+        if (imuToLidarTranslationV.empty()) imuToLidarTranslationV = legacyTransV;
+        if (imuOrientationToLidarRotationV.empty()) {
+            imuOrientationToLidarRotationV = legacyRPYV;
+        }
+        if (usingLegacyImuCalibration) {
+            RCLCPP_WARN(
+                get_logger(),
+                "Using deprecated extrinsicRot/extrinsicRPY/extrinsicTrans "
+                "fallback; migrate this IMU profile to imuToLidarRotation, "
+                "imuOrientationToLidarRotation and imuToLidarTranslation");
         }
 
-        extRot = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(extRotV.data(), 3, 3);
-        extRPY = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(extRPYV.data(), 3, 3);
-        extTrans = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(extTransV.data(), 3, 1);
+        if (imuToLidarRotationV.size() != 9 ||
+            imuOrientationToLidarRotationV.size() != 9 ||
+            imuToLidarTranslationV.size() != 3) {
+            throw std::runtime_error(
+                "imuToLidarRotation/imuOrientationToLidarRotation/"
+                "imuToLidarTranslation must contain 9/9/3 values");
+        }
+        if (baseToLidarRotationV.empty() != baseToLidarTranslationV.empty()) {
+            throw std::runtime_error(
+                "baseToLidarRotation and baseToLidarTranslation must be "
+                "configured together");
+        }
+        baseToLidarConfigured = !baseToLidarRotationV.empty();
+        if (!baseToLidarConfigured) {
+            baseToLidarRotationV = identity;
+            baseToLidarTranslationV = {0.0, 0.0, 0.0};
+        }
+        if (baseToLidarRotationV.size() != 9 ||
+            baseToLidarTranslationV.size() != 3) {
+            throw std::runtime_error(
+                "baseToLidarRotation/baseToLidarTranslation must contain "
+                "9/3 values");
+        }
+
+        imuToLidarRotation = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(
+            imuToLidarRotationV.data(), 3, 3);
+        imuOrientationToLidarRotation = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(
+            imuOrientationToLidarRotationV.data(), 3, 3);
+        imuToLidarTranslation = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(
+            imuToLidarTranslationV.data(), 3, 1);
+        baseToLidarRotation = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(
+            baseToLidarRotationV.data(), 3, 3);
+        baseToLidarTranslation = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(
+            baseToLidarTranslationV.data(), 3, 1);
         const auto validateRotation = [](const Eigen::Matrix3d& rotation,
                                          const char* parameterName) {
             if (!rotation.allFinite() ||
@@ -316,12 +397,36 @@ public:
                     " must be a finite orthonormal 3x3 rotation matrix");
             }
         };
-        validateRotation(extRot, "extrinsicRot");
-        validateRotation(extRPY, "extrinsicRPY");
-        if (!extTrans.allFinite()) {
-            throw std::runtime_error("extrinsicTrans must contain finite values");
+        validateRotation(imuToLidarRotation, "imuToLidarRotation");
+        validateRotation(
+            imuOrientationToLidarRotation,
+            "imuOrientationToLidarRotation");
+        validateRotation(baseToLidarRotation, "baseToLidarRotation");
+        if (!imuToLidarTranslation.allFinite() ||
+            !baseToLidarTranslation.allFinite()) {
+            throw std::runtime_error(
+                "IMU/LiDAR calibration translations must contain finite values");
         }
-        extQRPY = Eigen::Quaterniond(extRPY);
+        if (imuOrientationSource != "message" &&
+            imuOrientationSource != "mount") {
+            throw std::runtime_error(
+                "imuOrientationSource must be 'message' or 'mount'");
+        }
+        if (imuOrientationSource == "mount" && !baseToLidarConfigured) {
+            throw std::runtime_error(
+                "imuOrientationSource=mount requires a base-to-LiDAR "
+                "mounting profile");
+        }
+        if (imuOrientationSource == "mount" && imuRPYWeight > 0.0f) {
+            throw std::runtime_error(
+                "imuOrientationSource=mount requires imuRPYWeight=0 because "
+                "a fixed mounting attitude is not a dynamic IMU observation");
+        }
+        imuOrientationToLidarQuaternion =
+            Eigen::Quaterniond(imuOrientationToLidarRotation);
+        baseToLidarQuaternion = Eigen::Quaterniond(baseToLidarRotation);
+        imuOrientationToLidarQuaternion.normalize();
+        baseToLidarQuaternion.normalize();
 
         declare_and_get_parameter<float>("edgeThreshold", edgeThreshold, 1.0);
         declare_and_get_parameter<float>("surfThreshold", surfThreshold, 0.1);
@@ -512,31 +617,36 @@ public:
                 accelerationNorm, imuAccelerationScale);
         }
 
-        acc = extRot * acc;
+        acc = imuToLidarRotation * acc;
         imu_out.linear_acceleration.x = acc.x();
         imu_out.linear_acceleration.y = acc.y();
         imu_out.linear_acceleration.z = acc.z();
         // rotate gyroscope
         Eigen::Vector3d gyr(imu_in.angular_velocity.x, imu_in.angular_velocity.y, imu_in.angular_velocity.z);
-        gyr = extRot * gyr;
+        gyr = imuToLidarRotation * gyr;
         imu_out.angular_velocity.x = gyr.x();
         imu_out.angular_velocity.y = gyr.y();
         imu_out.angular_velocity.z = gyr.z();
         // rotate roll pitch yaw
         Eigen::Quaterniond q_from(imu_in.orientation.w, imu_in.orientation.x, imu_in.orientation.y, imu_in.orientation.z);
-        // Fuse dynamic orientation (9-axis IMU) with mount bias (extQRPY).
-        // If orientation is missing/degenerate (e.g. all-zero), gracefully fall back
-        // to extQRPY instead of shutting down the whole localization stack.
+        // Orientation and vector calibration are deliberately independent:
+        // some drivers publish vectors and attitude in different conventions.
         double q_norm = sqrt(q_from.x() * q_from.x() + q_from.y() * q_from.y() + q_from.z() * q_from.z() + q_from.w() * q_from.w());
         Eigen::Quaterniond q_final;
-        if (!std::isfinite(q_norm) || q_norm < 0.1) {
+        if (imuOrientationSource == "mount") {
+            // The platform is assumed level when the estimator starts. This
+            // is intended for IMUs such as MID-360 whose driver publishes no
+            // usable attitude quaternion.
+            q_final = baseToLidarQuaternion;
+        } else if (!std::isfinite(q_norm) || q_norm < 0.1) {
             RCLCPP_WARN_THROTTLE(
                 get_logger(), *get_clock(), 2000,
-                "IMU orientation invalid (norm=%.3f), falling back to mount bias extQRPY. Ensure a 9-axis IMU.",
+                "IMU orientation invalid (norm=%.3f); using only the "
+                "configured IMU-to-LiDAR orientation correction",
                 q_norm);
-            q_final = extQRPY;
+            q_final = imuOrientationToLidarQuaternion;
         } else {
-            q_final = q_from * extQRPY;
+            q_final = q_from * imuOrientationToLidarQuaternion;
         }
         q_final.normalize();
         imu_out.orientation.x = q_final.x();

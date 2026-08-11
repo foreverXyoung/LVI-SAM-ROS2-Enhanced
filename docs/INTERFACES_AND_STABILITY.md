@@ -146,13 +146,15 @@ DBoW2 的近期关键帧排除量和候选分数分别由 `loop_min_index_gap`�
   `imuAccelerationScale=9.80665` 在 LIS 和 VIS 消费入口各转换一次，算法内部始终使用 m/s²。
   非有限值和倒序时间戳不能进入优化器。
 - `lidarFrame`、`baselinkFrame`、`odometryFrame`、`mapFrame` 是 LIS 内部及输出契约。
-  `publish_fused_tf:=false` 时算法不依赖平台 TF 树完成核心积分，但外参仍必须通过 YAML
-  提供正确标定值。
+  新部署通过 `params_mount_robot.yaml` 的 `T_base_lidar` 直接计算融合 base 位姿，核心算法
+  和融合输出都不读取平台 TF；未提供新安装参数的旧配置才使用 TF 回退。
 - VIS 当前内部固定使用 `vins_world`、`vins_body`、`vins_body_ros` 三个兼容帧；它们不替代
   LIS/Nav2 的 `map`、`odom`、`base_link`。其中 `vins_body_ros` 是位于 VINS camera/body
   原点、但采用 ROS/LiDAR 轴向的**虚拟深度投影帧**，不是物理雷达安装坐标系。
   在统一 TF 架构前，不应让 VIS 单独承担 Nav2 TF。
-- `extrinsicRot` / `extrinsicRPY` / `extrinsicTrans` 属于 IMU-LiDAR 标定；
+- `imuToLidarRotation` / `imuOrientationToLidarRotation` /
+  `imuToLidarTranslation` 属于 IMU-LiDAR 标定；
+  `baseToLidarRotation` / `baseToLidarTranslation` 属于机器人安装标定；
   `extrinsicRotation` / `extrinsicTranslation` 属于 camera-IMU 标定；
   `lidar_to_cam_*` 属于 LiDAR-camera 标定。为兼容原版保留了该参数名，其严格语义是
   “物理 LiDAR → `vins_body_ros` 虚拟深度帧”的完整 SE(3)，只对原始点云应用一次；
@@ -162,6 +164,8 @@ DBoW2 的近期关键帧排除量和候选分数分别由 `loop_min_index_gap`�
   `[-0.011, -0.02329, 0.04412] m` 平移作为参考初值，同时关闭不存在的姿态观测权重；正式精度
   测试前仍需标定噪声，并优先使用可获得的本机外参。相机—外置 IMU
   外参不能复用于相机—MID-360 IMU，后者启用 VIS 时必须提供专用相机参数文件。
+  只更换/移动 IMU 不修改 `params_mount_robot.yaml`；只有 LiDAR 相对机器人本体发生变化时
+  才修改安装 profile。旧 `extrinsicRot/RPY/Trans` 只作为向后兼容回退。
 - VIS 使用的 LIS 里程计输入必须表达物理 LiDAR 在 ROS `odom` 中的位姿，线速度必须在
   ROS `odom` 世界坐标系表达。初始化会先应用 LiDAR-camera 外参，再应用固定的
   ROS-odom → VINS-world 坐标约定；速度只做世界坐标转换，不错误叠加传感器外参旋转。

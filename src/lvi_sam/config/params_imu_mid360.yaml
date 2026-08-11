@@ -16,8 +16,12 @@
     imuGyrBiasN: 3.5640318696367613e-05
     imuGravity: 9.80511
 
-    # The driver does not provide an attitude estimate. Keep roll/pitch fusion
-    # disabled while retaining gyro integration for point-cloud deskew.
+    # The driver does not provide an attitude estimate. Use the separately
+    # calibrated robot mounting profile to initialize the LiDAR attitude.
+    imuOrientationSource: "mount"
+
+    # Keep roll/pitch fusion disabled while retaining gyro integration for
+    # point-cloud deskew and IMU preintegration.
     imuRPYWeight: 0.0
 
     # Initial VIS noise values; calibrate before comparing estimator accuracy.
@@ -32,10 +36,10 @@
     # That convention matches this project's IMU-origin -> LiDAR-origin vector.
     # Treat it as the reference initial value and replace it with a measured
     # calibration if one is available for the exact device revision.
-    extrinsicTrans: [-0.011, -0.02329, 0.04412]
-    extrinsicRot: [1.0, 0.0, 0.0,
-                   0.0, 1.0, 0.0,
-                   0.0, 0.0, 1.0]
-    extrinsicRPY: [1.0, 0.0, 0.0,
-                   0.0, 1.0, 0.0,
-                   0.0, 0.0, 1.0]
+    imuToLidarTranslation: [-0.011, -0.02329, 0.04412]
+    imuToLidarRotation: [1.0, 0.0, 0.0,
+                         0.0, 1.0, 0.0,
+                         0.0, 0.0, 1.0]
+    imuOrientationToLidarRotation: [1.0, 0.0, 0.0,
+                                    0.0, 1.0, 0.0,
+                                    0.0, 0.0, 1.0]

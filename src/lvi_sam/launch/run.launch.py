@@ -68,6 +68,20 @@ def generate_launch_description():
         'imu_source', default_value='external',
         description='IMU profile: external (/IMU_data) or mid360 (/livox/imu)')
 
+    imu_params_arg = DeclareLaunchArgument(
+        'imu_params_file', default_value='',
+        description=(
+            'Optional absolute custom IMU profile; when non-empty it '
+            'overrides imu_source profile selection'))
+
+    mount_params_arg = DeclareLaunchArgument(
+        'mount_params_file',
+        default_value=os.path.join(
+            pkg_dir, 'config', 'params_mount_robot.yaml'),
+        description=(
+            'Robot base-to-LiDAR mounting calibration; independent from the '
+            'selected IMU profile'))
+
     imu_topic_arg = DeclareLaunchArgument(
         'imu_topic', default_value='',
         description='Optional advanced topic override; normally use imu_source')
@@ -130,6 +144,10 @@ def generate_launch_description():
         image_topic = LaunchConfiguration('image_topic').perform(context).strip()
         imu_source = LaunchConfiguration('imu_source').perform(
             context).strip().lower()
+        imu_params = LaunchConfiguration(
+            'imu_params_file').perform(context).strip()
+        mount_params = LaunchConfiguration(
+            'mount_params_file').perform(context).strip()
         imu_topic = LaunchConfiguration('imu_topic').perform(context).strip()
         odom_topic = LaunchConfiguration('odom_topic').perform(context).strip()
         project_name = LaunchConfiguration('project_name').perform(
@@ -156,7 +174,7 @@ def generate_launch_description():
             raise RuntimeError('mode must be mapping or localization: ' + mode)
         if scene not in ('generic', 'charging', 'gazebo'):
             raise RuntimeError('scene must be generic, charging or gazebo: ' + scene)
-        if imu_source not in ('external', 'mid360'):
+        if not imu_params and imu_source not in ('external', 'mid360'):
             raise RuntimeError(
                 'imu_source must be external or mid360: ' + imu_source)
         if enable_visual not in ('true', 'false'):
@@ -198,10 +216,18 @@ def generate_launch_description():
         if not os.path.isfile(lidar_params):
             raise RuntimeError('LIS parameter file does not exist: ' + lidar_params)
 
-        imu_profile = os.path.join(
-            pkg_dir, 'config', 'params_imu_' + imu_source + '.yaml')
+        imu_profile = (
+            imu_params if imu_params else os.path.join(
+                pkg_dir, 'config', 'params_imu_' + imu_source + '.yaml'))
+        if not os.path.isabs(imu_profile):
+            raise RuntimeError('imu_params_file must be an absolute path')
         if not os.path.isfile(imu_profile):
             raise RuntimeError('IMU profile does not exist: ' + imu_profile)
+        if not os.path.isabs(mount_params):
+            raise RuntimeError('mount_params_file must be an absolute path')
+        if not os.path.isfile(mount_params):
+            raise RuntimeError(
+                'Mounting parameter file does not exist: ' + mount_params)
         imu_profile_parameters = load_ros_parameters(imu_profile)
         profile_imu_topic = str(
             imu_profile_parameters.get('imuTopic', '')).strip()
@@ -309,14 +335,14 @@ def generate_launch_description():
             executable='lvi_sam_imuPreintegration',
             name='lvi_sam_imuPreintegration',
             output='screen',
-            parameters=[lidar_params, imu_profile] + lis_common))
+            parameters=[lidar_params, imu_profile, mount_params] + lis_common))
 
         nodes.append(Node(
             package='lvi_sam',
             executable='lvi_sam_mapOptimization',
             name='lvi_sam_mapOptimization',
             output='screen',
-            parameters=[lidar_params, imu_profile] + lis_common,
+            parameters=[lidar_params, imu_profile, mount_params] + lis_common,
             # ③b：接收 VIS 视觉回环候选（VIS 发布 /lvi_sam/vins/loop/match_frame）
             remappings=[('lio_loop/loop_closure_detection',
                          '/' + project_name + '/vins/loop/match_frame')]))
@@ -370,6 +396,8 @@ def generate_launch_description():
         camera_params_arg,
         image_topic_arg,
         imu_source_arg,
+        imu_params_arg,
+        mount_params_arg,
         imu_topic_arg,
         odom_topic_arg,
         project_name_arg,

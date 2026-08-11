@@ -22,13 +22,18 @@
     gyr_w: 4.0e-5
     g_norm: 9.805
 
-    # IMU origin -> LiDAR origin, expressed in raw external-IMU axes.
-    # These preserve the current generic deployment values. Verify them
-    # against the latest physical calibration before accuracy evaluation.
-    extrinsicTrans: [0.201247, -0.024810, -0.029314]
-    extrinsicRot: [0.861882, -0.007061, -0.507059,
-                  -0.001102,  0.999875, -0.015798,
-                   0.507107,  0.014175,  0.861766]
-    extrinsicRPY: [0.861882, -0.001102,  0.507107,
-                  -0.007061,  0.999875,  0.014175,
-                  -0.507059, -0.015798,  0.861766]
+    # This IMU publishes a usable world-to-IMU attitude quaternion.
+    imuOrientationSource: "message"
+
+    # Sensor calibration. Change these three values when this IMU is moved or
+    # replaced; do not put the robot's LiDAR mounting angle here.
+    # v_lidar = imuToLidarRotation * v_raw_imu.
+    imuToLidarRotation: [0.861882, -0.007061, -0.507059,
+                        -0.001102,  0.999875, -0.015798,
+                         0.507107,  0.014175,  0.861766]
+    # LiDAR origin expressed in raw external-IMU coordinates, metres.
+    imuToLidarTranslation: [0.201247, -0.024810, -0.029314]
+    # q_world_lidar = q_world_imu * q_imu_lidar.
+    imuOrientationToLidarRotation: [0.861882, -0.001102,  0.507107,
+                                   -0.007061,  0.999875,  0.014175,
+                                   -0.507059, -0.015798,  0.861766]
