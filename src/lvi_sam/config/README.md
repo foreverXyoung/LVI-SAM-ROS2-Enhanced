@@ -93,8 +93,10 @@ IMU 是独立的配置维度：
   禁止仅更换话题；这会把一种 IMU 的数据按另一种 IMU 的标定解释。
 
 MID-360 驱动不提供可用姿态估计，因此 profile 将 `imuRPYWeight` 设为 `0.0`，但仍使用角速度
-进行点云去畸变。内置 IMU 与点云轴方向一致，单位旋转是合理初值；零平移只是未获得内部杆臂
-尺寸时的调试近似。MID-360 与相机之间的外参不同于当前外置 IMU 外参，所以
+进行点云去畸变。内置 IMU 与点云采用单位旋转；平移初值采用
+[FAST-LIO 官方 Mid-360 配置](https://github.com/hku-mars/FAST_LIO/blob/main/config/mid360.yaml)
+中的 `[-0.011, -0.02329, 0.04412] m`。该值是官方参考初值，若获得当前设备的实测标定结果，
+应优先覆盖本 profile。MID-360 与相机之间的外参不同于当前外置 IMU 外参，所以
 `imu_source:=mid360 enable_visual:=true` 时必须另外传入对应的 `camera_params_file`。
 
 ### 3.2 三组外参不能混用

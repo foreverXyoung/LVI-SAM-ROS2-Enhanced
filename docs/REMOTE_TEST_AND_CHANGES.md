@@ -226,7 +226,7 @@ ros2 launch lvi_sam run.launch.py \
 ```
 
 两次测试不能复用地图目录。先比较静止漂移、重力模长、姿态和短距离闭环误差，再决定正式
-使用哪一套 IMU；MID-360 profile 的噪声和零杆臂当前仍是调试初值。
+使用哪一套 IMU；MID-360 profile 的旋转和平移参考 FAST-LIO 官方 Mid-360 配置，噪声参数仍是待标定初值。
 
 运行期间检查：
 

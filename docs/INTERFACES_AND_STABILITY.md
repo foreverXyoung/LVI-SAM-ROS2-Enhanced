@@ -158,8 +158,9 @@ DBoW2 的近期关键帧排除量和候选分数分别由 `loop_min_index_gap`�
   “物理 LiDAR → `vins_body_ros` 虚拟深度帧”的完整 SE(3)，只对原始点云应用一次；
   camera/VINS 与 ROS 轴向之间的固定旋转由公共坐标约定模块统一处理。三组参数不能互相替代。
 - 物理 IMU 切换必须通过 `imu_source` 同时选择 `params_imu_external.yaml` 或
-  `params_imu_mid360.yaml`。MID-360 profile 使用同轴单位旋转和零杆臂作为调试初值，并关闭
-  不存在的姿态观测权重；正式精度测试前仍需标定噪声和可获得的内部杆臂。相机—外置 IMU
+  `params_imu_mid360.yaml`。MID-360 profile 使用同轴单位旋转，并采用 FAST-LIO 官方配置中的
+  `[-0.011, -0.02329, 0.04412] m` 平移作为参考初值，同时关闭不存在的姿态观测权重；正式精度
+  测试前仍需标定噪声，并优先使用可获得的本机外参。相机—外置 IMU
   外参不能复用于相机—MID-360 IMU，后者启用 VIS 时必须提供专用相机参数文件。
 - VIS 使用的 LIS 里程计输入必须表达物理 LiDAR 在 ROS `odom` 中的位姿，线速度必须在
   ROS `odom` 世界坐标系表达。初始化会先应用 LiDAR-camera 外参，再应用固定的

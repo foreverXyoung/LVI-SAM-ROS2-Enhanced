@@ -188,8 +188,9 @@ ros2 topic hz /lio_sam/mapping/cloud_registered
 - `params_imu_external.yaml`：默认 `/IMU_data`；保留当前外置 IMU 的部署外参（正式测试前仍需与最新标定核对），输入已经是
   `m/s²`，所以 `imuAccelerationScale=1.0`。
 - `params_imu_mid360.yaml`：默认 `/livox/imu`；Livox 协议加速度单位为 `g`，所以使用
-  `imuAccelerationScale=9.80665`。MID-360 IMU 与点云轴方向一致，初值为单位旋转；零杆臂和
-  噪声参数仍需通过设备资料、静态采样和 Allan 方差进一步校准。
+  `imuAccelerationScale=9.80665`。MID-360 IMU 与点云使用单位旋转，平移采用
+  [FAST-LIO 官方 Mid-360 配置](https://github.com/hku-mars/FAST_LIO/blob/main/config/mid360.yaml)
+  的 `[-0.011, -0.02329, 0.04412] m` 作为参考初值；若有本机标定结果应优先使用，噪声参数仍需后续标定。
 - `run.launch.py` 将所选 profile 同时叠加到 LIS 与 VIS，防止两个子系统使用不同单位。
 - MID-360 profile 默认只建议配合 `enable_visual:=false` 调试 LIS。开启 VIS 前必须提供
   相机到 MID-360 IMU 的专用 `camera_params_file`，不能复用相机到外置 IMU 的外参。

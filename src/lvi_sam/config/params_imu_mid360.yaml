@@ -27,11 +27,12 @@
     gyr_w: 4.0e-5
     g_norm: 9.805
 
-    # MID-360 IMU axes have the same directions as its point-cloud axes.
-    # The driver publishes both with livox_frame. Zero lever arm is a safe
-    # commissioning approximation, not a substitute for a measured internal
-    # IMU-origin offset if one becomes available.
-    extrinsicTrans: [0.0, 0.0, 0.0]
+    # HKU-MARS FAST-LIO's official mid360.yaml defines the LiDAR pose in the
+    # IMU body frame with identity rotation and this non-zero translation.
+    # That convention matches this project's IMU-origin -> LiDAR-origin vector.
+    # Treat it as the reference initial value and replace it with a measured
+    # calibration if one is available for the exact device revision.
+    extrinsicTrans: [-0.011, -0.02329, 0.04412]
     extrinsicRot: [1.0, 0.0, 0.0,
                    0.0, 1.0, 0.0,
                    0.0, 0.0, 1.0]
