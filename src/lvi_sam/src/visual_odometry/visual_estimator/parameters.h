@@ -1,7 +1,6 @@
 #pragma once
 
 #include <rclcpp/rclcpp.hpp>
-#include "ament_index_cpp/get_package_share_directory.hpp"
 
 #include <eigen3/Eigen/Dense>
 #include <opencv2/opencv.hpp>
@@ -58,7 +57,6 @@
 #include <thread>
 #include <mutex>
 
-using ament_index_cpp::get_package_share_directory;
 
 const int WINDOW_SIZE = 10;
 
@@ -84,9 +82,9 @@ extern double BIAS_ACC_THRESHOLD;
 extern double BIAS_GYR_THRESHOLD;
 extern double SOLVER_TIME;
 extern int NUM_ITERATIONS;
-extern std::string EX_CALIB_RESULT_PATH;
 extern std::string PROJECT_NAME;
 extern std::string IMU_TOPIC;
+extern std::string ODOM_TOPIC;
 extern double TD;
 extern double TR;
 extern int ESTIMATE_TD;
@@ -94,6 +92,7 @@ extern int ROLLING_SHUTTER;
 extern int ROW, COL;
 
 extern int USE_LIDAR;
+extern int USE_LIDAR_ODOMETRY_PRIOR;
 extern int ALIGN_CAMERA_LIDAR_COORDINATE;
 
 void readParameters(std::shared_ptr<rclcpp::Node> node);

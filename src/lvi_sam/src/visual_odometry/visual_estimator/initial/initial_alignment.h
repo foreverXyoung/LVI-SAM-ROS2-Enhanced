@@ -1,4 +1,5 @@
 #pragma once
+#include <cmath>
 #include <eigen3/Eigen/Dense>
 #include <iostream>
 #include "../factor/imu_factor.h"
@@ -8,10 +9,8 @@
 #include "../feature_manager.h"
 
 #include "nav_msgs/msg/odometry.hpp"
-#include "tf2/LinearMath/Quaternion.h"
-#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp" 
-#include "geometry_msgs/msg/quaternion.hpp"
-#include <pcl/common/transforms.h>
+#include "lvi_sam/internal_odom_metadata.hpp"
+#include "lvi_sam/visual_frame_conventions.hpp"
 
 using namespace Eigen;
 using namespace std;
@@ -19,13 +18,25 @@ using namespace std;
 class ImageFrame
 {
     public:
-        ImageFrame(){};
-        ImageFrame(const map<int, vector<pair<int, Eigen::Matrix<double, 8, 1>>>>& _points, 
+        ImageFrame()
+            : t{0.0}, pre_integration{nullptr}, is_key_frame{false},
+              reset_id{-1}, T{Vector3d::Zero()}, R{Matrix3d::Identity()},
+              V{Vector3d::Zero()}, Ba{Vector3d::Zero()},
+              Bg{Vector3d::Zero()}, gravity{9.805} {};
+        ImageFrame(const map<int, vector<pair<int, Eigen::Matrix<double, 8, 1>>>>& _points,
                    const vector<float> &_lidar_initialization_info,
-                   double _t):
-        t{_t}, is_key_frame{false}, reset_id{-1}, gravity{9.805}
+                   double _t) : ImageFrame()
         {
             points = _points;
+            t = _t;
+
+            if (_lidar_initialization_info.size() < 18)
+                return;
+            for (const float value : _lidar_initialization_info)
+                if (!std::isfinite(value))
+                    return;
+            if (_lidar_initialization_info[0] < 0.0f)
+                return;
             
             // reset id in case lidar odometry relocate
             reset_id = (int)round(_lidar_initialization_info[0]);
@@ -38,6 +49,12 @@ class ImageFrame
                                                       _lidar_initialization_info[4],
                                                       _lidar_initialization_info[5],
                                                       _lidar_initialization_info[6]);
+            if (Q.norm() < 1e-9)
+            {
+                reset_id = -1;
+                T.setZero();
+                return;
+            }
             R = Q.normalized().toRotationMatrix();
             // Velocity
             V.x() = _lidar_initialization_info[8];
@@ -75,23 +92,23 @@ class ImageFrame
 bool VisualIMUAlignment(map<double, ImageFrame> &all_image_frame, Vector3d* Bgs, Vector3d &g, VectorXd &x);
 
 
-class odometryRegister
+class OdometryRegister
 {
 public:
 
-    std::shared_ptr<rclcpp::Node> node;
-    Eigen::Affine3d camera_from_lidar = Eigen::Affine3d::Identity();
-    rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_latest_odometry;
+    Eigen::Affine3d depth_frame_from_lidar = Eigen::Affine3d::Identity();
 
-    odometryRegister(std::shared_ptr<rclcpp::Node> node)
+    explicit OdometryRegister(const std::shared_ptr<rclcpp::Node> &node)
+        : logger_(node->get_logger()), clock_(node->get_clock())
     {
-        const float tx = static_cast<float>(node->get_parameter("lidar_to_cam_tx").as_double());
-        const float ty = static_cast<float>(node->get_parameter("lidar_to_cam_ty").as_double());
-        const float tz = static_cast<float>(node->get_parameter("lidar_to_cam_tz").as_double());
-        const float rx = static_cast<float>(node->get_parameter("lidar_to_cam_rx").as_double());
-        const float ry = static_cast<float>(node->get_parameter("lidar_to_cam_ry").as_double());
-        const float rz = static_cast<float>(node->get_parameter("lidar_to_cam_rz").as_double());
-        camera_from_lidar = pcl::getTransformation(tx, ty, tz, rx, ry, rz).cast<double>();
+        const double tx = node->get_parameter("lidar_to_cam_tx").as_double();
+        const double ty = node->get_parameter("lidar_to_cam_ty").as_double();
+        const double tz = node->get_parameter("lidar_to_cam_tz").as_double();
+        const double rx = node->get_parameter("lidar_to_cam_rx").as_double();
+        const double ry = node->get_parameter("lidar_to_cam_ry").as_double();
+        const double rz = node->get_parameter("lidar_to_cam_rz").as_double();
+        depth_frame_from_lidar = lvi_sam::visual_frames::depth_frame_from_lidar(
+            tx, ty, tz, rx, ry, rz);
     }
 
     // convert odometry from ROS Lidar frame to VINS camera frame
@@ -133,9 +150,43 @@ public:
             return odometry_channel;
         }
 
-        // Apply the calibrated full SE(3) transform. camera_from_lidar maps
-        // lidar-frame points into the camera/body frame, so a camera pose is
-        // T_odom_lidar * inverse(T_camera_lidar).
+        const auto rejectInvalidPrior = [this, &odometry_channel](const char* reason) {
+            RCLCPP_WARN_THROTTLE(
+                logger_, *clock_, 2000,
+                "Rejecting LiDAR initialization prior: %s", reason);
+            return odometry_channel;
+        };
+        for (std::size_t index = 0;
+             index <= lvi_sam::internal_odom_metadata::visual_prior::kLastRequiredIndex;
+             ++index)
+        {
+            if (!std::isfinite(odomCur.pose.covariance[index]))
+                return rejectInvalidPrior("non-finite internal metadata");
+        }
+        const double resetId = odomCur.pose.covariance[
+            lvi_sam::internal_odom_metadata::visual_prior::kResetId];
+        const double gravity = odomCur.pose.covariance[
+            lvi_sam::internal_odom_metadata::visual_prior::kGravity];
+        if (resetId < 0.0 || std::abs(resetId - std::round(resetId)) > 1e-6)
+            return rejectInvalidPrior("invalid reset identifier");
+        if (gravity < 5.0 || gravity > 15.0)
+            return rejectInvalidPrior("missing or implausible gravity metadata");
+
+        const auto& position = odomCur.pose.pose.position;
+        const auto& orientation = odomCur.pose.pose.orientation;
+        const auto& velocity = odomCur.twist.twist.linear;
+        if (!std::isfinite(position.x) || !std::isfinite(position.y) ||
+            !std::isfinite(position.z) || !std::isfinite(orientation.x) ||
+            !std::isfinite(orientation.y) || !std::isfinite(orientation.z) ||
+            !std::isfinite(orientation.w) || !std::isfinite(velocity.x) ||
+            !std::isfinite(velocity.y) || !std::isfinite(velocity.z))
+            return rejectInvalidPrior("non-finite pose or velocity");
+
+        // Convert the ROS odometry pose of the physical LiDAR into the VINS
+        // world pose of the optical-style camera/body.  The calibrated
+        // LiDAR->depth transform and the fixed depth->VINS axis convention are
+        // deliberately separate; visualization and depth injection use the
+        // same definitions from visual_frame_conventions.hpp.
         Eigen::Quaterniond q_odom_lidar(
             odomCur.pose.pose.orientation.w,
             odomCur.pose.pose.orientation.x,
@@ -149,30 +200,42 @@ public:
             odomCur.pose.pose.position.x,
             odomCur.pose.pose.position.y,
             odomCur.pose.pose.position.z);
-        const Eigen::Affine3d odom_from_camera =
-            odom_from_lidar * camera_from_lidar.inverse();
-        const Eigen::Quaterniond q_odom_cam(odom_from_camera.rotation());
-        odomCur.pose.pose.orientation.x = q_odom_cam.x();
-        odomCur.pose.pose.orientation.y = q_odom_cam.y();
-        odomCur.pose.pose.orientation.z = q_odom_cam.z();
-        odomCur.pose.pose.orientation.w = q_odom_cam.w();
-        odomCur.pose.pose.position.x = odom_from_camera.translation().x();
-        odomCur.pose.pose.position.y = odom_from_camera.translation().y();
-        odomCur.pose.pose.position.z = odom_from_camera.translation().z();
+        const Eigen::Affine3d vins_camera_from_lidar =
+            lvi_sam::visual_frames::vins_camera_from_depth_frame() *
+            depth_frame_from_lidar;
+        const Eigen::Affine3d vins_world_from_camera =
+            lvi_sam::visual_frames::vins_world_from_ros_odom() *
+            odom_from_lidar * vins_camera_from_lidar.inverse();
+        Eigen::Quaterniond q_vins_world_camera(vins_world_from_camera.rotation());
+        q_vins_world_camera.normalize();
+        odomCur.pose.pose.orientation.x = q_vins_world_camera.x();
+        odomCur.pose.pose.orientation.y = q_vins_world_camera.y();
+        odomCur.pose.pose.orientation.z = q_vins_world_camera.z();
+        odomCur.pose.pose.orientation.w = q_vins_world_camera.w();
+        odomCur.pose.pose.position.x = vins_world_from_camera.translation().x();
+        odomCur.pose.pose.position.y = vins_world_from_camera.translation().y();
+        odomCur.pose.pose.position.z = vins_world_from_camera.translation().z();
 
         // imuPreintegration publishes currentState.velocity() in the odometry
         // (world) frame.  Changing the child pose from lidar to camera must not
         // rotate that world-frame velocity by the sensor extrinsic.  A lever-arm
         // velocity correction would additionally require a consistently framed
         // angular velocity; for the present tightly mounted sensors, retain the
-        // IMU/world velocity as the initialization prior.
+        // IMU/world velocity as the initialization prior, transformed only by
+        // the fixed ROS-odom -> VINS-world convention.
+        const Eigen::Vector3d velocity_ros_odom(
+            odomCur.twist.twist.linear.x,
+            odomCur.twist.twist.linear.y,
+            odomCur.twist.twist.linear.z);
+        const Eigen::Vector3d velocity_vins_world =
+            lvi_sam::visual_frames::vins_world_from_ros_odom().linear() *
+            velocity_ros_odom;
+        odomCur.twist.twist.linear.x = velocity_vins_world.x();
+        odomCur.twist.twist.linear.y = velocity_vins_world.y();
+        odomCur.twist.twist.linear.z = velocity_vins_world.z();
 
-        // odomCur.header.stamp = ros::Time().fromSec(img_time);
-        // odomCur.header.frame_id = "vins_world";
-        // odomCur.child_frame_id = "vins_body";
-        // pub_latest_odometry.publish(odomCur);
-
-        odometry_channel[0] = odomCur.pose.covariance[0];
+        odometry_channel[0] = odomCur.pose.covariance[
+            lvi_sam::internal_odom_metadata::visual_prior::kResetId];
         odometry_channel[1] = odomCur.pose.pose.position.x;
         odometry_channel[2] = odomCur.pose.pose.position.y;
         odometry_channel[3] = odomCur.pose.pose.position.z;
@@ -183,14 +246,25 @@ public:
         odometry_channel[8]  = odomCur.twist.twist.linear.x;
         odometry_channel[9]  = odomCur.twist.twist.linear.y;
         odometry_channel[10] = odomCur.twist.twist.linear.z;
-        odometry_channel[11] = odomCur.pose.covariance[1];
-        odometry_channel[12] = odomCur.pose.covariance[2];
-        odometry_channel[13] = odomCur.pose.covariance[3];
-        odometry_channel[14] = odomCur.pose.covariance[4];
-        odometry_channel[15] = odomCur.pose.covariance[5];
-        odometry_channel[16] = odomCur.pose.covariance[6];
-        odometry_channel[17] = odomCur.pose.covariance[7];
+        odometry_channel[11] = odomCur.pose.covariance[
+            lvi_sam::internal_odom_metadata::visual_prior::kAccelBiasX];
+        odometry_channel[12] = odomCur.pose.covariance[
+            lvi_sam::internal_odom_metadata::visual_prior::kAccelBiasY];
+        odometry_channel[13] = odomCur.pose.covariance[
+            lvi_sam::internal_odom_metadata::visual_prior::kAccelBiasZ];
+        odometry_channel[14] = odomCur.pose.covariance[
+            lvi_sam::internal_odom_metadata::visual_prior::kGyroBiasX];
+        odometry_channel[15] = odomCur.pose.covariance[
+            lvi_sam::internal_odom_metadata::visual_prior::kGyroBiasY];
+        odometry_channel[16] = odomCur.pose.covariance[
+            lvi_sam::internal_odom_metadata::visual_prior::kGyroBiasZ];
+        odometry_channel[17] = odomCur.pose.covariance[
+            lvi_sam::internal_odom_metadata::visual_prior::kGravity];
 
         return odometry_channel;
     }
+
+private:
+    rclcpp::Logger logger_;
+    rclcpp::Clock::SharedPtr clock_;
 };

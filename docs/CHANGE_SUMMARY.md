@@ -1,0 +1,139 @@
+# 改动汇总与稳定性审阅记录
+
+本文档用于后期定位“为什么改、改了哪里、正常路径是否变化、如何验证”。当前审阅以已知可运行
+分支提交 `bf3d92e` 为代码比较锚点，同时覆盖本增强版相对原 LIO/LVI-SAM 链路的功能变化。
+审阅日期：2026-08-11。
+
+## 1. 设计原则
+
+1. 纯 LIS 建图路径必须能独立编译、启动和降级，不依赖相机、Ceres 或视觉节点。
+2. 对合法、单调、有限的原始数据，保留原 LOAM、IMU 预积分、因子图和 VINS 优化主流程；
+   新增逻辑主要位于输入校验、配置校验、跨线程同步和可选功能边界。
+3. 先验地图、视觉、回环和 RTK 都是显式开关，不用隐式探测改变算法模式。
+4. 错误数据采用“拒绝该样本并告警”，地图文件采用“事务未完成即不可定位”的策略。
+5. 不引入 YAML 生成器或运行时继承层。配置保留为显式场景文件，通过校验器防止重复字段漂移。
+
+## 2. 改动总表
+
+| 模块 | 主要文件 | 改动 | 对正常路径的影响 |
+|---|---|---|---|
+| 构建与依赖 | `CMakeLists.txt`、`package.xml`、`scripts/*`、Docker | C++17；GTSAM 4.x；`BUILD_VISUAL`；标准 rosdep；复用已安装 Livox 驱动；构建前配置预检 | LIS 算法不变；视觉可完全从构建中移除 |
+| OpenCV 兼容 | `image_conversion.hpp`、视觉图像回调 | 使用内部 `sensor_msgs/Image -> cv::Mat` 适配，不链接 `cv_bridge` | 像素语义不变；避免 ROS OpenCV 4.5/JetPack 4.8 同进程 ABI 冲突 |
+| 统一启动 | `run.launch.py` | `mode × scene` 选配置；VIS/RViz 默认开启；话题、地图目录、TF 发布显式覆盖；启动前检查文件 | 默认会多启动 VIS/RViz；纯 LIS 用开关恢复最小链路 |
+| 配置治理 | `config/*.yaml`、`validate_config.py`、`config/README.md` | 配置集中；同场景 mapping/localization 传感器及外参一致性；数值/资源/接口校验 | 不改变合法参数；错误配置在节点创建前失败 |
+| Mid-360 前端 | `imageProjection.hpp`、`featureExtraction.hpp` | 容器 RAII、边界/有限值/时间检查、队列上限；保留最后一个 Livox 点；修正特征排序末端遗漏 | 合法帧计算链不变；修复原先最后点/末端元素遗漏 |
+| IMU 预积分 | `imuPreintegration.cpp`、`internal_odom_metadata.hpp` | 有限值和单调时间检查；智能指针；队列上限；图优化重置编号；帧语义统一为物理 LiDAR | 正常积分方程不变；图优化发生跳变时主动重建积分状态 |
+| 地图优化 | `mapOptmization.cpp`、`file_tools.hpp` | 线程快照、输入门限、Scan Context+ICP、地图清单/事务、定位状态机、RTK 门控 | 普通 mapping 主顺序仍为初值→局部图→降采样→scan-to-map→因子图→发布 |
+| 先验地图定位 | `mapOptmization.cpp`、localization YAML | 加载 PCD/SCD/manifest；Scan Context 全局重定位；丢失检测和强制重定位服务 | 仅 `Loc.EnableFlag=true` 进入；mapping 不执行先验地图分支 |
+| 地图持久化 | `mapOptmization.cpp`、地图格式文档 | 新/空目录要求；写入中标记；逐帧 PCD/SCD；最终 manifest 原子提交；帧和维度核对 | 改变旧版“可覆盖目录”习惯，避免混合旧地图；不改变在线里程计 |
+| RTK/GNSS | `utility.hpp`、`mapOptmization.cpp`、charging 配置、GPS 辅助脚本 | 时间、帧、协方差、位置/航向、创新量门控；Huber；定位自适应融合；安全更新 YAML | 默认关闭；质量差输入不会进入因子图或定位修正 |
+| VIS Feature | feature tracker 源码 | 图像编码/尺寸校验；频率 `0=逐帧`；深度缓存和重启清理；话题统一 | 合法图像仍走原光流/特征跟踪；错误帧不进入跟踪器 |
+| VIS Estimator | estimator 源码 | 消息通道校验；IMU/特征/里程计队列和时间检查；重启原子清理；安全滑窗查找；线程退出 | 原 VINS 优化因子和滑窗算法保留；坏样本和跨序列样本被拒绝 |
+| VIS Loop | loop detector 源码、DBoW2 词表读取 | 三路近似时间同步；队列上限；词表健壮读取；可配候选门限；RAII 关键帧；退出 join | BRIEF+DBoW2+PnP 逻辑保留；候选仍须由 LIS 点云 ICP 验证 |
+| 公共接口 | `topic_names.hpp`、`package_assets.hpp`、`visual_frame_conventions.hpp` | 话题、包资源、坐标约定和里程计元数据集中定义 | 消除多处字符串/矩阵魔法值，不增加运行节点 |
+| RViz 与文档 | `rviz2.rviz`、README、`docs/*` | 默认显示注册点云、轨迹和回环诊断；补充部署、使用、架构、接口与验收文档 | 只影响可视化和操作流程 |
+
+## 3. 原逻辑兼容性结论
+
+### 3.1 纯激光建图
+
+主执行顺序未被重排：Mid-360 CustomMsg → 去畸变 → LOAM 特征 → 初值更新 → 局部地图 →
+scan-to-map → 关键帧/因子图 → 位姿与点云发布。以下变化属于确定性修复：
+
+- 原 CustomMsg 转换漏掉 `point_num` 的最后一个点，现按实际点数完整转换；
+- 原特征排序区间遗漏末端元素，现使用完整闭区间；
+- 原固定数组和手动资源改为等价 RAII 容器；
+- 非有限、倒序或越界数据在进入 PCL/GTSAM 前丢弃；合法数据不经过额外估计环节；
+- `mappingProcessInterval=0` 表示处理每个已接受雷达帧，避免 10 Hz 抖动导致隔帧。
+
+### 3.2 IMU 与图优化衔接
+
+预积分公式、噪声模型和 GTSAM 优化结构保留。新增重置编号只在 GPS、外部位姿或回环导致历史
+图位姿整体修正后变化；消费者收到变化后放弃跨坐标跳变的旧积分，从下一次图优化修正重新初始化。
+该行为会在图修正时短暂少发布一段预测，但比把修正前后的积分连续拼接更稳定。
+
+`/odometry/imu` 的协方差前八个槽位用于兼容原 LVI-SAM 的内部初始化元数据，不是统计协方差。
+Nav2 或通用融合器应使用 `/lio_sam/mapping/odometry`，或由集成层发布带真实协方差的独立话题。
+
+### 3.3 视觉链路
+
+原光流、VINS 滑窗、BRIEF、DBoW2 和 PnP 核心计算未替换。新增适配层只完成编码检查和灰度
+转换；`rgb8` 输入按标准 RGB 权重转灰度。线程改动用于确保重启、断流、时间回拨和退出时不会
+残留旧队列或后台线程。
+
+VIS 默认启动是操作策略变化，不是 LIS 算法依赖。未完成相机/IMU/LiDAR 标定时，VIS 可以运行
+单目惯性链路，但必须保持 LiDAR 深度、LiDAR 里程计先验和在线 LiDAR-camera 对齐关闭。
+
+### 3.4 本次复审确认并修正的问题
+
+- 已确认 PCL binary writer 会拒绝空点云，因此保留逐关键帧 0 字节空特征标记；配套定位加载器
+  先检查文件大小并把它解释为空特征，不会把该标记交给 `loadPCDFile()`。这样既保持索引连续，
+  又不为正常建图增加一个 PCL 异常分支。
+- 去畸变模块读取 IMU 里程计重置编号时，已改用公共元数据索引，避免再次出现协方差魔法下标。
+- 多套配置曾把源码读取的顶层 `useRviz` 错误缩进到 `Loc`，因此修改该值不会生效；现已统一
+  移到顶层，并由预检器拒绝错误层级；mapping 文件中不会读取的定位参数也已移到对应
+  localization 文件。launch 的 `enable_rviz` 与 LIS 数据发布开关已分别说明。
+- 配置预检原先只比较六套 LIS 的公共话题/帧，现进一步核对每个场景的 mapping/localization
+  雷达扫描参数和 IMU-LiDAR 外参，并检查旧 `params.yaml` 与通用定位配置一致。
+
+## 4. 有意改变的运行约束
+
+| 变化 | 原因 | 操作影响 |
+|---|---|---|
+| 建图目录必须为新目录或空目录 | 防止新旧 PCD/SCD 混合 | 每次测试使用带编号的新目录 |
+| 本版本新地图要求完整 manifest，拒绝写入中地图 | 防止异常退出地图进入生产；无清单历史地图仍兼容 | 新建图看到完整保存日志后再切定位 |
+| 无效/倒序传感器样本被丢弃 | 防止 NaN 或负 `dt` 污染优化器 | 持续告警时先修时间源，不调大算法门限 |
+| VIS 与 RViz 默认开启 | 方便完整链路和现场可视化 | SSH 使用 `enable_rviz:=false`；纯 LIS 加 `enable_visual:=false` |
+| `BUILD_VISUAL=OFF` 不生成视觉程序 | 隔离 Ceres/OpenCV 问题 | 对应运行必须显式 `enable_visual:=false` |
+| RTK 输入必须是 map 对齐 Odometry | 因子图不能直接解释经纬度 | 上游完成投影、质量和杆臂处理 |
+
+## 5. 配置与接口索引
+
+- 唯一配置说明：[`../src/lvi_sam/config/README.md`](../src/lvi_sam/config/README.md)
+- 稳定接口契约：[`INTERFACES_AND_STABILITY.md`](INTERFACES_AND_STABILITY.md)
+- 地图格式：[`ARCHITECTURE_AND_MAP_FORMAT.md`](ARCHITECTURE_AND_MAP_FORMAT.md)
+- 远程测试流程：[`REMOTE_TEST_AND_CHANGES.md`](REMOTE_TEST_AND_CHANGES.md)
+- Orin 部署：[`DEPLOY_ORIN.md`](DEPLOY_ORIN.md)
+
+不要同时修改 YAML、launch 默认值和 C++ 默认值来表达同一个现场差异。部署话题/目录放 launch，
+算法与标定放 YAML，C++ 默认值仅作为缺参保护。
+
+## 6. 已完成检查与实机待验
+
+已完成的离线检查：
+
+- 六套活动 LIS、旧兼容 LIS 和 VIS YAML 解析及契约预检；
+- Python launch/辅助脚本语法检查；
+- XML、Markdown 本地链接、文本空白检查；
+- 公共纯 C++ 头的最小 C++17 语法测试；
+- 差异逐链路审阅，包括 mapping、localization、IMU、VIS、loop、RTK 和地图保存。
+
+当前 Windows 审阅环境没有 ROS 2 Humble、PCL、GTSAM、Ceres 和 Livox 消息包，因此不能在本机
+完成全量 C++ 链接或运行算法。合并前仍必须在 Orin 执行：
+
+```bash
+bash scripts/build.sh --clean
+source install/setup.bash
+colcon test --packages-select lvi_sam
+colcon test-result --verbose
+```
+
+实机依次验证纯 LIS 静止/直行/转弯、完整建图保存、先验地图重定位、闭环、相机断流恢复、
+低质量 RTK 拒绝以及进程退出。验收项和命令见 `INTERFACES_AND_STABILITY.md` 第 8 节。
+
+## 7. 已知边界
+
+- 视觉 DBoW2/BRIEF 数据库仍只存在于当前运行内存；跨会话重定位由 Scan Context + ICP 完成。
+- 当前地图清单为 schema 1，只持久化 LiDAR 地图、关键帧位姿和 Scan Context；相机图像、描述子、
+  标定版本与三维关联点尚未形成可加载的数据集。
+- RTK 内核不会直接消费 `sensor_msgs/NavSatFix`，也不能代替接收机质量判断、坐标投影和杆臂补偿。
+- VIS 只提供松耦合候选和内部里程计，不应单独发布 Nav2 的 `map -> odom -> base_link` 主 TF 链。
+
+## 8. 变更时的回归规则
+
+1. 修改同一场景的雷达型号、扫描参数或 IMU-LiDAR 外参时，同时更新 mapping/localization 文件。
+2. 新参数必须在 YAML、`utility.hpp`/视觉参数读取和 `validate_config.py` 三处保持一致。
+3. 新话题必须登记到接口文档；VIS 话题同时加入 `topic_names.hpp` 和测试。
+4. 改地图格式必须升级 schema，并提供旧版本读取或明确迁移工具。
+5. 改正常计算路径时必须记录输入、旧结果、新结果和差异原因；仅“能编译”不能作为算法回归依据。
+6. 上车测试失败时先关闭 VIS、RTK、外部位姿和回环恢复最小 LIS，再逐项开启，避免同时排查多条链路。

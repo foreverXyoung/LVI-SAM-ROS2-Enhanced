@@ -19,6 +19,7 @@ public:
 
 	LoopDetector();
 	void loadVocabulary(std::string voc_path);
+	void reset();
 	
 	void addKeyFrame(std::unique_ptr<KeyFrame> cur_kf, bool flag_detect_loop);
 	void addKeyFrameIntoVoc(KeyFrame* keyframe);

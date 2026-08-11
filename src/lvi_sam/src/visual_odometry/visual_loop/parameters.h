@@ -1,6 +1,6 @@
 #pragma once
 #include <rclcpp/rclcpp.hpp>
-#include "ament_index_cpp/get_package_share_directory.hpp"
+#include <rclcpp/parameter_map.hpp>
 
 #include <eigen3/Eigen/Dense>
 
@@ -57,6 +57,7 @@
 #include <thread>
 #include <mutex>
 #include <cassert>
+#include <cstdint>
 #include <stdexcept>
 #include <memory>
 
@@ -70,7 +71,6 @@
 #include "../visual_feature/camera_models/PinholeCamera.h"
 
 using namespace std;
-using ament_index_cpp::get_package_share_directory;
 
 extern camodocal::CameraPtr m_camera;
 
@@ -83,6 +83,9 @@ extern string IMAGE_TOPIC;
 extern int DEBUG_IMAGE;
 extern int LOOP_CLOSURE;
 extern double MATCH_IMAGE_SCALE;
+extern int LOOP_MIN_INDEX_GAP;
+extern double LOOP_PRIMARY_SCORE_THRESHOLD;
+extern double LOOP_SECONDARY_SCORE_THRESHOLD;
 
 extern rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr pub_match_img;
 extern rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_match_msg;
@@ -113,23 +116,34 @@ public:
         // We load the pattern that we used to build the vocabulary, to make
         // the descriptors compatible with the predefined vocabulary
 
-        // loads the pattern
-        // cv::FileStorage fs(pattern_file.c_str(), cv::FileStorage::READ);
-        // if(!fs.isOpened()) throw string("Could not open file ") + pattern_file;
+        std::vector<int64_t> x1_long, y1_long, x2_long, y2_long;
+        const auto parameter_map =
+            rclcpp::parameter_map_from_yaml_file(pattern_file);
+        for (const auto &node_parameters : parameter_map)
+        {
+            for (const auto &parameter : node_parameters.second)
+            {
+                if (parameter.get_name() == "x1")
+                    x1_long = parameter.as_integer_array();
+                else if (parameter.get_name() == "y1")
+                    y1_long = parameter.as_integer_array();
+                else if (parameter.get_name() == "x2")
+                    x2_long = parameter.as_integer_array();
+                else if (parameter.get_name() == "y2")
+                    y2_long = parameter.as_integer_array();
+            }
+        }
 
-        vector<long int> x1_long, y1_long, x2_long, y2_long;
-        n->declare_parameter("x1", std::vector<long int>());
-        n->get_parameter("x1", x1_long);
-        n->declare_parameter("x2", std::vector<long int>());
-        n->get_parameter("x2", x2_long);
-        n->declare_parameter("y1", std::vector<long int>());
-        n->get_parameter("y1", y1_long);
-        n->declare_parameter("y2", std::vector<long int>());
-        n->get_parameter("y2", y2_long);
-        // fs["x1"] >> x1;
-        // fs["x2"] >> x2;
-        // fs["y1"] >> y1;
-        // fs["y2"] >> y2;
+        constexpr std::size_t kBriefBitCount = 256;
+        if (x1_long.size() != kBriefBitCount ||
+            y1_long.size() != kBriefBitCount ||
+            x2_long.size() != kBriefBitCount ||
+            y2_long.size() != kBriefBitCount)
+        {
+            throw std::runtime_error(
+                "BRIEF pattern must contain exactly 256 values in x1/y1/x2/y2: " +
+                pattern_file);
+        }
 
         vector<int> x1, y1, x2, y2;
         x1.assign(x1_long.begin(), x1_long.end());
@@ -138,6 +152,9 @@ public:
         y2.assign(y2_long.begin(), y2_long.end());
 
         m_brief.importPairs(x1, y1, x2, y2);
+        RCLCPP_INFO(
+            n->get_logger(), "Loaded %zu BRIEF test pairs from %s",
+            kBriefBitCount, pattern_file.c_str());
     }
 };
 

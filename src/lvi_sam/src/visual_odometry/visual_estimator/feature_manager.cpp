@@ -5,8 +5,7 @@ int FeaturePerId::endFrame()
     return start_frame + feature_per_frame.size() - 1;
 }
 
-FeatureManager::FeatureManager(Matrix3d _Rs[]) : Node("feature_manager")
-    , Rs(_Rs)
+FeatureManager::FeatureManager(Matrix3d _Rs[]) : Rs(_Rs)
 {
     for (int i = 0; i < NUM_OF_CAM; i++)
         ric[i].setIdentity();

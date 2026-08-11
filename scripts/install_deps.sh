@@ -30,7 +30,9 @@ c_err(){  echo -e "\033[1;31m[ERR ]\033[0m  $*"; }
 
 # ---------- 0) 检测 ROS 2 环境 ----------
 c_info "检测 ROS 2 ($ROS_DISTRO) 环境 ..."
-if [ -f "/opt/ros/$ROS_DISTRO/setup.bash" ]; then
+if command -v ros2 >/dev/null 2>&1; then
+  c_ok "保留当前已 source 的 ROS/机器人工作区环境"
+elif [ -f "/opt/ros/$ROS_DISTRO/setup.bash" ]; then
   # shellcheck disable=SC1091
   source "/opt/ros/$ROS_DISTRO/setup.bash"
   c_ok "已 source /opt/ros/$ROS_DISTRO/setup.bash"
@@ -45,30 +47,48 @@ $SUDO apt-get update -y
 $SUDO apt-get install -y --no-install-recommends \
   build-essential cmake git wget curl ca-certificates ccache \
   libpcl-dev libopencv-dev libeigen3-dev libboost-all-dev libceres-dev \
-  python3-pip python3-yaml python3-pyproj python3-rosdep python3-colcon-common-extensions \
+  python3-yaml python3-pyproj python3-rosdep python3-colcon-common-extensions \
   ros-"$ROS_DISTRO"-desktop ros-"$ROS_DISTRO"-pcl-ros \
-  ros-"$ROS_DISTRO"-pcl-conversions ros-"$ROS_DISTRO"-tf2* \
+  ros-"$ROS_DISTRO"-pcl-conversions ros-"$ROS_DISTRO"-tf2 \
+  ros-"$ROS_DISTRO"-tf2-ros ros-"$ROS_DISTRO"-tf2-eigen \
+  ros-"$ROS_DISTRO"-tf2-geometry-msgs \
   ros-"$ROS_DISTRO"-robot-state-publisher ros-"$ROS_DISTRO"-xacro
 
 # Orin 上启用 ccache（加速重复编译），通过 CCACHE_DIR 可持久化
 if [ "$IS_ORIN" -eq 1 ]; then
-  c_info "检测到 aarch64(AGX Orin/Jetson)：ccache 已安装，建议 export CCACHE_DIR=/mnt/<外存>/ccache 持久化。"
-  export CCACHE_DIR="${CCACHE_DIR:-${HOME}/.ccache}"
+  c_info "检测到 aarch64(AGX Orin/Jetson)：ccache 已安装；可按需设置 CCACHE_DIR 到持久化磁盘。"
   export CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-10G}"
-  c_info "ccache 配置：CCACHE_DIR=$CCACHE_DIR CCACHE_MAXSIZE=$CCACHE_MAXSIZE（可用 ccache -z 查看命中率）"
+  c_info "ccache 配置：CCACHE_DIR=${CCACHE_DIR:-系统默认} CCACHE_MAXSIZE=$CCACHE_MAXSIZE（可用 ccache -z 查看命中率）"
 fi
 
 # ---------- 2) GTSAM（源码编译，可跳过） ----------
-GTSAM_VERSION_FILE="/usr/local/lib/cmake/GTSAM/GTSAMConfigVersion.cmake"
+GTSAM_VERSION_FILE=""
 INSTALLED_GTSAM_VERSION=""
-if [ -f "$GTSAM_VERSION_FILE" ]; then
-  INSTALLED_GTSAM_VERSION="$(grep -m1 -E 'set\(PACKAGE_VERSION "[^"]+"' "$GTSAM_VERSION_FILE" | cut -d'"' -f2 || true)"
-fi
-if [ "$INSTALLED_GTSAM_VERSION" = "4.0.3" ] || [[ "$INSTALLED_GTSAM_VERSION" == 4.1.* ]]; then
-  c_ok "GTSAM $INSTALLED_GTSAM_VERSION 已安装且兼容，跳过源码编译"
+DETECTED_GTSAM_VERSION=""
+DETECTED_GTSAM_VERSION_FILE=""
+for _candidate in \
+  /usr/local/lib/cmake/GTSAM/GTSAMConfigVersion.cmake \
+  /usr/lib/cmake/GTSAM/GTSAMConfigVersion.cmake \
+  /lib/cmake/GTSAM/GTSAMConfigVersion.cmake \
+  /usr/lib/*/cmake/GTSAM/GTSAMConfigVersion.cmake; do
+  if [ -f "$_candidate" ]; then
+    _candidate_version="$(grep -m1 -E 'set\(PACKAGE_VERSION "[^"]+"' "$_candidate" | cut -d'"' -f2 || true)"
+    if [ -z "$DETECTED_GTSAM_VERSION_FILE" ]; then
+      DETECTED_GTSAM_VERSION="$_candidate_version"
+      DETECTED_GTSAM_VERSION_FILE="$_candidate"
+    fi
+    if [[ "$_candidate_version" == 4.* ]]; then
+      GTSAM_VERSION_FILE="$_candidate"
+      INSTALLED_GTSAM_VERSION="$_candidate_version"
+      break
+    fi
+  fi
+done
+if [[ "$INSTALLED_GTSAM_VERSION" == 4.* ]]; then
+  c_ok "GTSAM $INSTALLED_GTSAM_VERSION 已安装且兼容（$GTSAM_VERSION_FILE），跳过源码编译"
 else
-  if [ -n "$INSTALLED_GTSAM_VERSION" ]; then
-    c_warn "检测到 GTSAM $INSTALLED_GTSAM_VERSION；部署脚本将安装推荐版本 4.0.3。"
+  if [ -n "$DETECTED_GTSAM_VERSION_FILE" ]; then
+    c_warn "检测到不兼容的 GTSAM ${DETECTED_GTSAM_VERSION:-未知版本}（$DETECTED_GTSAM_VERSION_FILE）；部署脚本将安装推荐版本 4.0.3。"
   fi
   # ---- swap 检测：ARM/Jetson 上源码编译 GTSAM 极易 OOM，务必先确认 swap ----
   _mem_kb="$(grep MemTotal /proc/meminfo | awk '{print $2}')"
@@ -118,6 +138,10 @@ fi
 # ---------- 3) Livox Lidar SDK（源码编译，可跳过） ----------
 if [ -f /usr/local/lib/liblivox_lidar_sdk_shared.so ]; then
   c_ok "Livox Lidar SDK 已安装，跳过源码编译"
+elif command -v ros2 >/dev/null 2>&1 && \
+     ros2 pkg prefix livox_ros_driver2 >/dev/null 2>&1; then
+  c_ok "已 source 可用的 livox_ros_driver2；lvi_sam 仅使用其消息接口，跳过 SDK 安装"
+  c_warn "只有需要在本机重新编译 livox_ros_driver2 时，才必须安装 Livox-SDK2。"
 else
   c_info "源码编译安装 Livox-SDK2 ..."
   TMP="$(mktemp -d)"
@@ -136,20 +160,14 @@ else
   c_ok "Livox Lidar SDK 安装完成"
 fi
 
-# ---------- 4) Python 依赖 ----------
-c_info "安装 Python 依赖 ..."
-pip3 install --quiet --break-system-packages opencv-python numpy pyyaml 2>/dev/null \
-  || pip3 install --quiet opencv-python numpy pyyaml \
-  || c_warn "Python 依赖安装失败（可忽略，若运行期报缺包再手动装）"
-
-# ---------- 5) rosdep（跳过 gtsam，因其为源码手动安装） ----------
+# ---------- 4) rosdep（跳过 gtsam，因其为源码手动安装） ----------
 c_info "rosdep 安装 ROS 依赖（跳过 gtsam）..."
 $SUDO rosdep init 2>/dev/null || true
 rosdep update 2>/dev/null || true
 rosdep install --from-paths "$WS_ROOT/src" --ignore-src -y --skip-keys gtsam \
   || c_warn "rosdep 部分包未安装（多因已装或为源码包，可继续）"
 
-# ---------- 6) Orin 专属：OpenCV 自检 ----------
+# ---------- 5) Orin 专属：OpenCV 自检 ----------
 if [ "$IS_ORIN" -eq 1 ]; then
   c_info "===== AGX Orin OpenCV 自检 ====="
   _sys_cv="$(pkg-config --modversion opencv4 2>/dev/null || echo 'N/A')"

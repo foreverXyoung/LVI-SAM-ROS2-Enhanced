@@ -16,6 +16,7 @@
 #include "parameters.h"
 #include "tic_toc.h"
 #include "lvi_sam/image_conversion.hpp"
+#include "lvi_sam/topic_names.hpp"
 
 using namespace std;
 using namespace camodocal;
@@ -30,6 +31,8 @@ class FeatureTracker
 {
   public:
     FeatureTracker();
+
+    void reset();
 
     void readImage(const cv::Mat &_img,double _cur_time);
 
@@ -83,9 +86,12 @@ public:
 
     DepthRegister(std::shared_ptr<rclcpp::Node> node) : node_(node)
     {
-        pub_depth_feature = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/vins/depth/depth_feature", 5);
-        pub_depth_image   = node_->create_publisher<sensor_msgs::msg::Image>("/vins/depth/depth_image", 5);
-        pub_depth_cloud   = node_->create_publisher<sensor_msgs::msg::PointCloud2>("/vins/depth/depth_cloud", 5);
+        pub_depth_feature = node_->create_publisher<sensor_msgs::msg::PointCloud2>(
+            lvi_sam::topics::project_topic(PROJECT_NAME, lvi_sam::topics::kDepthFeature), 5);
+        pub_depth_image = node_->create_publisher<sensor_msgs::msg::Image>(
+            lvi_sam::topics::project_topic(PROJECT_NAME, lvi_sam::topics::kDepthImage), 5);
+        pub_depth_cloud = node_->create_publisher<sensor_msgs::msg::PointCloud2>(
+            lvi_sam::topics::project_topic(PROJECT_NAME, lvi_sam::topics::kDepthCloud), 5);
 
         tf_buffer_ = std::make_shared<tf2_ros::Buffer>(node_->get_clock());
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);

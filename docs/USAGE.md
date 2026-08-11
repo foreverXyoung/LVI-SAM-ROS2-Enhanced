@@ -7,14 +7,15 @@ LVI-SAM-ROS2-Enhanced（LIS 激光 + VIS 视觉，话题级松耦合）。
 
 ## 1. 启动总览
 
-`run.launch.py` 一次性拉起 **5 个节点**（LIS 2 + VIS 3）并完成双向话题接线：
+`run.launch.py` 一次性拉起 **5 个算法节点**（LIS 2 + VIS 3）并完成双向话题接线；
+RViz2 默认作为第 6 个进程启动：
 
 ```
 激光驱动(livox_ros_driver2, 独立启动)
         │  /livox/lidar (+ /IMU_data)
         ▼
    LIS (imuPreintegration → mapOptimization)
-        │  ├─ /lio_sam/odometry/imu ──────────► VIS.estimator      (① 位姿+尺度先验)
+        │  ├─ /odometry/imu ───────────────────► VIS.estimator      (① 可选初始化先验)
         │  └─ /lio_sam/deskew/cloud_deskewed ─► VIS.feature_tracker (② 激光深度)
         ▼
    VIS (feature → estimator → loop)
@@ -57,13 +58,16 @@ ros2 topic list | grep -E "/livox/lidar|/IMU_data"
 VIS 需要：
 - 图像话题 `image_topic`（默认 `/camera/color/image_raw`，`sensor_msgs/Image`）。当前实机输出
   `rgb8`；内部适配层也支持 `bgr8`、`rgba8`、`bgra8`、`mono8` 和 `8UC1`。
-- 相机内参写在 `config/params_camera.yaml` 的 `camera_intrinsics` / `distortion` 等字段，
+- 相机内参写在 `config/params_camera.yaml` 的 `projection_parameters` /
+  `distortion_parameters` 字段，
   **须按实机标定填入**（仓库内为示例值）。
 
 ### 2.4 先验地图 / 输出目录
 
 `pcd_directory` 既是读先验地图目录，也是建图输出目录。launch 默认 `/tmp/lvi_sam_maps`，
-实机请指向实际路径（见 §3）。
+实机请指向实际路径（见 §3）。建图模式要求该目录为新目录或空目录；不要覆盖已有地图。
+运行期间会创建 `.lvi_sam_mapping_in_progress`，只有 Ctrl+C 正常退出且全部地图文件写入成功后
+才会删除该标记并提交 `map_manifest.yaml`。
 
 ---
 
@@ -101,6 +105,8 @@ ros2 launch lvi_sam run.launch.py \
 | `camera_params_file` | `config/params_camera.yaml` | VIS 参数 |
 | `image_topic` | `/camera/color/image_raw` | VIS 输入图像话题；覆盖相机参数文件中的同名配置 |
 | `imu_topic` | `/IMU_data` | LIS 与 VIS 共用的标准 `sensor_msgs/Imu` 话题；驱动发布 `/livox/imu` 时可在此统一覆盖 |
+| `odom_topic` | `/odometry/imu` | LIS IMU 预积分输出与 VIS 位姿/尺度先验输入；入口统一覆盖两侧配置 |
+| `project_name` | `lvi_sam` | 仅作为 VIS 话题根；所有视觉内部接口发布到 `/<project_name>/vins/...` |
 | `gps_topic` | 空 | 可选 map 对齐 `nav_msgs/Odometry` RTK/GPS 话题；非空时覆盖 YAML |
 | `enable_visual` | `true` | 无相机或仅验证激光链路时设为 `false` |
 | `enable_rviz` | `true` | 默认启动工程 RViz2；无桌面或纯 SSH 环境设为 `false` |
@@ -121,14 +127,14 @@ ros2 launch lvi_sam run.launch.py \
 启动后逐项确认耦合是否接通（任一不通都会让对应子系统退化）：
 
 ```bash
-# ① LIS→VIS 位姿/尺度先验：fork 与 estimator 同在 /odometry/imu
-ros2 topic echo /odometry/imu --field pose.pose.position -n 1
+# ① LIS→VIS 初始化先验输入；只有 use_lidar_odometry_prior=1 时 VIS 才订阅
+ros2 topic echo /odometry/imu --once --field pose.pose.position
 
 # ② LIS→VIS 激光深度
 ros2 topic hz /lio_sam/deskew/cloud_deskewed
 
 # ③b VIS→LIS 视觉回环候选（仅在 VIS 检测到回环时才发布）
-ros2 topic echo /lvi_sam/vins/loop/match_frame -n 1
+ros2 topic echo /lvi_sam/vins/loop/match_frame --once
 
 # 四大对外/topic 是否正常
 ros2 topic hz /lio_sam/mapping/odometry
@@ -141,21 +147,20 @@ ros2 topic hz /lio_sam/mapping/cloud_registered
 |------|------|------|
 | `/livox/lidar` | `livox_ros_driver2/msg/CustomMsg` | LIS 输入（原始点云） |
 | `/IMU_data` | `sensor_msgs/Imu` | LIS 与 VIS 共用的标定后 IMU |
-| `/odometry/imu` | `nav_msgs/Odometry` | **LIS→VIS** 位姿+尺度先验 |
+| `/odometry/imu` | `nav_msgs/Odometry` | **LIS→VIS** 可选位姿/速度/尺度初始化先验 |
 | `/lio_sam/deskew/cloud_deskewed` | `sensor_msgs/PointCloud2` | **LIS→VIS** 激光去畸变深度 |
 | `/lvi_sam/vins/loop/match_frame` | `std_msgs/Float64MultiArray` | **VIS→LIS** 视觉回环候选 `[cur_ts, old_ts]` |
 | `/lio_sam/mapping/odometry` | `nav_msgs/Odometry` | LIS 对外里程计 |
 | `/lio_sam/mapping/cloud_registered` | `sensor_msgs/PointCloud2` | LIS 建图点云 |
 
-> ⚠️ **不要**手动给 `odometry/imu` 加 remap 到 `/lio_sam/odometry/imu`：
-> fork 的 `odomTopic` 在 `params.yaml` 中被覆盖为相对 `"odometry/imu"`，
-> 与 estimator 订阅的相对话题解析为同一 `/odometry/imu`，remap 反而会让 VIS 收不到先验。
+> `odom_topic` 会同时覆盖 LIS 的 `odomTopic` 与 VIS 的 `odom_topic`。不要只 remap
+> 其中一侧，否则会切断位姿/尺度先验。默认统一使用绝对话题 `/odometry/imu`。
 
 ---
 
 ## 5. 参数文件说明
 
-### 5.1 `config/params.yaml`（LIS）
+### 5.1 `config/params_mapping.yaml` / `params_localization.yaml`（LIS）
 
 关键字段（节选，按子系统分组）：
 
@@ -183,10 +188,13 @@ ros2 topic hz /lio_sam/mapping/cloud_registered
 - `PROJECT_NAME: lvi_sam` → 决定 VIS 发布话题前缀（`/lvi_sam/vins/...`）。
 - `imu_topic: /IMU_data`、`image_topic: /camera/color/image_raw`。
 - `point_cloud_topic: /lio_sam/deskew/cloud_deskewed`（② 激光深度，绝对路径）。
+- `use_lidar` 与 `use_lidar_odometry_prior` 分别控制激光深度投影和 LIS 里程计
+  初始化先验；未完成 LiDAR-camera 标定时两者均保持 `0`，VIS 节点仍会运行。
 - `camera_intrinsics` / `distortion`：相机内参（**须标定**）。
 - `extrinsicRotation` / `extrinsicTranslation`：相机→IMU 外参（**须标定**）。
 - `vocabulary_file` / `brief_pattern_file` / `fisheye_mask`：DBoW2 词表/模板/掩膜，
-  代码按 `pkg_path + "/config/"` 拼接，已置于 `config/` 根，**不要移动**。
+  可写绝对文件路径，也可写相对 `share/lvi_sam/` 的包内路径（默认位于 `config/`）。
+  启动时会解析并检查文件存在性；不要依赖当前工作目录。
 
 ---
 
@@ -210,10 +218,10 @@ ros2 topic hz /lio_sam/mapping/cloud_registered
 | 现象 | 排查 |
 |------|------|
 | VIS 节点起不来 / 闪退 | 检查 `params_camera.yaml` 是否存在、`vocabulary_file` 路径；看节点 stderr 是否报「文件不存在」 |
-| VIS 完全不动 / 无位姿 | `ros2 topic hz /IMU_data`、`/camera/color/image_raw`、`/odometry/imu` 是否都有数据 |
-| VIS 尺度 drift / 飞掉 | 确认 `odometry/imu` 接通（① 先验）；单目 VIS 离了 LIS 尺度会失控 |
+| VIS 完全不动 / 无位姿 | 先检查 `/IMU_data`、`/camera/color/image_raw` 和 `/lvi_sam/vins/feature/feature`；仅当 `use_lidar_odometry_prior=1` 时才要求 `/odometry/imu` |
+| VIS 尺度 drift / 飞掉 | 优先核对相机–IMU 标定、IMU 噪声和图像–IMU 时间同步；完成 LiDAR–camera 标定后可再启用 `/odometry/imu` 初始化先验 |
 | LIS 收不到视觉回环 | `ros2 topic echo /lvi_sam/vins/loop/match_frame`；确认 remap 未被改动 |
-| LIS 不发布 `cloud_deskewed` | 检查 `params.yaml` 的 `deskew` 开关与输入点云时间戳 |
+| LIS 不发布 `cloud_deskewed` | 检查当前模式的 LIS 参数文件以及输入点云、IMU 时间戳 |
 | TF 报错 `base_link` 缺失 | URDF 未提供或未启动 `robot_state_publisher` |
 | 激光驱动话题名不符 | 不同 livox launch 话题名可能不同，按实机调整 `pointCloudTopic` / `imuTopic` |
 

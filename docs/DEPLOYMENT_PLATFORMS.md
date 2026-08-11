@@ -41,7 +41,7 @@
   需降级到 ROS 2 Galactic 或自行源码编译 Humble——**部署前务必 `head -n1 /etc/nv_tegra_release` 确认 L4T 版本**。
 
 ### 2.2 GTSAM（源码编译）—— 两地差异最大的一处
-工程 `CMakeLists.txt:32` 为 `find_package(GTSAM REQUIRED)`，**无版本约束**（见 §4 修订项）。
+工程使用 `find_package(GTSAM 4.0 REQUIRED)`：接受兼容的 4.0/4.1 系列，拒绝未来不兼容的主版本。
 Ubuntu 22.04 无 GTSAM apt 包，须源码编译（脚本/ Docker 均从 `borglab/gtsam` 编译）。
 
 | 风险点 | x86 笔记本 | AGX Orin |

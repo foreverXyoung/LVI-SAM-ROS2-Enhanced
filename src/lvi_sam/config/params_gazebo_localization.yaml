@@ -17,11 +17,12 @@
       lostDetectionEnable: true
       lostBadMatchThreshold: 5
       init_guess: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-      useRviz: true
+
+    useRviz: true
 
     pointCloudTopic: "/livox/lidar"
     imuTopic: "/IMU_data"
-    odomTopic: "odometry/imu"
+    odomTopic: "/odometry/imu"
     gpsTopic: "/gps/unused"
     useExternalPoseFactor: false
     externalPoseOverride: false
@@ -45,6 +46,11 @@
     gpsInitialDistance: 0.0
     gpsFactorDistance: 0.0
     gpsVarianceFloor: 1.0e-6
+    gpsTimeTolerance: 0.2
+    gpsInnovationThreshold: 10.0
+    gpsUseRobustNoise: true
+    gpsRobustKernelScale: 2.0
+    gpsQueueSize: 500
     savePCD: false
     savePCDDirectory: "/tmp/lvi_sam_maps"
 
@@ -92,6 +98,7 @@
     loopClosureEnableFlag: false
     scanContextLoopEnableFlag: false
     scanContextDistanceThreshold: 0.3
+    externalLoopTimeTolerance: 0.2
     globalMapVisualizationSearchRadius: 100.0
     globalMapVisualizationPoseDensity: 5.0
     globalMapVisualizationLeafSize: 0.5

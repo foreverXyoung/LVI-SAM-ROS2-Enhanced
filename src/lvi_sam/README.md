@@ -13,18 +13,18 @@ src/lvi_sam/
 ├── CMakeLists.txt          # 5 个 executable：LIS 2 + VIS 3
 ├── package.xml
 ├── config/                 # 【外层配置，集中摆放】
-│   ├── params.yaml                      # LIS 通用（已修硬编码路径）
+│   ├── params_mapping.yaml              # LIS 通用建图配置
+│   ├── params_localization.yaml         # LIS 通用先验地图定位配置
 │   ├── params_*_{localization,mapping}.yaml   # 场景/模式变体（gazebo/charging）
 │   ├── params_camera.yaml               # VIS 参数（来自 LVI-SAM-ROS2）
-│   ├── brief_k10L6.bin                  # DBoW2 词表（代码按 pkg_path+/config/ 拼接）
+│   ├── brief_k10L6.bin                  # DBoW2 词表（统一资源解析器加载）
 │   ├── brief_pattern.yaml
 │   ├── fisheye_mask_720x540.jpg
 │   ├── rviz2.rviz
-│   └── (vocab/ 为空残留目录，可删，不影响构建)
 ├── launch/
 │   ├── run.launch.py                    # 总入口：启动 5 节点 + 接线 remap
 │   └── include/module_sam_reference.py  # fork 原 launch 参考
-├── include/                 # 公共头（激光）
+├── include/                 # 公共头（激光 + 跨模块接口/资源适配）
 │   ├── utility.hpp                     # ParamServer（激光参数集中声明）
 │   ├── file_tools.hpp
 │   └── sc/                             # Scan Context 库
@@ -42,6 +42,8 @@ src/lvi_sam/
 ```
 
 源码严格二分：**`lidar_odometry/` = 激光**，**`visual_odometry/` = 视觉**；配置全部置于包根的 `config/`（外层集中，随 `install(DIRECTORY config)` 部署到 `share/lvi_sam/config`）。
+配置选择、修改边界和预检命令见 [`config/README.md`](config/README.md)；完整改动记录见
+根目录 [`docs/CHANGE_SUMMARY.md`](../../docs/CHANGE_SUMMARY.md)。
 
 ---
 
@@ -61,13 +63,14 @@ src/lvi_sam/
 
 | 耦合点 | 方向 | 话题 | 接线方式 |
 |---|---|---|---|
-| ① 位姿/尺度先验 | LIS→VIS | `lio_sam/odometry/imu` → estimator 订阅 `odometry/imu` | **launch remap**（estimator） |
+| ① 可选初始化先验 | LIS→VIS | `/odometry/imu` | launch 统一话题；`use_lidar_odometry_prior=1` 时 VIS 订阅 |
 | ② 激光深度 | LIS→VIS | `lio_sam/deskew/cloud_deskewed` | `params_camera.yaml` 的 `point_cloud_topic` 已设为该绝对路径 |
 | ③b 视觉回环候选 | VIS→LIS | VIS 发布 `/lvi_sam/vins/loop/match_frame`（Float64MultiArray=[cur_ts, old_ts]） | **launch remap**：mapOptimization 的 `lio_loop/loop_closure_detection` → `/lvi_sam/vins/loop/match_frame` |
 | ③a 前端初值 | VIS→LIS | `/lvi_sam/vins/odometry/imu_propagate_ros` | fork 前端未订阅，**最小闭环暂不接**（可选增强） |
 
 > VIS 内部话题（`/lvi_sam/vins/feature/feature`、`/restart`、`/odometry/...`）自动连通。
-> `match_frame` 与 fork `detectLoopClosureExternal` 期望的 `data=[cur_ts, pre_ts]` **格式同构**，直接 remap 即可，零 C++ 改动。
+> `match_frame` 与 `detectLoopClosureExternal` 约定的 `data=[cur_ts, pre_ts]` 格式一致；
+> LIS 会先执行时间容差映射，再通过点云 ICP 几何验证后才加入因子图。
 
 ---
 
@@ -75,12 +78,12 @@ src/lvi_sam/
 
 ```bash
 # 依赖（Linux/ROS2 humble 环境）：
-#   ament 系统包：rclcpp pcl_ros pcl_conversions tf2* visualization_msgs nav_msgs
-#   非 apt（需源码/二进制）：GTSAM、Ceres、Boost、OpenCV、Eigen3、livox_ros_driver2
+#   ament 系统包：rclcpp pcl_conversions tf2* visualization_msgs nav_msgs
+#   原生依赖：GTSAM 4.x、Ceres、Boost、OpenCV、Eigen3、PCL
 #   （已修正 LVI-SAM-ROS2 原版 Eigen3_DIR 硬编码 /opt/eigen；改用 find_package(Eigen3)）
 
 cd LVI-SAM-ROS2-Enhanced
-colcon build --packages-select lvi_sam
+bash scripts/build.sh
 source install/setup.bash
 ```
 
@@ -101,8 +104,13 @@ ros2 launch lvi_sam run.launch.py \
   pcd_directory:=/tmp/lvi_sam_maps
 ```
 
-常用参数：`lidar_params_file`（场景/模式 yaml）、`camera_params_file`、`pcd_directory`（覆盖先验地图/输出目录）、`use_sim_time`、`publish_map_odom_static`。
-`imu_topic` 会同时覆盖 LIS 与 VIS 的标准 `sensor_msgs/Imu` 输入，默认 `/IMU_data`。
+常用参数：`lidar_params_file`（场景/模式 yaml）、`camera_params_file`、`pcd_directory`
+（覆盖先验地图/输出目录）、`use_sim_time`、`project_name`、`odom_topic` 和
+`publish_map_odom_static`。`imu_topic` 会同时覆盖 LIS 与 VIS 的标准
+`sensor_msgs/Imu` 输入，默认 `/IMU_data`。
+
+完整接口、依赖与稳定性约束见根目录
+[`docs/INTERFACES_AND_STABILITY.md`](../../docs/INTERFACES_AND_STABILITY.md)。
 
 ---
 
@@ -111,10 +119,9 @@ ros2 launch lvi_sam run.launch.py \
 1. **IMU 接口**：LIS 与 VIS 现统一订阅 `/IMU_data`，类型为标准 `sensor_msgs/Imu`；若驱动实际发布其他话题或消息类型，须在驱动侧 remap/转换后再接入。
 2. **相机-IMU-激光外参标定**：`params_camera.yaml` 里的 `extrinsicRotation/Translation`、`lidar_to_cam_*` 为示例值，须按实机标定填入（阶段 4）。
 3. **时间同步**：图像/IMU/雷达时间戳对齐（MID360 已 IMU-雷达硬同步，相机需对齐）。
-4. **先验地图/输出目录**：`pcd_directory` 默认 `/tmp/lvi_sam_maps`；实机请指向实际地图目录（launch 已覆盖 yaml 默认）。
+4. **先验地图/输出目录**：`pcd_directory` 默认 `/tmp/lvi_sam_maps`；实机请指向实际地图目录（launch 已覆盖 yaml 默认）。建图输出必须使用新目录或空目录，避免旧地图文件混入新地图。
 5. **对称环境误闭环门控**：站场高度对称，建议给外部回环加 RTK/先验地图一致性门控（LVI-SAM 原版没有，可作创新点）。
-6. **`config/vocab/` 空残留目录**：无害，可删。
-7. **livox_ros_driver2 依赖包**：需放入本工作区 `src/`（或从系统/其它 workspace 提供），否则 LIS 无法编译。
+6. **livox_ros_driver2 依赖包**：需放入本工作区 `src/`（或从系统/其它 workspace 提供），否则 LIS 无法编译。
 
 ---
 

@@ -3,17 +3,13 @@
 
     Loc:
       EnableFlag: false
-      loadPCDDirectory: "/tmp/lvi_sam_maps"
-      surroundingKeyframeSearchRadius: 20.0
-      surroundingKeyframeSearchMaxNum: 5
-      useSCReLoc: true
-      init_guess: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-      useRviz: true
+
+    useRviz: true
 
     # Topics
     pointCloudTopic: "/livox/lidar"
     imuTopic: "/IMU_data"
-    odomTopic: "odometry/imu"
+    odomTopic: "/odometry/imu"
     # Local, ENU-aligned RTK observations produced during first-track mapping.
     # No publisher is started during ordinary mapping, so the input is optional.
     gpsTopic: "/gps/lio_sam_odom"
@@ -122,6 +118,7 @@
     historyKeyframeSearchTimeDiff: 30.0
     historyKeyframeSearchNum: 10
     historyKeyframeFitnessScore: 0.3
+    externalLoopTimeTolerance: 0.2
 
     # Visualization
     globalMapVisualizationSearchRadius: 1000.0

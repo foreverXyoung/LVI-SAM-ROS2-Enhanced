@@ -1,8 +1,16 @@
 #include "estimator.h"
 
-Estimator::Estimator(): Node("estimator"), f_manager{Rs}
+#include <cmath>
+#include <cstddef>
+
+Estimator::Estimator() : f_manager{Rs}
 {
     failureCount = -1;
+    clearState();
+}
+
+Estimator::~Estimator()
+{
     clearState();
 }
 
@@ -275,24 +283,39 @@ bool Estimator::initialStructure()
     //check imu observibility
     {
         map<double, ImageFrame>::iterator frame_it;
-        Vector3d sum_g;
+        Vector3d sum_g = Vector3d::Zero();
+        std::size_t valid_interval_count = 0;
         for (frame_it = all_image_frame.begin(), frame_it++; frame_it != all_image_frame.end(); frame_it++)
         {
             double dt = frame_it->second.pre_integration->sum_dt;
+            if (!std::isfinite(dt) || dt <= 1e-6)
+                continue;
             Vector3d tmp_g = frame_it->second.pre_integration->delta_v / dt;
+            if (!tmp_g.allFinite())
+                continue;
             sum_g += tmp_g;
+            ++valid_interval_count;
         }
-        Vector3d aver_g;
-        aver_g = sum_g * 1.0 / ((int)all_image_frame.size() - 1);
+        if (valid_interval_count == 0)
+        {
+            RCLCPP_WARN(this->get_logger(),
+                        "Cannot initialize VINS: no valid IMU preintegration intervals");
+            return false;
+        }
+        const Vector3d aver_g = sum_g / static_cast<double>(valid_interval_count);
         double var = 0;
         for (frame_it = all_image_frame.begin(), frame_it++; frame_it != all_image_frame.end(); frame_it++)
         {
             double dt = frame_it->second.pre_integration->sum_dt;
+            if (!std::isfinite(dt) || dt <= 1e-6)
+                continue;
             Vector3d tmp_g = frame_it->second.pre_integration->delta_v / dt;
+            if (!tmp_g.allFinite())
+                continue;
             var += (tmp_g - aver_g).transpose() * (tmp_g - aver_g);
             //cout << "frame g " << tmp_g.transpose() << endl;
         }
-        var = sqrt(var / ((int)all_image_frame.size() - 1));
+        var = sqrt(var / static_cast<double>(valid_interval_count));
         //RCLCPP_WARN("IMU variation %f!", var);
         if(var < 0.25)
         {
@@ -1032,23 +1055,21 @@ void Estimator::slideWindow()
             linear_acceleration_buf[WINDOW_SIZE].clear();
             angular_velocity_buf[WINDOW_SIZE].clear();
 
-            if (true || solver_flag == INITIAL)
+            // Retire every image frame up to the marginalized timestamp. Do
+            // not dereference find(t_0): floating-point timestamp keys can
+            // fail an exact lookup even though the chronological boundary is
+            // still well defined.
             {
-                map<double, ImageFrame>::iterator it_0;
-                it_0 = all_image_frame.find(t_0);
-                delete it_0->second.pre_integration;
-                it_0->second.pre_integration = nullptr;
- 
-                for (map<double, ImageFrame>::iterator it = all_image_frame.begin(); it != it_0; ++it)
+                constexpr double kTimestampTolerance = 1e-9;
+                const auto erase_end =
+                    all_image_frame.upper_bound(t_0 + kTimestampTolerance);
+                for (auto it = all_image_frame.begin(); it != erase_end; ++it)
                 {
                     if (it->second.pre_integration)
                         delete it->second.pre_integration;
-                    it->second.pre_integration = NULL;
+                    it->second.pre_integration = nullptr;
                 }
-
-                all_image_frame.erase(all_image_frame.begin(), it_0);
-                all_image_frame.erase(t_0);
-
+                all_image_frame.erase(all_image_frame.begin(), erase_end);
             }
             slideWindowOld();
         }

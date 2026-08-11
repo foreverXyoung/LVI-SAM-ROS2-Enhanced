@@ -2,16 +2,12 @@
   ros__parameters:
     Loc:
       EnableFlag: false
-      loadPCDDirectory: "/tmp/lvi_sam_maps"
-      surroundingKeyframeSearchRadius: 20.0
-      surroundingKeyframeSearchMaxNum: 10
-      useSCReLoc: true
-      init_guess: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-      useRviz: true
+
+    useRviz: true
 
     pointCloudTopic: "/livox/lidar"
     imuTopic: "/IMU_data"
-    odomTopic: "odometry/imu"
+    odomTopic: "/odometry/imu"
     gpsTopic: "/gps/unused"
     useExternalPoseFactor: true
     externalPoseOverride: true
@@ -34,6 +30,11 @@
     gpsInitialDistance: 0.0
     gpsFactorDistance: 0.0
     gpsVarianceFloor: 1.0e-6
+    gpsTimeTolerance: 0.2
+    gpsInnovationThreshold: 10.0
+    gpsUseRobustNoise: true
+    gpsRobustKernelScale: 2.0
+    gpsQueueSize: 500
     savePCD: true
     savePCDDirectory: "/tmp/lvi_sam_maps"
 
@@ -87,6 +88,7 @@
     historyKeyframeSearchTimeDiff: 20.0
     historyKeyframeSearchNum: 10
     historyKeyframeFitnessScore: 0.4
+    externalLoopTimeTolerance: 0.2
     globalMapVisualizationSearchRadius: 100.0
     globalMapVisualizationPoseDensity: 5.0
     globalMapVisualizationLeafSize: 0.5

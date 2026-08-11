@@ -48,17 +48,18 @@ colcon version-check 2>/dev/null || echo "colcon 已安装"
 
 ---
 
-## 3. 获取源码（含子模块）
+## 3. 获取源码与驱动复用
 
 ```bash
-git clone --recursive <your-repo-url> LVI-SAM-ROS2-Enhanced
+git clone <your-repo-url> LVI-SAM-ROS2-Enhanced
 cd LVI-SAM-ROS2-Enhanced
 
-# 若已 clone 但漏了子模块（livox_ros_driver2）：
+# 当前已 source 的工作区没有 livox_ros_driver2 时才需要：
 git submodule update --init --recursive
 ```
 
-`livox_ros_driver2` 以 **git 子模块**引入并锁定上游 **v1.1.1**，提供 MID360 的
+`livox_ros_driver2` 可复用机器人总工作区已安装并 source 的版本；缺失时再以
+**git 子模块**引入锁定版本。这样可避免重复驱动包和不必要的 GitHub 子模块下载。驱动提供 MID360 的
 点云和 IMU 数据；点云为 `livox_ros_driver2/msg/CustomMsg`，IMU 必须以
 `sensor_msgs/Imu` 接入。默认统一接口是 `/IMU_data`，也可通过 launch 的
 `imu_topic:=/livox/imu` 同时覆盖 LIS 与 VIS。
@@ -84,13 +85,14 @@ rosdep install --from-paths src --ignore-src -y --skip-keys gtsam
 
 > **为什么 `--skip-keys gtsam`？**
 > `package.xml` 里声明了 `<depend>GTSAM</depend>`，但 GTSAM **不是 ROS 包**（无 apt 提供、
-> 也无 rosdep 规则）。它由下面的「源码编译」步骤手动安装到 `/usr/local`，因此 rosdep 必须跳过它，
+> 也不依赖 rosdep 自动选择版本）。它由已有系统安装或下面的源码步骤提供，因此 rosdep 跳过它，
 > 否则 `rosdep install` 会报错退出。
 
-### 4.2 GTSAM（必须源码编译）
+### 4.2 GTSAM（复用兼容 4.x 或源码编译）
 
-Ubuntu 22.04 的 apt 仓库**没有** `libgtsam-dev`。本工程使用因子图优化（ISAM2 / BetweenFactor /
-PriorFactor 等），需安装 GTSAM。推荐使用社区广泛验证的 **tag `4.0.3`**：
+本工程使用因子图优化（ISAM2 / BetweenFactor / PriorFactor 等），需要 GTSAM 4.x。若
+`GTSAMConfigVersion.cmake` 已位于 `/usr/local/lib/cmake/GTSAM`、`/usr/lib/cmake/GTSAM`
+或系统多架构 CMake 路径，可直接复用；否则推荐源码构建已广泛验证的 **tag `4.0.3`**：
 
 ```bash
 cd /tmp
@@ -149,11 +151,11 @@ ls /usr/local/lib/liblivox_lidar_sdk_shared.so   # 应存在
 ### 4.4 Python 依赖
 
 ```bash
-pip3 install --break-system-packages opencv-python numpy pyyaml 2>/dev/null \
-  || pip3 install opencv-python numpy pyyaml
+sudo apt-get install -y python3-yaml python3-pyproj
 ```
 
-（`--break-system-packages` 仅当系统 pip 默认禁止外部包时使用；虚拟环境下省略。）
+视觉 C++ 节点不依赖 Python OpenCV；不要为本工程向系统 Python 额外安装
+`opencv-python` 或 `numpy`。配置预检使用 PyYAML，GPS/RTK 坐标转换使用 pyproj。
 
 ---
 

@@ -1,6 +1,9 @@
 #include "utility.hpp"
+#include "lvi_sam/internal_odom_metadata.hpp"
 #include <pcl/range_image/range_image.h>
 #include <opencv2/opencv.hpp>
+#include <array>
+#include <cstdint>
 
 struct VelodynePointXYZIRT {
     PCL_ADD_POINT4D
@@ -75,13 +78,16 @@ private:
 
     std::deque<sensor_msgs::msg::Imu> imuQueue;
     std::deque<nav_msgs::msg::Odometry> odomQueue;
+    double lastImuInputTime = -1.0;
+    double lastOdomInputTime = -1.0;
+    double lastCloudInputTime = -1.0;
     std::deque<livox_ros_driver2::msg::CustomMsg> cloudQueue;
     livox_ros_driver2::msg::CustomMsg currentCloudMsg;
 
-    double *imuTime = new double[queueLength];
-    double *imuRotX = new double[queueLength];
-    double *imuRotY = new double[queueLength];
-    double *imuRotZ = new double[queueLength];
+    std::array<double, queueLength> imuTime{};
+    std::array<double, queueLength> imuRotX{};
+    std::array<double, queueLength> imuRotY{};
+    std::array<double, queueLength> imuRotZ{};
 
     int imuPointerCur;
     bool firstPointFlag;
@@ -105,7 +111,8 @@ private:
 public:
     CloudInfo cloudInfo;
 
-    ImageProjection() : ParamServer("ImageProjectionParamServer") {
+    explicit ImageProjection(const rclcpp::NodeOptions& options)
+        : ParamServer("ImageProjectionParamServer", options) {
         allocateMemory();
         resetParameters();
 
@@ -145,13 +152,34 @@ public:
         columnIdnCountVec.assign(N_SCAN, 0);
     }
 
-    ~ImageProjection() {}
-
     void imuHandler(const sensor_msgs::msg::Imu::SharedPtr imuMsg) {
+        const double timestamp = stamp2Sec(imuMsg->header.stamp);
+        const auto& acceleration = imuMsg->linear_acceleration;
+        const auto& angularVelocity = imuMsg->angular_velocity;
+        if (!std::isfinite(timestamp) ||
+            !std::isfinite(acceleration.x) ||
+            !std::isfinite(acceleration.y) ||
+            !std::isfinite(acceleration.z) ||
+            !std::isfinite(angularVelocity.x) ||
+            !std::isfinite(angularVelocity.y) ||
+            !std::isfinite(angularVelocity.z)) {
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 2000,
+                "Discarding IMU sample with non-finite data");
+            return;
+        }
         sensor_msgs::msg::Imu thisImu = imuConverter(*imuMsg);
 
         std::lock_guard<std::mutex> lock1(imuLock);
+        if (lastImuInputTime >= 0.0 && timestamp <= lastImuInputTime) {
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 2000,
+                "Discarding non-increasing IMU timestamp");
+            return;
+        }
+        lastImuInputTime = timestamp;
         imuQueue.push_back(thisImu);
+        while (imuQueue.size() > 10000) imuQueue.pop_front();
 
         // debug IMU data
         // cout << std::setprecision(6);
@@ -172,8 +200,22 @@ public:
     }
 
     void odometryHandler(const nav_msgs::msg::Odometry::SharedPtr odometryMsg) {
+        const double timestamp = stamp2Sec(odometryMsg->header.stamp);
+        const auto& position = odometryMsg->pose.pose.position;
+        const auto& orientation = odometryMsg->pose.pose.orientation;
+        const double quaternionNorm = std::sqrt(
+            orientation.x * orientation.x + orientation.y * orientation.y +
+            orientation.z * orientation.z + orientation.w * orientation.w);
+        if (!std::isfinite(timestamp) || !std::isfinite(position.x) ||
+            !std::isfinite(position.y) || !std::isfinite(position.z) ||
+            !std::isfinite(quaternionNorm) || quaternionNorm < 1e-6)
+            return;
         std::lock_guard<std::mutex> lock2(odoLock);
+        if (lastOdomInputTime >= 0.0 && timestamp <= lastOdomInputTime)
+            return;
+        lastOdomInputTime = timestamp;
         odomQueue.push_back(*odometryMsg);
+        while (odomQueue.size() > 2000) odomQueue.pop_front();
     }
 
     bool cloudHandler(const livox_ros_driver2::msg::CustomMsg::SharedPtr laserCloudMsg) {
@@ -192,8 +234,11 @@ public:
         return true;
     }
 
-    void moveFromCustomMsg(livox_ros_driver2::msg::CustomMsg &Msg, pcl::PointCloud<PointXYZIRT> &cloud) {
+    bool moveFromCustomMsg(const livox_ros_driver2::msg::CustomMsg& Msg,
+                           pcl::PointCloud<PointXYZIRT>& cloud) {
         cloud.clear();
+        if (Msg.point_num == 0 || Msg.point_num > Msg.points.size())
+            return false;
         cloud.reserve(Msg.point_num);
         PointXYZIRT point;
 
@@ -201,7 +246,15 @@ public:
         cloud.header.stamp = (uint64_t)((Msg.header.stamp.sec * 1e9 + Msg.header.stamp.nanosec) / 1000);
         // cloud.header.seq=Msg.header.seq;
 
-        for (uint i = 0; i < Msg.point_num - 1; i++) {
+        std::uint32_t previousOffset = 0;
+        for (std::uint32_t i = 0; i < Msg.point_num; ++i) {
+            if (i > 0 && Msg.points[i].offset_time < previousOffset)
+                return false;
+            previousOffset = Msg.points[i].offset_time;
+            if (!std::isfinite(Msg.points[i].x) ||
+                !std::isfinite(Msg.points[i].y) ||
+                !std::isfinite(Msg.points[i].z))
+                continue;
             point.x = Msg.points[i].x;
             point.y = Msg.points[i].y;
             point.z = Msg.points[i].z;
@@ -211,9 +264,19 @@ public:
             point.ring = Msg.points[i].line;
             cloud.push_back(point);
         }
+        return !cloud.empty();
     }
 
     bool cachePointCloud(const livox_ros_driver2::msg::CustomMsg::SharedPtr &laserCloudMsg) {
+        const double inputTime = stamp2Sec(laserCloudMsg->header.stamp);
+        if (!std::isfinite(inputTime) ||
+            (lastCloudInputTime >= 0.0 && inputTime <= lastCloudInputTime)) {
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 2000,
+                "Discarding LiDAR frame with invalid or non-increasing timestamp");
+            return false;
+        }
+        lastCloudInputTime = inputTime;
         // cache point cloud
         cloudQueue.push_back(*laserCloudMsg);
         if (cloudQueue.size() <= 2) return false;
@@ -223,7 +286,12 @@ public:
         cloudQueue.pop_front();
 
         if (sensor == SensorType::LIVOX) {
-            moveFromCustomMsg(currentCloudMsg, *laserCloudIn);
+            if (!moveFromCustomMsg(currentCloudMsg, *laserCloudIn)) {
+                RCLCPP_WARN_THROTTLE(
+                    get_logger(), *get_clock(), 2000,
+                    "Discarding malformed or empty Livox frame");
+                return false;
+            }
         } else {
             RCLCPP_ERROR_STREAM(get_logger(), "Unknown sensor type: " << int(sensor));
             rclcpp::shutdown();
@@ -328,6 +396,14 @@ public:
                 continue;
             }
 
+            if (imuPointerCur >= queueLength) {
+                RCLCPP_WARN_THROTTLE(
+                    get_logger(), *get_clock(), 2000,
+                    "IMU samples for one LiDAR frame exceed deskew capacity (%d)",
+                    queueLength);
+                break;
+            }
+
             // get angular velocity
             double angular_x, angular_y, angular_z;
             imuAngular2rosAngular(&thisImuMsg, &angular_x, &angular_y, &angular_z);
@@ -406,7 +482,10 @@ public:
                 break;
         }
 
-        if (int(round(startOdomMsg.pose.covariance[0])) != int(round(endOdomMsg.pose.covariance[0]))) return;
+        constexpr std::size_t resetIdIndex =
+            lvi_sam::internal_odom_metadata::visual_prior::kResetId;
+        if (int(round(startOdomMsg.pose.covariance[resetIdIndex])) !=
+            int(round(endOdomMsg.pose.covariance[resetIdIndex]))) return;
 
         Eigen::Affine3f transBegin =
             pcl::getTransformation(startOdomMsg.pose.pose.position.x, startOdomMsg.pose.pose.position.y, startOdomMsg.pose.pose.position.z, roll, pitch, yaw);

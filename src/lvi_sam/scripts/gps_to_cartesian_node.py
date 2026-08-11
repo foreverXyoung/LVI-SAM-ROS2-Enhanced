@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import argparse
 import math
-import re
+import os
+import shutil
 import statistics
+import tempfile
 import time
 from pathlib import Path
 
@@ -97,17 +99,12 @@ def make_init_guess_line(x: float, y: float, z: float, yaw: float, order: str, c
 
 
 def update_init_guess(params_path: str, x: float, y: float, z: float, yaw: float, order: str):
-    from pathlib import Path
-    import time
-
     path = Path(params_path)
 
     if not path.exists():
         raise FileNotFoundError(f"Params file not found: {path}")
 
-    text = path.read_text()
-    backup_path = str(path) + f".bak_gpsinit_{time.strftime('%Y%m%d_%H%M%S')}"
-    Path(backup_path).write_text(text)
+    text = path.read_text(encoding="utf-8")
 
     yaw = normalize_angle(yaw)
 
@@ -149,9 +146,43 @@ def update_init_guess(params_path: str, x: float, y: float, z: float, yaw: float
             f"Make sure there is an uncommented line like: init_guess: [...]"
         )
 
-    path.write_text("\n".join(lines) + "\n")
+    updated_text = "\n".join(lines) + "\n"
+    try:
+        updated_document = yaml.safe_load(updated_text)
+        updated_document["/**"]["ros__parameters"]["Loc"]["init_guess"]
+    except (yaml.YAMLError, KeyError, TypeError) as exc:
+        raise RuntimeError(
+            f"Refusing to write invalid ROS parameter YAML: {exc}"
+        ) from exc
 
-    return new_line_text.strip(), backup_path
+    backup_path = Path(
+        str(path) +
+        f".bak_gpsinit_{time.strftime('%Y%m%d_%H%M%S')}_{time.time_ns()}"
+    )
+    shutil.copy2(path, backup_path)
+
+    temporary_path = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="\n",
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=path.parent,
+            delete=False,
+        ) as temporary_file:
+            temporary_file.write(updated_text)
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+            temporary_path = Path(temporary_file.name)
+        os.replace(temporary_path, path)
+        temporary_path = None
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+    return new_line_text.strip(), str(backup_path)
 
 
 def read_gps_samples(gps_topic: str, timeout: float, sample_count: int):

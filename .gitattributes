@@ -1,0 +1,24 @@
+* text=auto eol=lf
+
+# ROS 2 sources and executable scripts must keep Unix line endings so a
+# checkout made on Windows remains directly buildable on Ubuntu/Orin.
+*.sh text eol=lf
+*.py text eol=lf
+CMakeLists.txt text eol=lf
+*.cmake text eol=lf
+*.cpp text eol=lf
+*.cc text eol=lf
+*.h text eol=lf
+*.hpp text eol=lf
+*.xml text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+
+# Large assets and generated map data are never subject to text conversion.
+*.bin binary
+*.pcd binary
+*.scd binary
+*.png binary
+*.jpg binary
+*.jpeg binary

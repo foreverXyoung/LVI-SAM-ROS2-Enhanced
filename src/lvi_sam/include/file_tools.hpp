@@ -11,16 +11,21 @@
 
 enum class SCInputType { SINGLE_SCAN_FULL, SINGLE_SCAN_FEAT, MULTI_SCAN_FEAT };
 
-inline void saveSCD(std::string fileName, Eigen::MatrixXd matrix, std::string delimiter = " ") {
+inline bool saveSCD(const std::string& fileName,
+                    const Eigen::MatrixXd& matrix,
+                    const std::string& delimiter = " ") {
     // delimiter: ", " or " " etc.
     int precision = 3;  // or Eigen::FullPrecision, but SCD does not require such accruate precisions so 3 is enough.
     const static Eigen::IOFormat the_format(precision, Eigen::DontAlignCols, delimiter, "\n");
 
+    if (matrix.size() == 0 || !matrix.allFinite()) return false;
+
     std::ofstream file(fileName);
-    if (file.is_open()) {
-        file << matrix.format(the_format);
-        file.close();
-    }
+    if (!file.is_open()) return false;
+
+    file << matrix.format(the_format);
+    file.flush();
+    return file.good();
 }
 
 inline std::string padZeros(int val, int num_digits = 6) {
@@ -68,6 +73,10 @@ inline bool loadSCD(const std::string& fileName, Eigen::MatrixXd& matrix, char d
     matrix = Eigen::Map<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>(matrixEntries.data(), matrixRowNumber,
                                                                                                  matrixColumnNumber);
     matrixDataFile.close();
+    if (!matrix.allFinite()) {
+        matrix.resize(0, 0);
+        return false;
+    }
     return true;
 }
 

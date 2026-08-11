@@ -74,6 +74,18 @@ struct CloudInfo {
     pcl::PointCloud<PointType>::Ptr cloud_surface{new pcl::PointCloud<PointType>};   // extracted surface feature
 };
 
+inline rclcpp::NodeOptions makeInternalNodeOptions(
+    const rclcpp::NodeOptions& parentOptions,
+    const std::string& nodeName) {
+    rclcpp::NodeOptions childOptions(parentOptions);
+    auto arguments = childOptions.arguments();
+    arguments.emplace_back("--ros-args");
+    arguments.emplace_back("-r");
+    arguments.emplace_back("__node:=" + nodeName);
+    childOptions.arguments(arguments);
+    return childOptions;
+}
+
 class ParamServer : public rclcpp::Node {
 public:
     std::string robot_id;
@@ -168,6 +180,7 @@ public:
     float historyKeyframeSearchTimeDiff;
     int historyKeyframeSearchNum;
     float historyKeyframeFitnessScore;
+    float externalLoopTimeTolerance;
 
     // global map visualization radius
     float globalMapVisualizationSearchRadius;
@@ -182,7 +195,7 @@ public:
 
         declare_and_get_parameter<std::string>("pointCloudTopic", pointCloudTopic, "points");
         declare_and_get_parameter<std::string>("imuTopic", imuTopic, "imu/data");
-        declare_and_get_parameter<std::string>("odomTopic", odomTopic, "lio_sam/odometry/imu");
+        declare_and_get_parameter<std::string>("odomTopic", odomTopic, "/odometry/imu");
         declare_and_get_parameter<std::string>("gpsTopic", gpsTopic, "lio_sam/odometry/gps");
 
         declare_and_get_parameter<std::string>("lidarFrame", lidarFrame, "laser_data_frame");
@@ -336,54 +349,135 @@ public:
         declare_and_get_parameter<float>("historyKeyframeSearchTimeDiff", historyKeyframeSearchTimeDiff, 30.0);
         declare_and_get_parameter<int>("historyKeyframeSearchNum", historyKeyframeSearchNum, 25);
         declare_and_get_parameter<float>("historyKeyframeFitnessScore", historyKeyframeFitnessScore, 0.3);
+        declare_and_get_parameter<float>("externalLoopTimeTolerance", externalLoopTimeTolerance, 0.2);
 
         declare_and_get_parameter<float>("globalMapVisualizationSearchRadius", globalMapVisualizationSearchRadius, 1000.0);
         declare_and_get_parameter<float>("globalMapVisualizationPoseDensity", globalMapVisualizationPoseDensity, 10.0);
         declare_and_get_parameter<float>("globalMapVisualizationLeafSize", globalMapVisualizationLeafSize, 1.0);
 
+        if (pointCloudTopic.empty() || imuTopic.empty() || odomTopic.empty() ||
+            lidarFrame.empty() || baselinkFrame.empty() ||
+            odometryFrame.empty() || mapFrame.empty()) {
+            throw std::runtime_error(
+                "LiDAR/IMU/odometry topics and frame names must not be empty");
+        }
+        if (useGpsFactor && gpsTopic.empty()) {
+            throw std::runtime_error(
+                "gpsTopic must not be empty when GPS factors are enabled");
+        }
+        if ((savePCD || saveKeyframeMap) && savePCDDirectory.empty()) {
+            throw std::runtime_error(
+                "savePCDDirectory must not be empty when map saving is enabled");
+        }
         if (N_SCAN <= 0 || Horizon_SCAN <= 0 || downsampleRate <= 0) {
             throw std::runtime_error(
                 "N_SCAN, Horizon_SCAN, and downsampleRate must be positive");
         }
-        if (lidarMinRange < 0.0f || lidarMaxRange <= lidarMinRange) {
+        if (!std::isfinite(lidarMinRange) || !std::isfinite(lidarMaxRange) ||
+            lidarMinRange < 0.0f || lidarMaxRange <= lidarMinRange) {
             throw std::runtime_error(
                 "lidarMaxRange must be greater than non-negative lidarMinRange");
         }
-        if (imuAccNoise <= 0.0f || imuGyrNoise <= 0.0f ||
+        if (!std::isfinite(imuAccNoise) || !std::isfinite(imuGyrNoise) ||
+            !std::isfinite(imuAccBiasN) || !std::isfinite(imuGyrBiasN) ||
+            !std::isfinite(imuGravity) || !std::isfinite(imuRPYWeight) ||
+            imuAccNoise <= 0.0f || imuGyrNoise <= 0.0f ||
             imuAccBiasN <= 0.0f || imuGyrBiasN <= 0.0f ||
-            imuGravity <= 0.0f) {
+            imuGravity <= 0.0f || imuRPYWeight < 0.0f) {
             throw std::runtime_error(
                 "IMU noise, bias random walk, and gravity parameters must be positive");
         }
-        if (odometrySurfLeafSize <= 0.0f || mappingCornerLeafSize <= 0.0f ||
+        if (!std::isfinite(edgeThreshold) || !std::isfinite(surfThreshold) ||
+            edgeThreshold <= 0.0f || surfThreshold <= 0.0f ||
+            edgeFeatureMinValidNum < 0 || surfFeatureMinValidNum < 0) {
+            throw std::runtime_error(
+                "feature thresholds must be positive and minimum feature "
+                "counts must be non-negative");
+        }
+        if (!std::isfinite(odometrySurfLeafSize) ||
+            !std::isfinite(mappingCornerLeafSize) ||
+            !std::isfinite(mappingSurfLeafSize) ||
+            odometrySurfLeafSize <= 0.0f || mappingCornerLeafSize <= 0.0f ||
             mappingSurfLeafSize <= 0.0f) {
             throw std::runtime_error("voxel leaf sizes must be positive");
         }
-        if (numberOfCores <= 0 || mappingProcessInterval < 0.0) {
+        if (!std::isfinite(z_tollerance) ||
+            !std::isfinite(rotation_tollerance) || z_tollerance < 0.0f ||
+            rotation_tollerance < 0.0f) {
+            throw std::runtime_error(
+                "translation and rotation tolerances must be finite and non-negative");
+        }
+        if (numberOfCores <= 0 || !std::isfinite(mappingProcessInterval) ||
+            mappingProcessInterval < 0.0) {
             throw std::runtime_error(
                 "numberOfCores must be positive and mappingProcessInterval non-negative");
         }
         if (useExternalPoseFactor &&
-            (externalPosePositionVariance <= 0.0f ||
+            (!std::isfinite(externalPosePositionVariance) ||
+             !std::isfinite(externalPoseRotationVariance) ||
+             externalPosePositionVariance <= 0.0f ||
              externalPoseRotationVariance <= 0.0f)) {
             throw std::runtime_error(
                 "enabled external pose factors require positive variances");
         }
-        if (maxLidarOdomAge <= 0.0) {
+        if (!std::isfinite(maxLidarOdomAge) || maxLidarOdomAge <= 0.0) {
             throw std::runtime_error("maxLidarOdomAge must be positive");
         }
+        if (!std::isfinite(gpsCovThreshold) ||
+            !std::isfinite(poseCovThreshold) ||
+            !std::isfinite(gpsInitialDistance) ||
+            !std::isfinite(gpsFactorDistance) ||
+            !std::isfinite(gpsVarianceFloor) ||
+            !std::isfinite(gpsTimeTolerance) ||
+            !std::isfinite(gpsInnovationThreshold) ||
+            !std::isfinite(gpsRobustKernelScale) || gpsCovThreshold <= 0.0f ||
+            poseCovThreshold <= 0.0f || gpsInitialDistance < 0.0f ||
+            gpsFactorDistance < 0.0f || gpsVarianceFloor <= 0.0f ||
+            gpsTimeTolerance <= 0.0f || gpsInnovationThreshold <= 0.0f ||
+            gpsRobustKernelScale <= 0.0f || gpsQueueSize <= 0) {
+            throw std::runtime_error(
+                "GPS covariance/time/innovation parameters must be finite and valid");
+        }
+        if (!std::isfinite(surroundingkeyframeAddingDistThreshold) ||
+            !std::isfinite(surroundingkeyframeAddingAngleThreshold) ||
+            !std::isfinite(surroundingKeyframeDensity) ||
+            !std::isfinite(surroundingKeyframeSearchRadius) ||
+            surroundingkeyframeAddingDistThreshold <= 0.0f ||
+            surroundingkeyframeAddingAngleThreshold <= 0.0f ||
+            surroundingKeyframeDensity <= 0.0f ||
+            surroundingKeyframeSearchRadius <= 0.0f) {
+            throw std::runtime_error(
+                "surrounding-keyframe thresholds must be finite and positive");
+        }
         if (loopClosureEnableFlag &&
-            (loopClosureFrequency <= 0.0f || surroundingKeyframeSize <= 0 ||
+            (!std::isfinite(loopClosureFrequency) ||
+             !std::isfinite(historyKeyframeSearchRadius) ||
+             !std::isfinite(historyKeyframeSearchTimeDiff) ||
+             !std::isfinite(historyKeyframeFitnessScore) ||
+             !std::isfinite(externalLoopTimeTolerance) ||
+             loopClosureFrequency <= 0.0f || surroundingKeyframeSize <= 0 ||
              historyKeyframeSearchRadius <= 0.0f ||
+             historyKeyframeSearchTimeDiff <= 0.0f ||
              historyKeyframeSearchNum <= 0 ||
-             historyKeyframeFitnessScore <= 0.0f)) {
+             historyKeyframeFitnessScore <= 0.0f ||
+             externalLoopTimeTolerance <= 0.0f)) {
             throw std::runtime_error(
                 "enabled loop closure requires positive frequency/search/fitness parameters");
         }
-        if (scanContextDistanceThreshold <= 0.0f ||
+        if (!std::isfinite(scanContextDistanceThreshold) ||
+            scanContextDistanceThreshold <= 0.0f ||
             scanContextDistanceThreshold >= 1.0f) {
             throw std::runtime_error(
                 "scanContextDistanceThreshold must be in (0, 1)");
+        }
+        if (!std::isfinite(globalMapVisualizationSearchRadius) ||
+            !std::isfinite(globalMapVisualizationPoseDensity) ||
+            !std::isfinite(globalMapVisualizationLeafSize) ||
+            globalMapVisualizationSearchRadius <= 0.0f ||
+            globalMapVisualizationPoseDensity <= 0.0f ||
+            globalMapVisualizationLeafSize <= 0.0f) {
+            throw std::runtime_error(
+                "global-map visualization parameters must be finite and positive");
         }
 
         usleep(100);
@@ -419,8 +513,11 @@ public:
         // to extQRPY instead of shutting down the whole localization stack.
         double q_norm = sqrt(q_from.x() * q_from.x() + q_from.y() * q_from.y() + q_from.z() * q_from.z() + q_from.w() * q_from.w());
         Eigen::Quaterniond q_final;
-        if (q_norm < 0.1) {
-            RCLCPP_WARN(get_logger(), "IMU orientation invalid (norm=%.3f), falling back to mount bias extQRPY. Ensure a 9-axis IMU.", q_norm);
+        if (!std::isfinite(q_norm) || q_norm < 0.1) {
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 2000,
+                "IMU orientation invalid (norm=%.3f), falling back to mount bias extQRPY. Ensure a 9-axis IMU.",
+                q_norm);
             q_final = extQRPY;
         } else {
             q_final = q_from * extQRPY;

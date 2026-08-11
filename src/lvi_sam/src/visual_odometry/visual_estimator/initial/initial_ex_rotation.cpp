@@ -1,6 +1,6 @@
 #include "initial_ex_rotation.h"
 
-InitialEXRotation::InitialEXRotation() : Node("initial_ex_rotation") {
+InitialEXRotation::InitialEXRotation() {
     frame_count = 0;
     Rc.push_back(Matrix3d::Identity());
     Rc_g.push_back(Matrix3d::Identity());

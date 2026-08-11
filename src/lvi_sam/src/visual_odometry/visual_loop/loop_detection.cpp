@@ -3,6 +3,13 @@
 
 LoopDetector::LoopDetector(){}
 
+void LoopDetector::reset()
+{
+    db.clear();
+    image_pool.clear();
+    keyframelist.clear();
+}
+
 
 void LoopDetector::loadVocabulary(std::string voc_path)
 {
@@ -68,7 +75,15 @@ int LoopDetector::detectLoop(KeyFrame* keyframe, int frame_index)
     }
     //first query; then add this frame into database!
     QueryResults ret;
-    db.query(keyframe->brief_descriptors, ret, 4, frame_index - 200);
+    // DBoW2 interprets a negative max_id as "query all entries". Wait until a
+    // historical candidate exists before querying. This vendored L1 scorer
+    // deliberately also returns the newest database entry as ret[0], which is
+    // used below as the neighbour-score baseline; loop candidates come from
+    // the remaining, older results.
+    if (frame_index >= LOOP_MIN_INDEX_GAP)
+        db.query(
+            keyframe->brief_descriptors, ret, 4,
+            frame_index - LOOP_MIN_INDEX_GAP);
     //printf("query time: %f", t_query.toc());
     //cout << "Searching for Image " << frame_index << ". " << ret << endl;
 
@@ -97,12 +112,12 @@ int LoopDetector::detectLoop(KeyFrame* keyframe, int frame_index)
     }
     // a good match with its nerghbour
     bool find_loop = false;
-    if (ret.size() >= 1 && ret[0].Score > 0.05)
+    if (!ret.empty() && ret[0].Score > LOOP_PRIMARY_SCORE_THRESHOLD)
     {
         for (unsigned int i = 1; i < ret.size(); i++)
         {
             //if (ret[i].Score > ret[0].Score * 0.3)
-            if (ret[i].Score > 0.015)
+            if (ret[i].Score > LOOP_SECONDARY_SCORE_THRESHOLD)
             {          
                 find_loop = true;
                 
@@ -125,12 +140,14 @@ int LoopDetector::detectLoop(KeyFrame* keyframe, int frame_index)
         cv::waitKey(20);
     }
     
-    if (find_loop && frame_index > 50)
+    if (find_loop)
     {
         int min_index = -1;
         for (unsigned int i = 0; i < ret.size(); i++)
         {
-            if (min_index == -1 || ((int)ret[i].Id < min_index && ret[i].Score > 0.015))
+            if (min_index == -1 ||
+                (static_cast<int>(ret[i].Id) < min_index &&
+                 ret[i].Score > LOOP_SECONDARY_SCORE_THRESHOLD))
                 min_index = ret[i].Id;
         }
         return min_index;

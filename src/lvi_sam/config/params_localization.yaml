@@ -14,13 +14,13 @@
       lostDetectionEnable: true
       lostBadMatchThreshold: 5
       init_guess: [0.00000000, 0.00000000, -1.88647982, 6.21380055, 2.69203917, 0.00000000]   # [roll,pitch,yaw,x,y,z], generated from GNSS map_geo.yaml
-      useRviz: true
 
+    useRviz: true
 
     # Topics
     pointCloudTopic: "/livox/lidar"
     imuTopic: "/IMU_data"                         # IMU data
-    odomTopic: "odometry/imu"                    # IMU pre-preintegration odometry, same frequency as IMU
+    odomTopic: "/odometry/imu"                   # IMU pre-preintegration odometry, same frequency as IMU
     gpsTopic: "/gps_disabled_for_collect_points"
 
     # Frames
@@ -40,6 +40,7 @@
     useGpsFactor: false
     gpsCovThreshold: 0.5
     poseCovThreshold: 25.0
+    gpsVarianceFloor: 1.0
     gpsTimeTolerance: 0.2
     gpsInnovationThreshold: 10.0
     gpsUseRobustNoise: true
@@ -125,6 +126,7 @@
     historyKeyframeSearchNum: 10                  # 25. number of hostory key frames will be fused into a
     # submap for loop closure
     historyKeyframeFitnessScore: 0.3              # icp threshold, the smaller the better alignment
+    externalLoopTimeTolerance: 0.2                # seconds, VIS candidate to LIS keyframe matching
 
     # Visualization
     globalMapVisualizationSearchRadius: 1000.0    # meters, global map visualization radius

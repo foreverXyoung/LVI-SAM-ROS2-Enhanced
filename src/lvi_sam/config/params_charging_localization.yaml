@@ -44,12 +44,13 @@
       # [roll, pitch, yaw, x, y, z] in the LIO-SAM map/odom frame.
       # Replace this after recording the charging scene start pose.
       init_guess: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-      useRviz: true
+
+    useRviz: true
 
     # Topics
     pointCloudTopic: "/livox/lidar"
     imuTopic: "/IMU_data"
-    odomTopic: "odometry/imu"
+    odomTopic: "/odometry/imu"
     gpsTopic: "/gps/lio_sam_odom"
 
     # Frames
@@ -152,6 +153,7 @@
     historyKeyframeSearchTimeDiff: 30.0
     historyKeyframeSearchNum: 10
     historyKeyframeFitnessScore: 0.3
+    externalLoopTimeTolerance: 0.2
 
     # Visualization
     globalMapVisualizationSearchRadius: 1000.0

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <rclcpp/rclcpp.hpp>
-#include "ament_index_cpp/get_package_share_directory.hpp"
 #include <opencv2/highgui/highgui.hpp>
 
 #include "std_msgs/msg/header.hpp"
@@ -60,7 +59,6 @@
 #include <cassert>
 
 using namespace std;
-using ament_index_cpp::get_package_share_directory;
 using std::placeholders::_1;
 
 typedef pcl::PointXYZI PointType;

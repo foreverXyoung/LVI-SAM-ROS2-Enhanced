@@ -1,3 +1,7 @@
+# Legacy single-file localization profile kept for compatibility with older
+# deployments and gps_to_cartesian_node.py copies.  New launches should use
+# params_localization.yaml (or a scene-specific *_localization.yaml) through
+# run.launch.py; this file is not selected automatically.
 /**:
   ros__parameters:
 
@@ -13,13 +17,13 @@
  
       useSCReLoc: true
       init_guess: [0.00000000, 0.00000000, -1.88647982, 6.21380055, 2.69203917, 0.00000000]   # [roll,pitch,yaw,x,y,z], generated from GNSS map_geo.yaml
-      useRviz: true
 
+    useRviz: true
 
     # Topics
     pointCloudTopic: "/livox/lidar"
     imuTopic: "/IMU_data"                         # IMU data
-    odomTopic: "odometry/imu"                    # IMU pre-preintegration odometry, same frequency as IMU
+    odomTopic: "/odometry/imu"                   # IMU pre-preintegration odometry, same frequency as IMU
     gpsTopic: "/gps_disabled_for_collect_points"
 
     # Frames

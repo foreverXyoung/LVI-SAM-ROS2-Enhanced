@@ -11,7 +11,12 @@
 #
 set -euo pipefail
 
-WS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WS_ROOT="${LVI_SAM_WORKSPACE_ROOT:-$REPO_ROOT}"
+if [ -z "${LVI_SAM_WORKSPACE_ROOT:-}" ] && \
+   [ "$(basename "$(dirname "$REPO_ROOT")")" = "src" ]; then
+  WS_ROOT="$(cd "$REPO_ROOT/../.." && pwd)"
+fi
 ROS_DISTRO="${ROS_DISTRO:-humble}"
 
 if [ ! -f "/opt/ros/$ROS_DISTRO/setup.bash" ]; then
@@ -29,4 +34,5 @@ fi
 source "$WS_ROOT/install/setup.bash"
 
 echo "[INFO] 启动 lvi_sam run.launch.py $*"
+echo "[INFO] 使用 colcon 工作区: $WS_ROOT"
 exec ros2 launch lvi_sam run.launch.py "$@"

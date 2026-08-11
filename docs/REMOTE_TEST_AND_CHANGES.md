@@ -37,18 +37,57 @@
 - 定位初始化要求多帧稳定 RTK；在线辅助使用绝对创新量、归一化创新量及自适应融合权重。
 - 可选双天线航向，但只有四元数和 yaw 协方差都可信时才接收。
 
+### 1.5 工程稳健性与接口规范
+
+- 视觉优化内部的 `Estimator`、`FeatureManager`、`InitialEXRotation` 和 `IMUFactor`
+  改为普通 C++ 对象，避免每个优化因子创建 ROS Node。
+- 修复视觉估计工作线程退出时未 join、恢复 join 后条件变量无法唤醒的问题；节点现在可确定退出。
+- BRIEF pattern 由视觉回环模块直接读取并强制校验 256 对测试点；词表和 pattern 缺失时启动失败。
+- VIS 输入增加有限值、时间顺序、特征通道长度和队列上限检查，固定资源改用 RAII。
+- `project_name`、`odom_topic` 成为统一 launch 接口；VIS 话题由
+  `include/lvi_sam/topic_names.hpp` 集中生成。
+- 资源包名与视觉话题根已解耦，`project_name:=robot_a` 不再导致节点错误查找 `robot_a` 包。
+- 视觉关键帧三流同步和 VIS→LIS 候选映射增加显式时间容差；超限候选不会进入 ICP。
+- 安装脚本会复用 `/usr/local` 或系统路径下已有的 GTSAM 4.x，不再向系统 Python 安装
+  未使用的 `opencv-python`/`numpy`。
+- 新增 `.gitattributes` 固定 ROS/CMake/Python/Shell 文本为 LF，避免从 Windows 提交后在 Orin
+  出现脚本解释器 `^M` 或无意义的整文件换行差异。
+- 新增 `scripts/validate_config.py`，`scripts/build.sh` 会在编译前自动核对六套 LIS 配置与
+  camera/BRIEF 配置；`--lidar-only` 构建会只核对 LIS。完整契约见
+  [INTERFACES_AND_STABILITY.md](INTERFACES_AND_STABILITY.md)。
+- 修复 LIS→VIS 初始化元数据链：图优化重置编号和退化标志不再共用同一语义，IMU 预积分恢复发布
+  加速度计/陀螺仪 bias 与重力；VIS 对缺失、非有限或零重力先验执行拒绝，不再把无效值送入初始化。
+  兼容字段的逐槽位说明见接口文档 3.2.1。
+- 去畸变、特征提取和地图优化现在接收同一份 ROS NodeOptions/YAML 覆盖值，避免内部前端静默回退到
+  默认扫描模型、外参或体素参数，而地图后端使用实机配置。
+- 构建脚本会保留调用者已经 source 的工作区环境，从而优先复用机器人总工作区中的
+  `livox_ros_driver2`；仓库位于 `<workspace>/src` 时自动使用上层工作区，`--clean` 只清理
+  `build/lvi_sam` 与 `install/lvi_sam`。
+- 地图落盘改为 executor、回环线程和全局可视化线程全部退出后再执行，避免关机保存与回环修正并发读取
+  关键帧/因子图容器；逐关键帧 PCD/SCD 或最终关键 PCD 任一写入失败时不会更新 manifest，也不会误报完成。输出目录必须为空，
+  建图期间的 `.lvi_sam_mapping_in_progress` 标记会阻止定位加载未完成地图。应使用 Ctrl+C
+  正常退出并等待“Saving map ... completed”。
+- VIS Estimator 的预积分、边缘化和 `ImageFrame` 拥有型指针在构造时全部显式置空，并在析构时统一清理，
+  消除 Release 优化下由未初始化指针判断导致的随机崩溃风险。
+- BRIEF 词表读取增加头字段、数量上限、文件剩余长度和完整读取检查；损坏或截断的 60 MB 词表会在
+  启动阶段明确失败，不再按伪造数量分配内存或把不完整描述子送入 DBoW2。
+- 视觉初始化的 IMU 可观测性统计现在从零向量开始，只使用有限且正时长的预积分区间；没有有效区间时
+  明确拒绝初始化，避免未初始化内存或除零把随机姿态带入后端。
+- 回环候选历史点云与 ICP 校正后点云拆分为两个诊断话题，避免不同坐标状态的数据在同一话题交替发布。
+
 ## 2. 远程电脑首次部署
 
 ### 2.1 拉取代码
 
 ```bash
 cd ~/work
-git clone --recursive https://github.com/foreverXyoung/LVI-SAM-ROS2-Enhanced.git
+git clone https://github.com/foreverXyoung/LVI-SAM-ROS2-Enhanced.git
 cd LVI-SAM-ROS2-Enhanced
 
 # 已经克隆过时使用：
 git pull --ff-only origin main
-git submodule update --init --recursive
+# 仅在当前已 source 的工作区找不到 livox_ros_driver2 时执行：
+# git submodule update --init --recursive
 ```
 
 记录当前测试版本，便于复现：
@@ -90,6 +129,10 @@ colcon test --packages-select lvi_sam --event-handlers console_direct+
 colcon test-result --verbose
 ```
 
+也可以直接在仓库目录执行 `bash scripts/build.sh --clean`；脚本会识别上层
+`/data/return_station_ws`，自动复用其 `install/livox_ros_driver2` 并只清理
+`lvi_sam` 自身产物。
+
 本次内部图像适配层不要求重新编译系统 `cv_bridge`，也不需要额外 overlay 工作空间。
 
 检查包与可执行文件：
@@ -122,7 +165,8 @@ ros2 pkg executables lvi_sam
 3. `lidarFrame`、`baselinkFrame`、`odometryFrame`、`mapFrame` 与机器人 TF 树一致。
 4. `extrinsicRot`、`extrinsicRPY`、`extrinsicTrans` 是当前设备的雷达—IMU 标定结果。
 5. 启用视觉时，`params_camera.yaml` 中图像尺寸、模型、内参、畸变和相机—IMU/雷达外参均为当前相机标定结果。
-6. 地图目录存在且运行用户可写；定位时目录中是完整、同一批次生成的地图文件。
+6. 建图输出目录为空且运行用户可写；定位时目录中是完整、同一批次生成且没有
+   `.lvi_sam_mapping_in_progress` 标记的地图文件。
 7. RTK 输入已经变换到保存地图所使用的局部坐标系；仅把 `frame_id` 改成 `odom` 并不等于完成了坐标对齐。
 
 推荐先检查话题和 TF：
@@ -249,13 +293,19 @@ ros2 topic echo /lvi_sam/vins/loop/match_frame --once
 
 `match_frame` 只在 DBoW2/BRIEF 找到并验证回环时发布，因此短时间没有消息不代表节点异常。应同时观察三个视觉节点日志、特征跟踪图和 VINS 里程计是否连续。
 
-当前实机默认相机配置来自 `/camera/color/camera_info`：`640x400`、PINHOLE/plumb_bob；
+仓库当前相机配置按 `640x400`、PINHOLE/plumb_bob 编写；必须用实机
+`/camera/color/camera_info` 复核，不能仅凭图像编码判断内参正确：
+
+```bash
+ros2 topic echo /camera/color/camera_info --once
+```
+
 `/camera/color/image_raw` 已确认编码为 `rgb8`。内部适配层按 `RGB → mono8` 一次转换，
 生成的灰度矩阵持有独立内存，可安全用于跨帧光流。
 在相机—IMU与雷达—相机外参完成实机标定前，配置会优化相机—IMU初值，并默认关闭
 LiDAR 深度注入；此阶段只用于验证视觉特征与 VIO 数据链，不作为最终融合精度结论。
 
-当前版本会保存相机原始数据的设计约定和地图清单入口，但没有实现跨进程持久化 DBoW2/BRIEF 数据库；跨会话全局重定位仍由 Scan Context + ICP 主导。不要把“在线视觉回环可用”误认为“重启后可用视觉地图重定位”。
+当前版本仅定义了相机重定位数据的设计约定，并在地图清单中预留入口；代码不会实际保存相机原图、描述子或跨进程 DBoW2/BRIEF 数据库。跨会话全局重定位仍由 Scan Context + ICP 主导。不要把“在线视觉回环可用”误认为“重启后可用视觉地图重定位”。
 
 ### 4.5 第五阶段：RTK 建图和定位
 
@@ -282,6 +332,7 @@ ros2 topic echo /gps/lio_sam_odom --once
 - `pose.covariance[0]`、`[7]` 为正且小于 `gpsCovThreshold`；
 - 使用航向时四元数已归一化，`pose.covariance[35]` 为正且小于 `Loc.rtkYawVarianceThreshold`；
 - RTK 与激光时间差小于 `gpsTimeTolerance`；
+- RTK 时间戳严格递增，不允许重复、回拨或非有限值；
 - RTK 坐标在 RViz 中与先验地图和激光定位重合。
 
 建图：
@@ -304,7 +355,9 @@ ros2 launch lvi_sam run.launch.py \
   robot_description_file:=/absolute/path/to/robot.urdf.xacro
 ```
 
-日志出现 `Rejecting GPS factor input` 或 `Rejecting RTK localization sample/assist` 时，说明质量门控正在拒绝异常数据；应根据后面的 frame、covariance、time 或 innovation 原因修复上游数据，不能简单放宽全部阈值。
+日志出现 `Rejecting GPS factor input`、`Rejecting RTK localization sample/assist` 或
+`Discarding RTK/GPS sample` 时，说明质量门控正在拒绝异常数据；应根据后面的
+frame、covariance、timestamp、time 或 innovation 原因修复上游数据，不能简单放宽全部阈值。
 
 ## 5. 建议记录的测试结果
 

@@ -23,10 +23,11 @@
 #include <opencv2/core/eigen.hpp>
 
 
-class Estimator : public rclcpp::Node
+class Estimator
 {
   public:
     Estimator();
+    ~Estimator();
 
     void setParameter();
 
@@ -84,7 +85,7 @@ class Estimator : public rclcpp::Node
     Vector3d back_P0, last_P, last_P0;
     std_msgs::msg::Header Headers[(WINDOW_SIZE + 1)];
 
-    IntegrationBase *pre_integrations[(WINDOW_SIZE + 1)];
+    IntegrationBase *pre_integrations[(WINDOW_SIZE + 1)]{};
     Vector3d acc_0, gyr_0;
 
     vector<double> dt_buf[(WINDOW_SIZE + 1)];
@@ -118,11 +119,16 @@ class Estimator : public rclcpp::Node
 
     int loop_window_index;
 
-    MarginalizationInfo *last_marginalization_info;
+    MarginalizationInfo *last_marginalization_info = nullptr;
     vector<double *> last_marginalization_parameter_blocks;
 
     map<double, ImageFrame> all_image_frame;
-    IntegrationBase *tmp_pre_integration;
+    IntegrationBase *tmp_pre_integration = nullptr;
 
     int failureCount;
+
+    static rclcpp::Logger get_logger()
+    {
+        return rclcpp::get_logger("lvi_sam.visual_estimator");
+    }
 };
