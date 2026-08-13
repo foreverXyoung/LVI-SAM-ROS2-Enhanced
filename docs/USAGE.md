@@ -200,9 +200,9 @@ ros2 topic hz /lio_sam/mapping/cloud_registered
 - `imuToLidarRotation`、`imuToLidarTranslation` 和
   `imuOrientationToLidarRotation` 只描述所选 IMU 与 LiDAR 的关系；移动或更换 IMU 时成组修改。
 - `imuOrientationSource=message` 使用 IMU 四元数；`mount` 用于没有可用四元数的内置 IMU。
-- MID-360 profile 开启 VIS 时会自动加载 `params_camera_mid360.yaml`。其中外参是由旧机器人
-  模型和当前雷达安装参数组合出的联调初值，不能视为标定结果；默认关闭 LiDAR 深度和
-  LIS 里程计先验，先用于检查特征/VIO 数据链。
+- MID-360 profile 开启 VIS 时会自动加载 `params_camera_mid360.yaml`。该文件已经使用实机
+  `T_cam_radar` 并默认启用 LiDAR 深度；LIS 里程计先验与全局视觉—激光对齐保持关闭，先检查
+  深度投影、特征和 VIO 数据链。相机—IMU 平移中的内置 IMU 杆臂仍需最终实测确认。
 
 ### 5.3 `config/params_mount_robot.yaml`（机器人安装）
 

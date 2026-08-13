@@ -1,35 +1,32 @@
 /**:
   ros__parameters:
-    # MID-360 visual commissioning profile.
-    #
-    # Camera intrinsics are copied from the current /camera/color calibration.
-    # Extrinsics are a NOMINAL initial guess composed from the older robot
-    # model (base->camera) and the calibrated base->LiDAR mounting profile.
-    # They are sufficient to start and inspect the monocular VIO pipeline, but
-    # are not a replacement for a camera-IMU/LiDAR target calibration.
+    # MID-360 visual profile. Camera intrinsics and T_cam_radar were supplied
+    # from the robot's calibration result on 2026-08-13. The supplied matrix
+    # follows p_camera_optical = T_cam_radar * p_lidar.
     PROJECT_NAME: "lvi_sam"
     imu_topic: "/livox/imu"
     odom_topic: "/odometry/imu"
     image_topic: "/camera/color/image_raw"
     point_cloud_topic: "/lio_sam/deskew/cloud_deskewed"
 
-    # Keep both LiDAR-assisted visual paths disabled while these extrinsics are
-    # nominal. This prevents an approximate transform from attaching incorrect
-    # depths or poses to otherwise valid image features.
-    use_lidar: 0
+    # Enable calibrated LiDAR depth first. Keep the odometry initialization and
+    # global visual/LiDAR alignment as separate commissioning steps so a timing
+    # or frame issue cannot affect every coupling path at once.
+    use_lidar: 1
     use_lidar_odometry_prior: 0
     lidar_skip: 3
     align_camera_lidar_estimation: 0
 
-    # Physical LiDAR -> virtual ROS-axis depth frame at the camera origin.
-    # Nominal source: base->camera xyz [0.5, 0, 0.15] m and the current
-    # params_mount_robot.yaml T_base_lidar. Rotation uses Rz*Ry*Rx radians.
-    lidar_to_cam_tx: -0.298753
-    lidar_to_cam_ty: -0.024810
-    lidar_to_cam_tz: -0.179314
-    lidar_to_cam_rx: -0.018330069
-    lidar_to_cam_ry: 0.531769168
-    lidar_to_cam_rz: -0.008192354
+    # Physical LiDAR -> virtual ROS forward/left/up depth frame at the camera
+    # origin. Converted from T_cam_radar using
+    # R_depth_optical = [[0,0,1],[-1,0,0],[0,-1,0]]. Rotation uses
+    # Rz*Ry*Rx radians, matching pcl::getTransformation.
+    lidar_to_cam_tx: -0.081972593017417
+    lidar_to_cam_ty: -0.044175299800737
+    lidar_to_cam_tz:  0.144969384854964
+    lidar_to_cam_rx: -0.021612647911946
+    lidar_to_cam_ry:  0.544036086503004
+    lidar_to_cam_rz: -0.016580205374355
 
     model_type: "pinhole"
     camera_name: "camera_color"
@@ -41,8 +38,8 @@
       p1: 0.00011125089804409072
       p2: 0.0003588180697988719
     projection_parameters:
-      fx: 305.593505859375
-      fy: 305.70538330078125
+      fx: 305.593505859735
+      fy: 305.7058330078125
       cx: 318.81414794921875
       cy: 199.78807067871094
 
@@ -54,14 +51,15 @@
     g_norm: 9.805
     imuAccelerationScale: 9.80665
 
-    # Camera optical frame -> MID-360 built-in IMU.
-    # The nominal translation also includes FAST-LIO's reference MID-360
-    # IMU->LiDAR lever arm [-0.011, -0.02329, 0.04412] m.
+    # Camera optical frame -> MID-360 built-in IMU. This is derived from the
+    # calibrated T_cam_radar plus FAST-LIO's reference MID-360 IMU->LiDAR
+    # lever arm [-0.011, -0.02329, 0.04412] m. Keep online refinement enabled
+    # until the exact device lever arm has also been measured.
     estimate_extrinsic: 1
-    extrinsicRotation: [ 0.007061,  0.507059,  0.861882,
-                        -0.999875,  0.015798, -0.001102,
-                        -0.014175, -0.861766,  0.507107]
-    extrinsicTranslation: [0.134704178, -0.002327104, 0.338490931]
+    extrinsicRotation: [ 0.014185814836858,  0.517593581056244,  0.855508999079956,
+                        -0.999814492115821,  0.018490916911956,  0.005391414187168,
+                        -0.013028584443324, -0.855426777019008,  0.517759872089634]
+    extrinsicTranslation: [0.133536851431585, 0.023999669985422, -0.036873032753594]
 
     max_cnt: 150
     min_dist: 20

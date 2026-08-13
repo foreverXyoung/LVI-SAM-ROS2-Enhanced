@@ -175,8 +175,9 @@ DBoW2 的近期关键帧排除量和候选分数分别由 `loop_min_index_gap`�
   `params_imu_mid360.yaml`。MID-360 profile 使用同轴单位旋转，并采用 FAST-LIO 官方配置中的
   `[-0.011, -0.02329, 0.04412] m` 平移作为参考初值，同时关闭不存在的姿态观测权重；正式精度
   测试前仍需标定噪声，并优先使用可获得的本机外参。相机—外置 IMU
-  外参不能复用于相机—MID-360 IMU。内置 `params_camera_mid360.yaml` 仅提供由旧模型组合出的
-  联调初值，并关闭 LiDAR 深度和里程计先验；正式精度测试必须替换为专用标定。
+  外参不能复用于相机—MID-360 IMU。内置 `params_camera_mid360.yaml` 已使用实机
+  `T_cam_radar`，经 optical→ROS-depth 轴转换后启用 LiDAR 深度。相机—IMU 平移还组合了
+  FAST-LIO 的通用内置 IMU 杆臂，因此保持在线细化，里程计先验与全局对齐仍分阶段启用。
   只更换/移动 IMU 不修改 `params_mount_robot.yaml`；只有 LiDAR 相对机器人本体发生变化时
   才修改安装 profile。旧 `extrinsicRot/RPY/Trans` 只作为向后兼容回退。
 - VIS 使用的 LIS 里程计输入必须表达物理 LiDAR 在 ROS `odom` 中的位姿，线速度必须在

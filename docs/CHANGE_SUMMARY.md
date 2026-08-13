@@ -32,7 +32,7 @@
 | VIS Loop | loop detector 源码、DBoW2 词表读取 | 三路近似时间同步；队列上限；词表健壮读取；可配候选门限；RAII 关键帧；退出 join | BRIEF+DBoW2+PnP 逻辑保留；候选仍须由 LIS 点云 ICP 验证 |
 | 公共接口 | `topic_names.hpp`、`package_assets.hpp`、`visual_frame_conventions.hpp` | 话题、包资源、坐标约定和里程计元数据集中定义 | 消除多处字符串/矩阵魔法值，不增加运行节点 |
 | 本体点云过滤 | `utility.hpp`、六套 LIS profile | 过滤盒显式选择 `lidar`/`base` 坐标；通用实机配置启用原 LiDAR-frame 小盒；base 模式只使用配置外参 | 不读取 TF；更换 IMU不改变过滤语义，盒边界仍需实机调 |
-| MID-360 视觉联调 | `params_camera_mid360.yaml`、`run.launch.py` | 按 `imu_source` 自动选相机 profile；加入由旧模型组合的名义相机外参 | 可以直接启动 VIO；LiDAR 深度/先验默认关闭，正式精度仍要求标定 |
+| MID-360 视觉联调 | `params_camera_mid360.yaml`、`run.launch.py` | 按 `imu_source` 自动选相机 profile；将实机 `T_cam_radar` 转换为算法深度帧外参 | LiDAR 深度已启用；里程计先验和全局对齐分阶段启用 |
 | RViz 与文档 | `rviz2.rviz`、README、`docs/*` | 默认显示注册点云、轨迹和回环诊断；补充部署、使用、架构、接口与验收文档 | 只影响可视化和操作流程 |
 
 ## 3. 原逻辑兼容性结论
@@ -64,7 +64,17 @@ Nav2 或通用融合器应使用 `/lio_sam/mapping/odometry`，或由集成层�
 残留旧队列或后台线程。
 
 VIS 默认启动是操作策略变化，不是 LIS 算法依赖。未完成相机/IMU/LiDAR 标定时，VIS 可以运行
-单目惯性链路，但必须保持 LiDAR 深度、LiDAR 里程计先验和在线 LiDAR-camera 对齐关闭。
+单目惯性链路；取得实机 `T_cam_radar` 后只先启用 LiDAR 深度，LiDAR 里程计先验和在线
+LiDAR-camera 全局对齐继续关闭，避免一次引入多条耦合链路。
+
+2026-08-13 收到的标定约定为 `p_camera_optical = T_cam_radar · p_lidar`。工程没有直接把
+光学帧矩阵当作欧拉角使用，而是先左乘
+`R_depth_optical=[[0,0,1],[-1,0,0],[0,-1,0]]`，得到相机原点处 ROS 前左上深度帧，再按
+`Rz·Ry·Rx` 提取 `lidar_to_cam_r*`。转换结果为平移
+`[-0.0819725930, -0.0441752998, 0.1449693849] m`、RPY
+`[-0.0216126479, 0.5440360865, -0.0165802054] rad`。相机—IMU 外参使用
+`T_imu_cam = T_imu_lidar · inverse(T_cam_lidar)` 组合；原始旋转矩阵行列式为 1，配置预检会
+继续检查转换后旋转的正交性。附件没有畸变系数，因此只更新 K，畸变暂沿用此前 CameraInfo。
 
 ### 3.4 本次复审确认并修正的问题
 
@@ -81,7 +91,7 @@ VIS 默认启动是操作策略变化，不是 LIS 算法依赖。未完成相�
   `imu_source:=external|mid360` 启动选择。话题、噪声、重力参数、IMU-LiDAR 外参和加速度
   单位按物理 IMU 成组切换；MID-360 原始 `g` 单位在 LIS 与 VIS 入口统一转换为 `m/s²`。
   MID-360 的 IMU-LiDAR 旋转和平移参考 FAST-LIO 官方 `mid360.yaml`。开启视觉时自动选择
-  `params_camera_mid360.yaml` 的名义外参，正式精度测试仍必须换成专用标定文件。
+  `params_camera_mid360.yaml`；LiDAR-camera 使用实机标定，相机—IMU 杆臂仍需最终实测确认。
 - 将原来含义重叠的 IMU/安装外参拆分为两层：IMU profile 使用明确方向的
   `imuToLidar*` 参数；新增 `params_mount_robot.yaml` 保存 `T_base_lidar`。MID-360 没有
   有效姿态消息时以安装标定初始化倾角，外置 IMU 继续使用姿态消息。安装参数也用于融合

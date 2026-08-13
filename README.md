@@ -95,8 +95,9 @@ LVI-SAM-ROS2-Enhanced/                 # 可独立作为工作区，也可放入
 - **IMU 选择**：LIS 与 VIS 默认使用 `imu_source:=external`（`/IMU_data`）；测试 MID-360
   内置 IMU 使用 `imu_source:=mid360`（`/livox/imu`）。两套 profile 同时切换话题、单位、
   噪声与 IMU-LiDAR 外参，不能只用 `imu_topic` 更换物理 IMU。
-- **相机 profile**：`camera_params_file` 留空时随 `imu_source` 自动选择；MID-360 文件是旧模型
-  组合出的联调初值，默认关闭 LiDAR 深度/里程计先验，不能替代实机标定。
+- **相机 profile**：`camera_params_file` 留空时随 `imu_source` 自动选择；MID-360 文件已经写入
+  实机 `T_cam_radar` 并启用激光深度。相机—IMU 平移仍包含 FAST-LIO 的通用内置杆臂初值，
+  所以 LIS 里程计先验和全局视觉—激光对齐继续分阶段启用。
 
 ---
 

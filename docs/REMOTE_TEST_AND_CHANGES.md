@@ -165,7 +165,7 @@ ros2 pkg executables lvi_sam
    时间戳与雷达使用同一时钟基准；MID-360 原始加速度约为 `1 g` 是正常现象。
 3. `lidarFrame`、`baselinkFrame`、`odometryFrame`、`mapFrame` 与机器人 TF 树一致。
 4. `extrinsicRot`、`extrinsicRPY`、`extrinsicTrans` 是当前设备的雷达—IMU 标定结果。
-5. 启用视觉时，所选 `params_camera*.yaml` 中图像尺寸、模型、内参、畸变和相机—IMU/雷达外参均为当前相机标定结果；MID-360 内置名义 profile 只用于初次联调。
+5. 启用视觉时，所选 `params_camera*.yaml` 中图像尺寸、模型、内参、畸变和相机—IMU/雷达外参均与当前设备对应；MID-360 文件已写入实机 `T_cam_radar`，但内置 IMU 杆臂仍需验收。
 6. 建图输出目录为空且运行用户可写；定位时目录中是完整、同一批次生成且没有
    `.lvi_sam_mapping_in_progress` 标记的地图文件。
 7. RTK 输入已经变换到保存地图所使用的局部坐标系；仅把 `frame_id` 改成 `odom` 并不等于完成了坐标对齐。
@@ -327,9 +327,9 @@ ros2 topic echo /camera/color/camera_info --once
 
 `/camera/color/image_raw` 已确认编码为 `rgb8`。内部适配层按 `RGB → mono8` 一次转换，
 生成的灰度矩阵持有独立内存，可安全用于跨帧光流。
-`imu_source:=mid360` 会自动选择 `params_camera_mid360.yaml`；它从旧机器人模型组合出名义
-外参，只用于开始联调。在相机—IMU与雷达—相机外参完成实机标定前，配置会优化相机—IMU初值，并默认关闭
-LiDAR 深度注入；此阶段只用于验证视觉特征与 VIO 数据链，不作为最终融合精度结论。
+`imu_source:=mid360` 会自动选择 `params_camera_mid360.yaml`。当前文件已把实机
+`T_cam_radar` 转换到算法虚拟深度帧并启用 LiDAR 深度；相机—IMU 外参继续在线细化，
+LIS 里程计先验和全局视觉—激光对齐暂不启用。先验证深度投影与 VIO，再逐项增加耦合链路。
 
 当前版本仅定义了相机重定位数据的设计约定，并在地图清单中预留入口；代码不会实际保存相机原图、描述子或跨进程 DBoW2/BRIEF 数据库。跨会话全局重定位仍由 Scan Context + ICP 主导。不要把“在线视觉回环可用”误认为“重启后可用视觉地图重定位”。
 

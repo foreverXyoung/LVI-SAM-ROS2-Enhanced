@@ -11,7 +11,6 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.conditions import IfCondition
-from launch.logging import get_logger
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from ament_index_python.packages import (
@@ -263,13 +262,6 @@ def generate_launch_description():
                 raise RuntimeError('camera_params_file must be an absolute path')
             if not os.path.isfile(camera_params):
                 raise RuntimeError('VIS parameter file does not exist: ' + camera_params)
-            nominal_mid360_camera = os.path.realpath(os.path.join(
-                pkg_dir, 'config', 'params_camera_mid360.yaml'))
-            if os.path.realpath(camera_params) == nominal_mid360_camera:
-                get_logger('lvi_sam.launch').warning(
-                    'Using nominal MID-360 camera extrinsics with LiDAR depth '
-                    'and odometry prior disabled. Calibrate camera-IMU/LiDAR '
-                    'extrinsics before accuracy evaluation.')
             missing_visual_nodes = [
                 executable for executable in (
                     'visual_feature_node',

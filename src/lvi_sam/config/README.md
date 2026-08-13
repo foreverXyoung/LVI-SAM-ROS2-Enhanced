@@ -19,7 +19,7 @@
 | `params_imu_mid360.yaml` | MID-360 内置 IMU：话题、`g→m/s²`、噪声和同轴外参 | Allan 标定/杆臂测量后修改 |
 | `params_mount_robot.yaml` | 机器人 `base_link→LiDAR` 安装位姿，与所选 IMU 无关 | 雷达重新安装或 base 基准改变后修改 |
 | `params_camera.yaml` | 外置 IMU 的 VIS 相机、外参和视觉回环参数 | 完成标定后修改 |
-| `params_camera_mid360.yaml` | MID-360 内置 IMU 的 VIS 联调参数和名义外参 | 实测 camera-IMU/LiDAR 标定后替换名义值 |
+| `params_camera_mid360.yaml` | MID-360 内置 IMU、实机 `T_cam_radar` 与视觉参数 | 相机或雷达重装、重新标定后修改 |
 | `rviz2.rviz` | 默认 RViz 显示项 | 可按显示需求修改 |
 | `brief_k10L6.bin` / `brief_pattern.yaml` | DBoW2/BRIEF 资源 | 一般不修改 |
 | `fisheye_mask_720x540.jpg` | 仅鱼眼模式使用 | `fisheye=0` 时不加载 |
@@ -119,8 +119,13 @@ MID-360 驱动不提供可用姿态估计，因此 profile 将 `imuRPYWeight` �
 [FAST-LIO 官方 Mid-360 配置](https://github.com/hku-mars/FAST_LIO/blob/main/config/mid360.yaml)
 中的 `[-0.011, -0.02329, 0.04412] m`。该值是官方参考初值，若获得当前设备的实测标定结果，
 应优先覆盖本 profile。`imu_source:=mid360` 会同时自动选择
-`params_camera_mid360.yaml`；该文件的相机外参由旧机器人模型与当前安装参数组合得到，只是
-启动视觉链路的名义初值，且默认关闭激光深度和 LIS 里程计先验。精度测试前必须以实测标定替换。
+`params_camera_mid360.yaml`。当前文件已经把实机标定的
+`p_camera_optical = T_cam_radar · p_lidar` 转换为算法使用的 ROS 前左上虚拟深度帧外参，
+并启用激光深度。相机—IMU 外参由该标定与 FAST-LIO 内置 IMU 杆臂初值组合，仍保持在线细化；
+LIS 里程计先验和全局视觉—激光对齐暂时关闭，以便分阶段排查时间同步与坐标方向。
+
+标定文件只提供 `K`、未提供畸变向量，因此 `fx/fy/cx/cy` 已更新，`k1/k2/p1/p2` 暂时保留
+此前 CameraInfo 数值。若最新 `/camera/color/camera_info` 的 `d` 不同，应同步替换。
 
 ### 3.2 四组外参不能混用
 
