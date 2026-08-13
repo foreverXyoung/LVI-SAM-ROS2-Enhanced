@@ -18,7 +18,8 @@
 | `params_imu_external.yaml` | 外置标定 IMU：话题、单位、噪声和 IMU-LiDAR 外参 | 外置 IMU 重新标定后修改 |
 | `params_imu_mid360.yaml` | MID-360 内置 IMU：话题、`g→m/s²`、噪声和同轴外参 | Allan 标定/杆臂测量后修改 |
 | `params_mount_robot.yaml` | 机器人 `base_link→LiDAR` 安装位姿，与所选 IMU 无关 | 雷达重新安装或 base 基准改变后修改 |
-| `params_camera.yaml` | VIS 相机、IMU、LiDAR-camera、视觉回环参数 | 完成标定后修改 |
+| `params_camera.yaml` | 外置 IMU 的 VIS 相机、外参和视觉回环参数 | 完成标定后修改 |
+| `params_camera_mid360.yaml` | MID-360 内置 IMU 的 VIS 联调参数和名义外参 | 实测 camera-IMU/LiDAR 标定后替换名义值 |
 | `rviz2.rviz` | 默认 RViz 显示项 | 可按显示需求修改 |
 | `brief_k10L6.bin` / `brief_pattern.yaml` | DBoW2/BRIEF 资源 | 一般不修改 |
 | `fisheye_mask_720x540.jpg` | 仅鱼眼模式使用 | `fisheye=0` 时不加载 |
@@ -53,6 +54,12 @@ ros2 launch lvi_sam run.launch.py \
   imu_source:=mid360 \
   enable_visual:=false \
   pcd_directory:=/data/return_station_ws/maps/mid360_imu_001
+
+# MID-360 内置 IMU + 相机联调（自动选择 params_camera_mid360.yaml）
+ros2 launch lvi_sam run.launch.py \
+  scene:=generic mode:=mapping imu_source:=mid360 \
+  enable_visual:=true use_sim_time:=false \
+  pcd_directory:=/data/return_station_ws/maps/mid360_visual_001
 ```
 
 只有临时试验或外部配置管理器确实需要时，才使用绝对路径覆盖：
@@ -111,8 +118,9 @@ MID-360 驱动不提供可用姿态估计，因此 profile 将 `imuRPYWeight` �
 进行点云去畸变。内置 IMU 与点云采用单位旋转；平移初值采用
 [FAST-LIO 官方 Mid-360 配置](https://github.com/hku-mars/FAST_LIO/blob/main/config/mid360.yaml)
 中的 `[-0.011, -0.02329, 0.04412] m`。该值是官方参考初值，若获得当前设备的实测标定结果，
-应优先覆盖本 profile。MID-360 与相机之间的外参不同于当前外置 IMU 外参，所以
-`imu_source:=mid360 enable_visual:=true` 时必须另外传入对应的 `camera_params_file`。
+应优先覆盖本 profile。`imu_source:=mid360` 会同时自动选择
+`params_camera_mid360.yaml`；该文件的相机外参由旧机器人模型与当前安装参数组合得到，只是
+启动视觉链路的名义初值，且默认关闭激光深度和 LIS 里程计先验。精度测试前必须以实测标定替换。
 
 ### 3.2 四组外参不能混用
 
@@ -129,7 +137,19 @@ MID-360 驱动不提供可用姿态估计，因此 profile 将 `imuRPYWeight` �
 `align_camera_lidar_estimation: 0`。建议依次启用视觉单目、LIS 里程计先验、LiDAR 深度，
 每次只增加一条耦合链路并保存对应测试日志。
 
-### 3.3 建图、定位和 RTK
+### 3.3 本体点云过滤
+
+`selfFilterEnable` 控制原始点云的轴对齐包围盒过滤，过滤发生在去畸变之前：
+
+- `selfFilterFrame: lidar`：盒子直接用 `livox_frame` 表达，不依赖 TF，适合沿用已经调过的盒子；
+- `selfFilterFrame: base`：先用 `params_mount_robot.yaml` 的 `T_base_lidar` 把点变到
+  `base_link` 再判断，仍不查询 TF tree，适合按机器人本体尺寸配置；
+- `selfFilterBoxMin/Max` 必须逐轴满足 `min < max`。盒子过小会留下本体，过大会误删近距离环境。
+
+通用实机 profile 现在启用原有的 LiDAR-frame 小盒；应在 RViz 中观察静态本体残点后再逐轴调整。
+更换 IMU 不影响该盒；雷达安装位置改变时需要重新测量。
+
+### 3.4 建图、定位和 RTK
 
 - mapping：`Loc.EnableFlag=false`、`savePCD=true`；输出目录必须是新目录或空目录。
 - localization：`Loc.EnableFlag=true`、`savePCD=false`；本版本新建地图必须包含完整

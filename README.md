@@ -87,14 +87,16 @@ LVI-SAM-ROS2-Enhanced/                 # 可独立作为工作区，也可放入
 
 ### 3.3 平台集成要求（需自备，不随本仓库发布）
 
-- **机器人 URDF / xacro**：必须提供 `base_link → livox_frame → imu_link`（以及相机 `camera*` 帧）
-  的 TF 链。`run.launch.py` 通过 `robot_description_file` 启动参数接收，并可选启动
-  `robot_state_publisher`。请使用你机器人的真实外参替换。
+- **机器人 URDF / xacro**：核心估计器和新安装 profile 不从 TF tree 读取外参；若 Nav2/RViz
+  需要完整机器人模型，仍应提供 `base_link → livox_frame → imu_link`（以及相机 `camera*` 帧）
+  的静态链。`run.launch.py` 可通过 `robot_description_file` 启动 `robot_state_publisher`。
 - **相机驱动**：VIS 默认订阅 `/camera/color/image_raw`（sensor_msgs/Image）；可通过
   `image_topic` 启动参数覆盖。相机模型、分辨率、内参与外参必须使用实机标定值。
 - **IMU 选择**：LIS 与 VIS 默认使用 `imu_source:=external`（`/IMU_data`）；测试 MID-360
   内置 IMU 使用 `imu_source:=mid360`（`/livox/imu`）。两套 profile 同时切换话题、单位、
   噪声与 IMU-LiDAR 外参，不能只用 `imu_topic` 更换物理 IMU。
+- **相机 profile**：`camera_params_file` 留空时随 `imu_source` 自动选择；MID-360 文件是旧模型
+  组合出的联调初值，默认关闭 LiDAR 深度/里程计先验，不能替代实机标定。
 
 ---
 

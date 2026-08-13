@@ -31,6 +31,8 @@
 | VIS Estimator | estimator 源码 | 消息通道校验；IMU/特征/里程计队列和时间检查；重启原子清理；安全滑窗查找；线程退出 | 原 VINS 优化因子和滑窗算法保留；坏样本和跨序列样本被拒绝 |
 | VIS Loop | loop detector 源码、DBoW2 词表读取 | 三路近似时间同步；队列上限；词表健壮读取；可配候选门限；RAII 关键帧；退出 join | BRIEF+DBoW2+PnP 逻辑保留；候选仍须由 LIS 点云 ICP 验证 |
 | 公共接口 | `topic_names.hpp`、`package_assets.hpp`、`visual_frame_conventions.hpp` | 话题、包资源、坐标约定和里程计元数据集中定义 | 消除多处字符串/矩阵魔法值，不增加运行节点 |
+| 本体点云过滤 | `utility.hpp`、六套 LIS profile | 过滤盒显式选择 `lidar`/`base` 坐标；通用实机配置启用原 LiDAR-frame 小盒；base 模式只使用配置外参 | 不读取 TF；更换 IMU不改变过滤语义，盒边界仍需实机调 |
+| MID-360 视觉联调 | `params_camera_mid360.yaml`、`run.launch.py` | 按 `imu_source` 自动选相机 profile；加入由旧模型组合的名义相机外参 | 可以直接启动 VIO；LiDAR 深度/先验默认关闭，正式精度仍要求标定 |
 | RViz 与文档 | `rviz2.rviz`、README、`docs/*` | 默认显示注册点云、轨迹和回环诊断；补充部署、使用、架构、接口与验收文档 | 只影响可视化和操作流程 |
 
 ## 3. 原逻辑兼容性结论
@@ -78,8 +80,8 @@ VIS 默认启动是操作策略变化，不是 LIS 算法依赖。未完成相�
 - 新增 `params_imu_external.yaml` 与 `params_imu_mid360.yaml` 两套 IMU profile，以及
   `imu_source:=external|mid360` 启动选择。话题、噪声、重力参数、IMU-LiDAR 外参和加速度
   单位按物理 IMU 成组切换；MID-360 原始 `g` 单位在 LIS 与 VIS 入口统一转换为 `m/s²`。
-  MID-360 的 IMU-LiDAR 旋转和平移参考 FAST-LIO 官方 `mid360.yaml`。
-  MID-360 开启视觉时必须显式提供相机到内置 IMU 的专用标定文件。
+  MID-360 的 IMU-LiDAR 旋转和平移参考 FAST-LIO 官方 `mid360.yaml`。开启视觉时自动选择
+  `params_camera_mid360.yaml` 的名义外参，正式精度测试仍必须换成专用标定文件。
 - 将原来含义重叠的 IMU/安装外参拆分为两层：IMU profile 使用明确方向的
   `imuToLidar*` 参数；新增 `params_mount_robot.yaml` 保存 `T_base_lidar`。MID-360 没有
   有效姿态消息时以安装标定初始化倾角，外置 IMU 继续使用姿态消息。安装参数也用于融合

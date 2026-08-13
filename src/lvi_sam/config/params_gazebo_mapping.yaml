@@ -45,6 +45,7 @@
     lidarMinRange: 0.5
     lidarMaxRange: 40.0
     selfFilterEnable: false
+    selfFilterFrame: "lidar"
 
     imuAccNoise: 4.0e-3
     imuGyrNoise: 1.5e-3

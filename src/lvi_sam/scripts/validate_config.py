@@ -56,6 +56,10 @@ IMU_PROFILES = (
     "params_imu_external.yaml",
     "params_imu_mid360.yaml",
 )
+CAMERA_PROFILES = (
+    ("params_camera.yaml", "params_imu_external.yaml"),
+    ("params_camera_mid360.yaml", "params_imu_mid360.yaml"),
+)
 MOUNT_PROFILES = ("params_mount_robot.yaml",)
 SHARED_INTERFACE_KEYS = (
     "pointCloudTopic",
@@ -94,6 +98,10 @@ SCENE_SENSOR_KEYS = (
     "imuGyrBiasN",
     "imuGravity",
     "imuRPYWeight",
+    "selfFilterEnable",
+    "selfFilterFrame",
+    "selfFilterBoxMin",
+    "selfFilterBoxMax",
 )
 
 IMU_PROFILE_VIS_KEYS = (
@@ -212,6 +220,26 @@ def validate_lidar_configs(config_dir: Path, errors: list[str]) -> dict:
                 errors.append(f"{name}: missing non-empty interface parameter {key}")
         if params.get("sensor") not in ("livox", "velodyne", "ouster"):
             errors.append(f"{name}: sensor must be livox, velodyne or ouster")
+        if not isinstance(params.get("selfFilterEnable"), bool):
+            errors.append(f"{name}: selfFilterEnable must be a boolean")
+        if params.get("selfFilterFrame") not in ("lidar", "base"):
+            errors.append(f"{name}: selfFilterFrame must be lidar or base")
+        if params.get("selfFilterEnable") is True:
+            validate_vector(errors, name, params, "selfFilterBoxMin", 3)
+            validate_vector(errors, name, params, "selfFilterBoxMax", 3)
+            box_min = params.get("selfFilterBoxMin")
+            box_max = params.get("selfFilterBoxMax")
+            if (
+                isinstance(box_min, list)
+                and isinstance(box_max, list)
+                and len(box_min) == 3
+                and len(box_max) == 3
+                and all(finite_number(item) for item in box_min + box_max)
+                and any(float(box_min[i]) >= float(box_max[i]) for i in range(3))
+            ):
+                errors.append(
+                    f"{name}: every selfFilterBoxMin axis must be less than max"
+                )
         for key in ("pointCloudTopic", "imuTopic", "odomTopic"):
             if isinstance(params.get(key), str) and not params[key].startswith("/"):
                 errors.append(f"{name}: {key} must be an absolute topic")
@@ -473,8 +501,9 @@ def validate_camera_config(
     lidar_configs: dict,
     imu_profiles: dict,
     errors: list[str],
+    name: str,
+    imu_profile_name: str,
 ):
-    name = "params_camera.yaml"
     try:
         params = load_parameters(config_dir / name)
     except ValueError as exc:
@@ -607,20 +636,17 @@ def validate_camera_config(
 
     if lidar_configs:
         lidar = next(iter(lidar_configs.values()))
-        if params.get("imu_topic") != lidar.get("imuTopic"):
-            errors.append(f"{name}: imu_topic must match LIS imuTopic")
         if normalize_topic(params.get("odom_topic", "")) != normalize_topic(
             lidar.get("odomTopic", "")
         ):
             errors.append(f"{name}: odom_topic must match LIS odomTopic")
 
-    external_imu = imu_profiles.get("params_imu_external.yaml")
-    if external_imu is not None:
+    selected_imu = imu_profiles.get(imu_profile_name)
+    if selected_imu is not None:
         for key in IMU_PROFILE_VIS_KEYS:
-            if params.get(key) != external_imu.get(key):
+            if params.get(key) != selected_imu.get(key):
                 errors.append(
-                    f"{name}: {key} must match params_imu_external.yaml to "
-                    "preserve the default external-IMU path"
+                    f"{name}: {key} must match {imu_profile_name}"
                 )
 
     for key in ("vocabulary_file", "brief_pattern_file", "vins_config_file"):
@@ -684,7 +710,15 @@ def main() -> int:
     imu_profiles = validate_imu_profiles(config_dir, errors)
     validate_mount_profiles(config_dir, errors)
     if not args.lidar_only:
-        validate_camera_config(config_dir, lidar_configs, imu_profiles, errors)
+        for camera_name, imu_profile_name in CAMERA_PROFILES:
+            validate_camera_config(
+                config_dir,
+                lidar_configs,
+                imu_profiles,
+                errors,
+                camera_name,
+                imu_profile_name,
+            )
     if errors:
         print("LVI-SAM configuration validation failed:", file=sys.stderr)
         for error in errors:

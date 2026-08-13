@@ -17,7 +17,8 @@ src/lvi_sam/
 │   ├── params_localization.yaml         # LIS 通用先验地图定位配置
 │   ├── params_*_{localization,mapping}.yaml   # 场景/模式变体（gazebo/charging）
 │   ├── params_imu_{external,mid360}.yaml      # 两套 IMU 话题/单位/噪声/外参 profile
-│   ├── params_camera.yaml               # VIS 参数（来自 LVI-SAM-ROS2）
+│   ├── params_camera.yaml               # 外置 IMU 的 VIS 参数
+│   ├── params_camera_mid360.yaml        # 内置 IMU 的 VIS 联调初值
 │   ├── brief_k10L6.bin                  # DBoW2 词表（统一资源解析器加载）
 │   ├── brief_pattern.yaml
 │   ├── fisheye_mask_720x540.jpg
@@ -65,7 +66,7 @@ src/lvi_sam/
 | 耦合点 | 方向 | 话题 | 接线方式 |
 |---|---|---|---|
 | ① 可选初始化先验 | LIS→VIS | `/odometry/imu` | launch 统一话题；`use_lidar_odometry_prior=1` 时 VIS 订阅 |
-| ② 激光深度 | LIS→VIS | `lio_sam/deskew/cloud_deskewed` | `params_camera.yaml` 的 `point_cloud_topic` 已设为该绝对路径 |
+| ② 激光深度 | LIS→VIS | `lio_sam/deskew/cloud_deskewed` | 两套 `params_camera*.yaml` 的 `point_cloud_topic` 已设为该绝对路径；完成标定前默认关闭 |
 | ③b 视觉回环候选 | VIS→LIS | VIS 发布 `/lvi_sam/vins/loop/match_frame`（Float64MultiArray=[cur_ts, old_ts]） | **launch remap**：mapOptimization 的 `lio_loop/loop_closure_detection` → `/lvi_sam/vins/loop/match_frame` |
 | ③a 前端初值 | VIS→LIS | `/lvi_sam/vins/odometry/imu_propagate_ros` | fork 前端未订阅，**最小闭环暂不接**（可选增强） |
 
@@ -121,10 +122,11 @@ ros2 launch lvi_sam run.launch.py \
 
 1. **IMU 接口**：外置 IMU 使用 `imu_source:=external`，MID-360 内置 IMU 使用
    `imu_source:=mid360`；两者均为 `sensor_msgs/Imu`，但话题、加速度单位、噪声和外参不同。
-   MID-360 视觉测试还必须提供相机到内置 IMU 的专用标定文件。
+   MID-360 视觉联调会自动选择 `params_camera_mid360.yaml` 的名义初值；精度测试前必须用
+   相机到内置 IMU/雷达的专用标定替换。
 2. **安装与传感器标定**：`params_mount_robot.yaml` 只保存机器人到 LiDAR 的安装位姿；
    `params_imu_*.yaml` 保存所选 IMU 到 LiDAR 的标定。更换 IMU 不应修改安装 profile。
-3. **相机-IMU-激光外参标定**：`params_camera.yaml` 里的 `extrinsicRotation/Translation`、`lidar_to_cam_*` 为示例值，须按实机标定填入（阶段 4）。
+3. **相机-IMU-激光外参标定**：`params_camera*.yaml` 里的 `extrinsicRotation/Translation`、`lidar_to_cam_*` 为示例或名义值，须按实机标定填入（阶段 4）。
 4. **时间同步**：图像/IMU/雷达时间戳对齐（MID360 已 IMU-雷达硬同步，相机需对齐）。
 5. **先验地图/输出目录**：`pcd_directory` 默认 `/tmp/lvi_sam_maps`；实机请指向实际地图目录（launch 已覆盖 yaml 默认）。建图输出必须使用新目录或空目录，避免旧地图文件混入新地图。
 6. **对称环境误闭环门控**：站场高度对称，建议给外部回环加 RTK/先验地图一致性门控（LVI-SAM 原版没有，可作创新点）。

@@ -48,6 +48,7 @@ ros2 launch lvi_sam run.launch.py \
 | `imu_topic` | 空 | 仅临时覆盖所选 profile 的话题；不得用于切换物理 IMU |
 | `odom_topic` | `/odometry/imu` | LIS 预积分输出与 VIS 先验输入共用，禁止为空 |
 | `image_topic` | `/camera/color/image_raw` | `enable_visual:=true` 时必须有效 |
+| `camera_params_file` | 空（自动选择） | 外置 IMU 选 `params_camera.yaml`，MID-360 选 `params_camera_mid360.yaml`；自定义 IMU 必须显式提供 |
 | `gps_topic` | 空 | 非空时覆盖 LIS 的 `gpsTopic` |
 | `enable_visual` | `true` | 可关闭整套 VIS；不影响纯激光运行 |
 | `enable_rviz` | `true` | 可独立关闭，适用于无桌面的 SSH 环境 |
@@ -148,6 +149,17 @@ DBoW2 的近期关键帧排除量和候选分数分别由 `loop_min_index_gap`�
 - `lidarFrame`、`baselinkFrame`、`odometryFrame`、`mapFrame` 是 LIS 内部及输出契约。
   新部署通过 `params_mount_robot.yaml` 的 `T_base_lidar` 直接计算融合 base 位姿，核心算法
   和融合输出都不读取平台 TF；未提供新安装参数的旧配置才使用 TF 回退。
+- 地图、注册点云、轨迹和 `/lio_sam/mapping/odometry` 都以 `odometryFrame=odom` 为世界参考；
+  该里程计的 child 是物理 `lidarFrame=livox_frame`。MID-360 使用
+  `imuOrientationSource=mount` 后，启动 roll/pitch 由 `T_base_lidar` 初始化，使 `odom` 近似水平，
+  因而相较旧的“把内置 IMU 单位四元数当姿态”路径，数值初始姿态会改变但消息帧语义不变。
+- 默认 `publishMappingOdomTF=false`，所以 Map 节点不发布 `odom→livox_frame`；
+  `publish_fused_tf:=true` 才由融合节点发布 `odom→base_link`，设为 `false` 时算法不发布动态 TF。
+  `map→odom` 仅在显式设置 `publish_map_odom_static:=true` 时发布。该策略有意不同于原版
+  LVI-SAM 的无条件多条 TF 发布，用于避免 Nav2/robot_state_publisher 中的重复父节点。
+- 本体过滤先作用于原始 LiDAR 点。`selfFilterFrame=lidar` 直接按雷达坐标盒判断；设为 `base`
+  时只使用配置的 `T_base_lidar` 变换后判断，不查询 TF。最终输出坐标或所选 IMU 不会反向改变
+  `lidar` 模式的过滤盒；残点通常来自过滤开关关闭或盒子边界不足。
 - VIS 当前内部固定使用 `vins_world`、`vins_body`、`vins_body_ros` 三个兼容帧；它们不替代
   LIS/Nav2 的 `map`、`odom`、`base_link`。其中 `vins_body_ros` 是位于 VINS camera/body
   原点、但采用 ROS/LiDAR 轴向的**虚拟深度投影帧**，不是物理雷达安装坐标系。
@@ -163,7 +175,8 @@ DBoW2 的近期关键帧排除量和候选分数分别由 `loop_min_index_gap`�
   `params_imu_mid360.yaml`。MID-360 profile 使用同轴单位旋转，并采用 FAST-LIO 官方配置中的
   `[-0.011, -0.02329, 0.04412] m` 平移作为参考初值，同时关闭不存在的姿态观测权重；正式精度
   测试前仍需标定噪声，并优先使用可获得的本机外参。相机—外置 IMU
-  外参不能复用于相机—MID-360 IMU，后者启用 VIS 时必须提供专用相机参数文件。
+  外参不能复用于相机—MID-360 IMU。内置 `params_camera_mid360.yaml` 仅提供由旧模型组合出的
+  联调初值，并关闭 LiDAR 深度和里程计先验；正式精度测试必须替换为专用标定。
   只更换/移动 IMU 不修改 `params_mount_robot.yaml`；只有 LiDAR 相对机器人本体发生变化时
   才修改安装 profile。旧 `extrinsicRot/RPY/Trans` 只作为向后兼容回退。
 - VIS 使用的 LIS 里程计输入必须表达物理 LiDAR 在 ROS `odom` 中的位姿，线速度必须在

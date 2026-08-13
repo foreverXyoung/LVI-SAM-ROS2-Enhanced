@@ -1,0 +1,94 @@
+/**:
+  ros__parameters:
+    # MID-360 visual commissioning profile.
+    #
+    # Camera intrinsics are copied from the current /camera/color calibration.
+    # Extrinsics are a NOMINAL initial guess composed from the older robot
+    # model (base->camera) and the calibrated base->LiDAR mounting profile.
+    # They are sufficient to start and inspect the monocular VIO pipeline, but
+    # are not a replacement for a camera-IMU/LiDAR target calibration.
+    PROJECT_NAME: "lvi_sam"
+    imu_topic: "/livox/imu"
+    odom_topic: "/odometry/imu"
+    image_topic: "/camera/color/image_raw"
+    point_cloud_topic: "/lio_sam/deskew/cloud_deskewed"
+
+    # Keep both LiDAR-assisted visual paths disabled while these extrinsics are
+    # nominal. This prevents an approximate transform from attaching incorrect
+    # depths or poses to otherwise valid image features.
+    use_lidar: 0
+    use_lidar_odometry_prior: 0
+    lidar_skip: 3
+    align_camera_lidar_estimation: 0
+
+    # Physical LiDAR -> virtual ROS-axis depth frame at the camera origin.
+    # Nominal source: base->camera xyz [0.5, 0, 0.15] m and the current
+    # params_mount_robot.yaml T_base_lidar. Rotation uses Rz*Ry*Rx radians.
+    lidar_to_cam_tx: -0.298753
+    lidar_to_cam_ty: -0.024810
+    lidar_to_cam_tz: -0.179314
+    lidar_to_cam_rx: -0.018330069
+    lidar_to_cam_ry: 0.531769168
+    lidar_to_cam_rz: -0.008192354
+
+    model_type: "pinhole"
+    camera_name: "camera_color"
+    image_width: 640
+    image_height: 400
+    distortion_parameters:
+      k1: -0.031267859041690826
+      k2: 0.034638021141290665
+      p1: 0.00011125089804409072
+      p2: 0.0003588180697988719
+    projection_parameters:
+      fx: 305.593505859375
+      fy: 305.70538330078125
+      cx: 318.81414794921875
+      cy: 199.78807067871094
+
+    # Overridden by params_imu_mid360.yaml when launched through run.launch.py.
+    acc_n: 0.02
+    gyr_n: 0.01
+    acc_w: 0.002
+    gyr_w: 4.0e-5
+    g_norm: 9.805
+    imuAccelerationScale: 9.80665
+
+    # Camera optical frame -> MID-360 built-in IMU.
+    # The nominal translation also includes FAST-LIO's reference MID-360
+    # IMU->LiDAR lever arm [-0.011, -0.02329, 0.04412] m.
+    estimate_extrinsic: 1
+    extrinsicRotation: [ 0.007061,  0.507059,  0.861882,
+                        -0.999875,  0.015798, -0.001102,
+                        -0.014175, -0.861766,  0.507107]
+    extrinsicTranslation: [0.134704178, -0.002327104, 0.338490931]
+
+    max_cnt: 150
+    min_dist: 20
+    freq: 20
+    F_threshold: 1.0
+    show_track: 1
+    equalize: 1
+    fisheye: 0
+
+    max_solver_time: 0.035
+    max_num_iterations: 10
+    keyframe_parallax: 10.0
+
+    estimate_td: 0
+    td: 0.0
+    rolling_shutter: 0
+    rolling_shutter_tr: 0.0
+
+    loop_closure: 1
+    skip_time: 0.0
+    skip_dist: 0.0
+    loop_sync_tolerance: 0.02
+    loop_min_index_gap: 200
+    loop_primary_score_threshold: 0.05
+    loop_secondary_score_threshold: 0.015
+    debug_image: 0
+    match_image_scale: 0.5
+    vocabulary_file: "config/brief_k10L6.bin"
+    brief_pattern_file: "config/brief_pattern.yaml"
+    vins_config_file: "config/params_camera_mid360.yaml"

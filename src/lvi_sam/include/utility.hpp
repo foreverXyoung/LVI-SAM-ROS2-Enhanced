@@ -136,6 +136,7 @@ public:
     int downsampleRate;
     float lidarMinRange, lidarMaxRange;
     bool selfFilterEnable;
+    string selfFilterFrame;
     vector<double> selfFilterBoxMin, selfFilterBoxMax;
 
     // IMU
@@ -273,8 +274,14 @@ public:
         declare_and_get_parameter<float>("lidarMinRange", lidarMinRange, 5.5);
         declare_and_get_parameter<float>("lidarMaxRange", lidarMaxRange, 1000.0);
         declare_and_get_parameter<bool>("selfFilterEnable", selfFilterEnable, false);
+        declare_and_get_parameter<std::string>(
+            "selfFilterFrame", selfFilterFrame, "lidar");
         declare_and_get_parameter<std::vector<double>>("selfFilterBoxMin", selfFilterBoxMin, std::vector<double>{-0.5, -0.5, -0.5});
         declare_and_get_parameter<std::vector<double>>("selfFilterBoxMax", selfFilterBoxMax, std::vector<double>{0.5, 0.5, 0.5});
+        if (selfFilterFrame != "lidar" && selfFilterFrame != "base") {
+            throw std::runtime_error(
+                "selfFilterFrame must be 'lidar' or 'base'");
+        }
         if (selfFilterBoxMin.size() != 3 || selfFilterBoxMax.size() != 3) {
             if (selfFilterEnable)
                 throw std::runtime_error(
@@ -427,6 +434,22 @@ public:
         baseToLidarQuaternion = Eigen::Quaterniond(baseToLidarRotation);
         imuOrientationToLidarQuaternion.normalize();
         baseToLidarQuaternion.normalize();
+        if (selfFilterEnable && selfFilterFrame == "base" &&
+            !baseToLidarConfigured) {
+            throw std::runtime_error(
+                "selfFilterFrame=base requires baseToLidarRotation and "
+                "baseToLidarTranslation");
+        }
+        if (selfFilterEnable) {
+            RCLCPP_INFO(
+                get_logger(),
+                "Self-filter enabled in %s frame: min=[%.3f %.3f %.3f], "
+                "max=[%.3f %.3f %.3f]",
+                selfFilterFrame.c_str(),
+                selfFilterBoxMin[0], selfFilterBoxMin[1],
+                selfFilterBoxMin[2], selfFilterBoxMax[0],
+                selfFilterBoxMax[1], selfFilterBoxMax[2]);
+        }
 
         declare_and_get_parameter<float>("edgeThreshold", edgeThreshold, 1.0);
         declare_and_get_parameter<float>("surfThreshold", surfThreshold, 0.1);
@@ -660,9 +683,19 @@ public:
     bool isPointInSelfFilterBox(const PointType& point) const {
         if (!selfFilterEnable || selfFilterBoxMin.size() != 3 || selfFilterBoxMax.size() != 3) return false;
 
-        return point.x >= selfFilterBoxMin[0] && point.x <= selfFilterBoxMax[0] &&
-               point.y >= selfFilterBoxMin[1] && point.y <= selfFilterBoxMax[1] &&
-               point.z >= selfFilterBoxMin[2] && point.z <= selfFilterBoxMax[2];
+        Eigen::Vector3d testPoint(point.x, point.y, point.z);
+        if (selfFilterFrame == "base") {
+            // Point clouds arrive in lidarFrame. Apply the configured
+            // T_base_lidar directly; TF is not consulted by the estimator.
+            testPoint =
+                baseToLidarRotation * testPoint + baseToLidarTranslation;
+        }
+        return testPoint.x() >= selfFilterBoxMin[0] &&
+               testPoint.x() <= selfFilterBoxMax[0] &&
+               testPoint.y() >= selfFilterBoxMin[1] &&
+               testPoint.y() <= selfFilterBoxMax[1] &&
+               testPoint.z() >= selfFilterBoxMin[2] &&
+               testPoint.z() <= selfFilterBoxMax[2];
     }
 };
 

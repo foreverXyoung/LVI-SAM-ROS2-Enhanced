@@ -59,8 +59,9 @@
     # points. i.e., 16 = 64 / 4, 16 = 16 / 1
     lidarMinRange: 1.0
     lidarMaxRange: 70.0
-    # Self-filter box in lidarFrame/livox_frame. Enable after tuning in RViz.
-    selfFilterEnable: false
+    # Legacy profile: preserve the same raw-LiDAR box as generic localization.
+    selfFilterEnable: true
+    selfFilterFrame: "lidar"
     selfFilterBoxMin: [-0.30, -0.30, -0.30]
     selfFilterBoxMax: [ 0.60,  0.30,  0.40]
 

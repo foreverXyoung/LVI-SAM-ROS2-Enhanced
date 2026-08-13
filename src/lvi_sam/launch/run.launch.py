@@ -11,6 +11,7 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.conditions import IfCondition
+from launch.logging import get_logger
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from ament_index_python.packages import (
@@ -57,8 +58,10 @@ def generate_launch_description():
 
     camera_params_arg = DeclareLaunchArgument(
         'camera_params_file',
-        default_value=os.path.join(pkg_dir, 'config', 'params_camera.yaml'),
-        description='VIS(camera) 参数文件')
+        default_value='',
+        description=(
+            'Optional VIS(camera) profile. Empty selects params_camera.yaml '
+            'for external IMU or params_camera_mid360.yaml for MID-360 IMU'))
 
     image_topic_arg = DeclareLaunchArgument(
         'image_topic', default_value='/camera/color/image_raw',
@@ -140,7 +143,9 @@ def generate_launch_description():
         mode = LaunchConfiguration('mode').perform(context).strip().lower()
         scene = LaunchConfiguration('scene').perform(context).strip().lower()
         lidar_params = LaunchConfiguration('lidar_params_file').perform(context)
-        camera_params = LaunchConfiguration('camera_params_file').perform(context)
+        camera_params = LaunchConfiguration(
+            'camera_params_file').perform(context).strip()
+        camera_params_explicit = bool(camera_params)
         image_topic = LaunchConfiguration('image_topic').perform(context).strip()
         imu_source = LaunchConfiguration('imu_source').perform(
             context).strip().lower()
@@ -223,6 +228,17 @@ def generate_launch_description():
             raise RuntimeError('imu_params_file must be an absolute path')
         if not os.path.isfile(imu_profile):
             raise RuntimeError('IMU profile does not exist: ' + imu_profile)
+        if not camera_params_explicit:
+            if imu_params and enable_visual == 'true':
+                raise RuntimeError(
+                    'A custom imu_params_file with enable_visual=true also '
+                    'requires an explicit camera_params_file for the same IMU')
+            camera_profile_name = (
+                'params_camera_mid360.yaml'
+                if not imu_params and imu_source == 'mid360'
+                else 'params_camera.yaml')
+            camera_params = os.path.join(
+                pkg_dir, 'config', camera_profile_name)
         if not os.path.isabs(mount_params):
             raise RuntimeError('mount_params_file must be an absolute path')
         if not os.path.isfile(mount_params):
@@ -247,15 +263,13 @@ def generate_launch_description():
                 raise RuntimeError('camera_params_file must be an absolute path')
             if not os.path.isfile(camera_params):
                 raise RuntimeError('VIS parameter file does not exist: ' + camera_params)
-            default_camera_params = os.path.realpath(
-                os.path.join(pkg_dir, 'config', 'params_camera.yaml'))
-            if (imu_source == 'mid360' and
-                    os.path.realpath(camera_params) == default_camera_params):
-                raise RuntimeError(
-                    'imu_source=mid360 with enable_visual=true requires a '
-                    'camera_params_file calibrated from the camera to the '
-                    'MID-360 IMU. Use enable_visual:=false for LIS-only IMU '
-                    'commissioning or provide that calibration explicitly.')
+            nominal_mid360_camera = os.path.realpath(os.path.join(
+                pkg_dir, 'config', 'params_camera_mid360.yaml'))
+            if os.path.realpath(camera_params) == nominal_mid360_camera:
+                get_logger('lvi_sam.launch').warning(
+                    'Using nominal MID-360 camera extrinsics with LiDAR depth '
+                    'and odometry prior disabled. Calibrate camera-IMU/LiDAR '
+                    'extrinsics before accuracy evaluation.')
             missing_visual_nodes = [
                 executable for executable in (
                     'visual_feature_node',

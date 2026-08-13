@@ -5,9 +5,10 @@
     # Translation is the LiDAR origin expressed in base_link, metres.
     #
     # The current values come from the calibrated external IMU -> LiDAR
-    # transform under the assumption that the external IMU axes and origin are
-    # the robot base reference. Verify that assumption before final accuracy
-    # acceptance; the rotation is approximately RPY [-1.05, 30.47, -0.47] deg.
+    # transform under the project assumption that the external IMU axes and
+    # origin are the robot base reference. Do not replace this translation
+    # with the older URDF model value without a base-link survey. The rotation
+    # is approximately RPY [-1.05, 30.47, -0.47] deg.
     baseToLidarTranslation: [0.201247, -0.024810, -0.029314]
     baseToLidarRotation: [0.861882, -0.001102,  0.507107,
                          -0.007061,  0.999875,  0.014175,
