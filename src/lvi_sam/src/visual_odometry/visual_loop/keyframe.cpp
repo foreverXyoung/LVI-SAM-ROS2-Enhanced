@@ -214,7 +214,8 @@ bool KeyFrame::findConnection(KeyFrame* old_kf)
                 cv::Mat old_img = old_kf->thumbnail;
                 cv::hconcat(thumbnail, gap_image, gap_image);
                 cv::hconcat(gap_image, old_img, gray_img);
-                cvtColor(gray_img, loop_match_img, CV_GRAY2RGB);
+                cv::cvtColor(
+                    gray_img, loop_match_img, cv::COLOR_GRAY2RGB);
                 // plot features in current frame
                 for(int i = 0; i< (int)matched_2d_cur.size(); i++)
                 {
