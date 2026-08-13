@@ -95,7 +95,9 @@ LiDAR-camera 全局对齐继续关闭，避免一次引入多条耦合链路。
 - 将原来含义重叠的 IMU/安装外参拆分为两层：IMU profile 使用明确方向的
   `imuToLidar*` 参数；新增 `params_mount_robot.yaml` 保存 `T_base_lidar`。MID-360 没有
   有效姿态消息时以安装标定初始化倾角，外置 IMU 继续使用姿态消息。安装参数也用于融合
-  `odom→base_link` 输出，因此新配置不再读取 TF tree；旧参数和 TF 查询只保留兼容回退。
+  `odom→base_link` 输出，因此新配置不再读取 TF tree。本轮进一步移除缺少安装 profile 时的
+  TF 查询回退，并取消 IMU/LiDAR 与 LiDAR-camera 外参的隐式单位矩阵/零平移默认值；启用相关
+  链路却缺少 YAML 外参时立即失败。
 - Livox `CustomMsg` 的点时间出现包级乱序时，不再丢弃整帧；转换层会对有限点按
   `offset_time` 稳定排序后继续去畸变。空帧、点数越界和全非有限点仍会被明确拒绝。
 

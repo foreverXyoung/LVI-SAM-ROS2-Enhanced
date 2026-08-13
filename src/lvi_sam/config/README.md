@@ -136,7 +136,20 @@ LIS 里程计先验和全局视觉—激光对齐暂时关闭，以便分阶段�
 
 旧 `extrinsicRot` / `extrinsicRPY` / `extrinsicTrans` 仍可被 C++ 读取作为兼容回退，但新部署
 不得继续新增这组模糊参数。加载了安装 profile 后，融合节点直接用 `T_base_lidar` 计算
-`odom→base_link`，不会查询 TF tree；未配置安装 profile 的旧启动方式才回退查询 TF。
+`odom→base_link`，不会查询 TF tree。若启用 `publish_fused_tf` 且
+`lidarFrame != baselinkFrame`，缺少 `baseToLidar*` 会立即报错，不再用 TF 或单位矩阵猜测安装关系。
+
+所有物理外参都遵循同一规则：源码只读取、校验并组合参数，不保存任何具体设备的平移或角度。
+更换传感器时只需复制/修改对应 profile：
+
+1. 更换 IMU：新增 `params_imu_<name>.yaml`，填写 `imuToLidar*`、噪声、单位和话题；
+2. 移动 LiDAR：修改独立的 `params_mount_robot.yaml`，同时重新测量本体过滤盒；
+3. 更换/移动相机：复制 camera profile，填写内参、`extrinsicRotation/Translation` 和
+   `lidar_to_cam_*`；
+4. 使用第三种 IMU 时通过 `imu_params_file` 加载，并显式提供匹配的 `camera_params_file`。
+
+启用某条融合链路但遗漏对应外参时，节点会在启动阶段失败。代码不再以零平移、单位旋转或
+TF 查询作为物理外参兜底。
 
 标定完成前保持 `use_lidar: 0`、`use_lidar_odometry_prior: 0`、
 `align_camera_lidar_estimation: 0`。建议依次启用视觉单目、LIS 里程计先验、LiDAR 深度，

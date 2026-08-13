@@ -212,6 +212,9 @@ RPY `[-1.05°, 30.47°, -0.47°]`；最终验收前应核对这一假设。只�
 雷达重新安装或 `base_link` 定义变化时才改。配置存在时融合输出直接使用它计算
 `odom→base_link`，不读取 TF tree。
 
+该安装 profile 是 `publish_fused_tf:=true` 且 `lidarFrame != baselinkFrame` 时的必填输入。
+删除或漏传该文件会在启动阶段报错，不会回退读取机器人 TF。
+
 ### 5.4 `config/params_camera*.yaml`（VIS）
 
 关键字段：

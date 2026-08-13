@@ -170,23 +170,26 @@ void readParameters(std::shared_ptr<rclcpp::Node> n)
     // SHOW_TRACK = fsSettings["show_track"];
     // EQUALIZE = fsSettings["equalize"];
 
-    n->declare_parameter("lidar_to_cam_tx", 0.0);
+    const double missing_extrinsic =
+        std::numeric_limits<double>::quiet_NaN();
+    n->declare_parameter("lidar_to_cam_tx", missing_extrinsic);
     n->get_parameter("lidar_to_cam_tx", L_C_TX);
-    n->declare_parameter("lidar_to_cam_ty", 0.0);
+    n->declare_parameter("lidar_to_cam_ty", missing_extrinsic);
     n->get_parameter("lidar_to_cam_ty", L_C_TY);
-    n->declare_parameter("lidar_to_cam_tz", 0.0);
+    n->declare_parameter("lidar_to_cam_tz", missing_extrinsic);
     n->get_parameter("lidar_to_cam_tz", L_C_TZ);
-    n->declare_parameter("lidar_to_cam_rx", 0.0);
+    n->declare_parameter("lidar_to_cam_rx", missing_extrinsic);
     n->get_parameter("lidar_to_cam_rx", L_C_RX);
-    n->declare_parameter("lidar_to_cam_ry", 0.0);
+    n->declare_parameter("lidar_to_cam_ry", missing_extrinsic);
     n->get_parameter("lidar_to_cam_ry", L_C_RY);
-    n->declare_parameter("lidar_to_cam_rz", 0.0);
+    n->declare_parameter("lidar_to_cam_rz", missing_extrinsic);
     n->get_parameter("lidar_to_cam_rz", L_C_RZ);
     if (!std::isfinite(L_C_TX) || !std::isfinite(L_C_TY) ||
         !std::isfinite(L_C_TZ) || !std::isfinite(L_C_RX) ||
         !std::isfinite(L_C_RY) || !std::isfinite(L_C_RZ))
         throw std::runtime_error(
-            "lidar_to_cam translation and rotation values must be finite");
+            "lidar_to_cam translation and rotation must be explicitly "
+            "configured with finite values; no identity extrinsic is assumed");
 
     // L_C_TX = fsSettings["lidar_to_cam_tx"];
     // L_C_TY = fsSettings["lidar_to_cam_ty"];

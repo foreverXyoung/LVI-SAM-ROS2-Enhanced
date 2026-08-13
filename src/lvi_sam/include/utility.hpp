@@ -317,11 +317,11 @@ public:
         // working. New profiles must use the descriptive parameter names.
         std::vector<double> legacyRotV, legacyRPYV, legacyTransV;
         declare_and_get_parameter<std::vector<double>>(
-            "extrinsicRot", legacyRotV, identity);
+            "extrinsicRot", legacyRotV, {});
         declare_and_get_parameter<std::vector<double>>(
-            "extrinsicRPY", legacyRPYV, identity);
+            "extrinsicRPY", legacyRPYV, {});
         declare_and_get_parameter<std::vector<double>>(
-            "extrinsicTrans", legacyTransV, {0.0, 0.0, 0.0});
+            "extrinsicTrans", legacyTransV, {});
 
         std::vector<double> imuToLidarRotationV;
         std::vector<double> imuToLidarTranslationV;
@@ -351,7 +351,9 @@ public:
         if (imuOrientationToLidarRotationV.empty()) {
             imuOrientationToLidarRotationV = legacyRPYV;
         }
-        if (usingLegacyImuCalibration) {
+        if (usingLegacyImuCalibration &&
+            legacyRotV.size() == 9 && legacyRPYV.size() == 9 &&
+            legacyTransV.size() == 3) {
             RCLCPP_WARN(
                 get_logger(),
                 "Using deprecated extrinsicRot/extrinsicRPY/extrinsicTrans "
@@ -364,7 +366,9 @@ public:
             imuToLidarTranslationV.size() != 3) {
             throw std::runtime_error(
                 "imuToLidarRotation/imuOrientationToLidarRotation/"
-                "imuToLidarTranslation must contain 9/9/3 values");
+                "imuToLidarTranslation must be explicitly configured with "
+                "9/9/3 values (legacy aliases remain readable but have no "
+                "implicit identity fallback)");
         }
         if (baseToLidarRotationV.empty() != baseToLidarTranslationV.empty()) {
             throw std::runtime_error(

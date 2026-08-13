@@ -1,6 +1,7 @@
 #include "parameters.h"
 #include "lvi_sam/package_assets.hpp"
 
+#include <limits>
 #include <stdexcept>
 
 std::string PROJECT_NAME;
@@ -86,12 +87,19 @@ void readParameters(std::shared_ptr<rclcpp::Node> n)
     if (ALIGN_CAMERA_LIDAR_COORDINATE == 1 && USE_LIDAR == 0)
         throw std::runtime_error(
             "align_camera_lidar_estimation requires use_lidar=1");
-    n->declare_parameter("lidar_to_cam_tx", 0.0);
-    n->declare_parameter("lidar_to_cam_ty", 0.0);
-    n->declare_parameter("lidar_to_cam_tz", 0.0);
-    n->declare_parameter("lidar_to_cam_rx", 0.0);
-    n->declare_parameter("lidar_to_cam_ry", 0.0);
-    n->declare_parameter("lidar_to_cam_rz", 0.0);
+    const double missing_extrinsic =
+        std::numeric_limits<double>::quiet_NaN();
+    for (const char* parameter_name : {
+             "lidar_to_cam_tx", "lidar_to_cam_ty", "lidar_to_cam_tz",
+             "lidar_to_cam_rx", "lidar_to_cam_ry", "lidar_to_cam_rz"}) {
+        n->declare_parameter(parameter_name, missing_extrinsic);
+        if (!std::isfinite(n->get_parameter(parameter_name).as_double())) {
+            throw std::runtime_error(
+                std::string(parameter_name) +
+                " must be explicitly configured with a finite value; no "
+                "identity LiDAR-camera extrinsic is assumed");
+        }
+    }
     // fsSettings["use_lidar"] >> USE_LIDAR;
     // fsSettings["align_camera_lidar_estimation"] >> ALIGN_CAMERA_LIDAR_COORDINATE;
 

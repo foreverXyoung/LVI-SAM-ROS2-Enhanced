@@ -148,7 +148,7 @@ DBoW2 的近期关键帧排除量和候选分数分别由 `loop_min_index_gap`�
   非有限值和倒序时间戳不能进入优化器。
 - `lidarFrame`、`baselinkFrame`、`odometryFrame`、`mapFrame` 是 LIS 内部及输出契约。
   新部署通过 `params_mount_robot.yaml` 的 `T_base_lidar` 直接计算融合 base 位姿，核心算法
-  和融合输出都不读取平台 TF；未提供新安装参数的旧配置才使用 TF 回退。
+  和融合输出都不读取平台 TF；启用融合 base TF 却未提供安装参数时启动即失败。
 - 地图、注册点云、轨迹和 `/lio_sam/mapping/odometry` 都以 `odometryFrame=odom` 为世界参考；
   该里程计的 child 是物理 `lidarFrame=livox_frame`。MID-360 使用
   `imuOrientationSource=mount` 后，启动 roll/pitch 由 `T_base_lidar` 初始化，使 `odom` 近似水平，
@@ -186,6 +186,10 @@ DBoW2 的近期关键帧排除量和候选分数分别由 `loop_min_index_gap`�
 - 未完成 LiDAR-camera 标定前保持 `use_lidar: 0`、
   `use_lidar_odometry_prior: 0` 和
   `align_camera_lidar_estimation: 0`，否则错误深度会系统性污染视觉特征。
+- 物理外参没有源码默认值：IMU-LiDAR、base-LiDAR、camera-IMU 和 LiDAR-camera 必须来自
+  所选 YAML profile。旧参数名只用于读取已有 YAML，不提供单位旋转/零平移兜底；缺失或非刚体
+  矩阵在启动期失败。代码内保留的 optical/ROS/VINS 固定旋转只定义算法坐标约定，不描述
+  任何传感器安装位置。
 
 ## 5. 构建与依赖契约
 
