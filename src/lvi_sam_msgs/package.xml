@@ -3,7 +3,7 @@
 <package format="3">
   <name>lvi_sam_msgs</name>
   <version>1.0.0</version>
-  <description>Stable ROS 2 status interfaces for the enhanced LVI-SAM localization pipeline.</description>
+  <description>Stable ROS 2 status and reset-event interfaces for the enhanced LVI-SAM localization pipeline.</description>
 
   <maintainer email="foreverXyoung@example.com">LVI-SAM maintainers</maintainer>
   <license>BSD-3-Clause</license>

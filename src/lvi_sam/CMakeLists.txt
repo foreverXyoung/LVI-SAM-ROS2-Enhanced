@@ -237,6 +237,13 @@ if(BUILD_TESTING)
     if(TARGET test_localization_status_projection)
       ament_target_dependencies(test_localization_status_projection lvi_sam_msgs)
     endif()
+    ament_add_gtest(
+      test_localization_reset_contract
+      test/test_localization_reset_contract.cpp
+    )
+    if(TARGET test_localization_reset_contract)
+      ament_target_dependencies(test_localization_reset_contract lvi_sam_msgs)
+    endif()
   else()
     message(WARNING "ament_cmake_gtest not found; C++ unit tests are skipped")
   endif()

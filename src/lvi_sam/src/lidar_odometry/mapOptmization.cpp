@@ -709,6 +709,7 @@ public:
             static_cast<uint32_t>(std::max(0, relocalizationAttemptCount));
         msg.transition_sequence = localizationStatusTransitionSequence;
         msg.loss_count = localizationLossCount;
+        msg.reset_id = static_cast<uint64_t>(std::max(0, imuPreintegrationResetId));
         msg.last_valid_pose_stamp = lastValidLocalizationPoseAt.to_msg();
         msg.state_enter_stamp = localizationStateEnteredAt.to_msg();
         msg.last_lost_stamp = lastLocalizationLossAt.to_msg();

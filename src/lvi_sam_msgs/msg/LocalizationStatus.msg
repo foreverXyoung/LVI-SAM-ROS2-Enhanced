@@ -45,6 +45,7 @@ uint32 consecutive_failures
 uint32 relocalization_attempts
 uint64 transition_sequence
 uint32 loss_count
+uint64 reset_id
 
 builtin_interfaces/Time last_valid_pose_stamp
 builtin_interfaces/Time state_enter_stamp

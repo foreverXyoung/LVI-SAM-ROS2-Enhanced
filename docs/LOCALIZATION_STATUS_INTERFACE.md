@@ -88,6 +88,10 @@ relocalization decisions.
   `previous_state` and `previous_state_name` identify the preceding structured
   state. The first message uses `STATE_UNKNOWN` as the previous state.
 - `loss_count` increases when the existing `MayLost` state is observed.
+- `reset_id` is the current LiDAR/map continuity generation. It is initially
+  zero and changes only when the later reset-event seam accepts a map pose
+  correction or controlled relocalization. It is informational in this phase;
+  consumers must not reset nodes from the status heartbeat alone.
 - `LOST` is emitted for at least one heartbeat after the existing bad-match
   threshold, even though the frozen algorithm immediately continues in
   `NonInitialized`/`RELOCALIZING`.
