@@ -11,6 +11,7 @@
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "sensor_msgs/image_encodings.hpp"
 #include "nav_msgs/msg/odometry.hpp"
+#include "lvi_sam_msgs/msg/localization_reset.hpp"
 
 #include <opencv2/opencv.hpp>
 #include <eigen3/Eigen/Dense>
@@ -74,6 +75,7 @@ extern std::string PROJECT_NAME;
 extern std::string IMAGE_TOPIC;
 extern std::string IMU_TOPIC;
 extern std::string POINT_CLOUD_TOPIC;
+extern std::string LOCALIZATION_RESET_TOPIC;
 
 extern int USE_LIDAR;
 extern int LIDAR_SKIP;

@@ -96,7 +96,7 @@ public:
         subLocalizationReset = create_subscription<lvi_sam_msgs::msg::LocalizationReset>(
             localizationResetTopic, rclcpp::QoS(10).reliable(),
             std::bind(&TransformFusion::localizationResetHandler, this,
-                      std::placeholders::_1), odomOpt);
+                      std::placeholders::_1), imuOdomOpt);
 
         pubImuOdometry = create_publisher<nav_msgs::msg::Odometry>(odomTopic, qos_imu);
         pubImuPath = create_publisher<nav_msgs::msg::Path>("lio_sam/imu/path", qos);
@@ -458,6 +458,13 @@ public:
         lastResetEventId = msg->event_id;
         hasLastResetEvent = true;
         if (!msg->reset_imu) return;
+
+        // This node publishes IMU_FAILURE events on the same topic.  Its
+        // integration state has already been cleared before publishing, so
+        // applying the event again would unnecessarily discard samples that
+        // arrived in the meantime.  TransformFusion still handles the event
+        // because it is a separate consumer with its own propagation queue.
+        if (msg->source == "imu_preintegration") return;
 
         // If the compatibility covariance channel already carried this
         // map-owned generation, the state has already been reset. This guard

@@ -18,6 +18,7 @@
 #include <nav_msgs/msg/path.hpp>
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
+#include <lvi_sam_msgs/msg/localization_reset.hpp>
 
 #include <opencv2/opencv.hpp>
 #include <pcl/point_cloud.h>
@@ -79,6 +80,7 @@ extern Eigen::Matrix3d qic;
 
 extern string PROJECT_NAME;
 extern string IMAGE_TOPIC;
+extern string LOCALIZATION_RESET_TOPIC;
 
 extern int DEBUG_IMAGE;
 extern int LOOP_CLOSURE;

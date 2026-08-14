@@ -25,10 +25,12 @@ It does **not** change point-cloud filtering, scan matching, graph optimization,
 loop closure, TF, odometry values, or the existing force-relocalization service.
 
 The projection header preserves the four legacy decision paths exactly. The
-`VERIFYING`/`DEGRADED` values are now emitted as observational quality states
-through that seam; they do not feed back into the legacy algorithm. Runtime
-regression of all four original paths is still required before the reset/IMU/
-VINS coupling work begins.
+`VERIFYING`/`DEGRADED` values are emitted as observational quality states
+through that seam; they do not feed back into the legacy algorithm. A separate
+`LocalizationReset` event seam is documented in
+`LOCALIZATION_RESET_INTERFACE.md`. It is intentionally not encoded in this
+status message, and its downstream reset actions must be validated separately
+from the status contract.
 
 ## Topic contract
 

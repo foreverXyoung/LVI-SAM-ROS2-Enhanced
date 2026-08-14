@@ -26,6 +26,7 @@ int ESTIMATE_TD;
 int ROLLING_SHUTTER;
 std::string IMU_TOPIC;
 std::string ODOM_TOPIC;
+std::string LOCALIZATION_RESET_TOPIC;
 int ROW, COL;
 double TD, TR;
 
@@ -68,6 +69,13 @@ void readParameters(std::shared_ptr<rclcpp::Node> n)
     n->get_parameter("odom_topic", ODOM_TOPIC);
     if (ODOM_TOPIC.empty())
         throw std::runtime_error("odom_topic must not be empty");
+    n->declare_parameter(
+        "localization_reset_topic", "/lio_sam/localization/reset");
+    n->get_parameter("localization_reset_topic", LOCALIZATION_RESET_TOPIC);
+    if (LOCALIZATION_RESET_TOPIC.empty() ||
+        LOCALIZATION_RESET_TOPIC.front() != '/')
+        throw std::runtime_error(
+            "localization_reset_topic must be an absolute topic");
     // fsSettings["imu_topic"] >> IMU_TOPIC;
 
     n->declare_parameter("use_lidar", 1);

@@ -102,6 +102,10 @@ class Estimator
     bool first_imu;
     bool is_valid, is_key;
     bool failure_occur;
+    // One-shot notification consumed by the ROS wrapper after the estimator
+    // has cleared its internal state. It is separate from failure_occur,
+    // which the original double2vector path still uses for frame alignment.
+    bool failure_event_pending;
 
     vector<Vector3d> point_cloud;
     vector<Vector3d> margin_cloud;

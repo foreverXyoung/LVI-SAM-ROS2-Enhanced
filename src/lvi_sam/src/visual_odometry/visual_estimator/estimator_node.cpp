@@ -12,6 +12,7 @@
 #include <memory>
 #include <rclcpp/rclcpp.hpp>
 #include <opencv2/opencv.hpp>
+#include <lvi_sam_msgs/msg/localization_reset.hpp>
 
 #include "estimator.h"
 #include "parameters.h"
@@ -37,6 +38,7 @@ std::mutex m_buf;
 std::mutex m_state;
 std::mutex m_estimator;
 std::mutex m_odom;
+std::mutex m_reset;
 
 double latest_time;
 Eigen::Vector3d tmp_P;
@@ -52,6 +54,13 @@ double last_imu_t = 0;
 double last_feature_t = -1;
 double last_odom_t = -1;
 std::atomic<std::uint64_t> reset_generation{0};
+std::uint64_t visualResetEventSequence = 0;
+std::string lastExternalResetSource;
+std::uint64_t lastExternalResetEventId = 0;
+bool hasLastExternalResetEvent = false;
+std::uint64_t latestLidarResetId = 0;
+rclcpp::Publisher<lvi_sam_msgs::msg::LocalizationReset>::SharedPtr
+    pubLocalizationReset;
 
 using FeatureObservations =
     map<int, vector<pair<int, Eigen::Matrix<double, 8, 1>>>>;
@@ -335,38 +344,97 @@ void feature_callback(const sensor_msgs::msg::PointCloud::ConstSharedPtr &featur
     con.notify_one();
 }
 
-void restart_callback(const std_msgs::msg::Bool::ConstSharedPtr &restart_msg, Estimator &estimator) 
+void resetEstimatorState(Estimator &estimator)
 {
-    if (restart_msg->data == true)
+    std::scoped_lock lock(m_buf, m_state, m_estimator, m_odom);
+    while (!feature_buf.empty())
+        feature_buf.pop();
+    while (!imu_buf.empty())
+        imu_buf.pop();
+    estimator.clearState();
+    estimator.setParameter();
+    current_time = -1;
+    latest_time = 0;
+    last_imu_t = 0;
+    last_feature_t = -1;
+    init_imu = true;
+    init_feature = false;
+    tmp_P.setZero();
+    tmp_Q.setIdentity();
+    tmp_V.setZero();
+    tmp_Ba.setZero();
+    tmp_Bg.setZero();
+    acc_0.setZero();
+    gyr_0.setZero();
+    reset_generation.fetch_add(1, std::memory_order_release);
+    odomQueue.clear();
+    last_odom_t = -1;
+    resetVisualTfState();
+}
+
+void restart_callback(
+    const std_msgs::msg::Bool::ConstSharedPtr &restart_msg,
+    Estimator &estimator)
+{
+    if (restart_msg && restart_msg->data)
     {
-        // ROS_WARN("restart the estimator!");
-        {
-            std::scoped_lock lock(m_buf, m_state, m_estimator, m_odom);
-            while(!feature_buf.empty())
-                feature_buf.pop();
-            while(!imu_buf.empty())
-                imu_buf.pop();
-            estimator.clearState();
-            estimator.setParameter();
-            current_time = -1;
-            latest_time = 0;
-            last_imu_t = 0;
-            last_feature_t = -1;
-            init_imu = true;
-            init_feature = false;
-            tmp_P.setZero();
-            tmp_Q.setIdentity();
-            tmp_V.setZero();
-            tmp_Ba.setZero();
-            tmp_Bg.setZero();
-            acc_0.setZero();
-            gyr_0.setZero();
-            reset_generation.fetch_add(1, std::memory_order_release);
-            odomQueue.clear();
-            last_odom_t = -1;
-        }
+        resetEstimatorState(estimator);
+        con.notify_all();
     }
-    return;
+}
+
+void localization_reset_callback(
+    const lvi_sam_msgs::msg::LocalizationReset::ConstSharedPtr &reset_msg,
+    Estimator &estimator)
+{
+    if (!reset_msg || !reset_msg->restart_visual ||
+        reset_msg->source == "visual_estimator")
+        return;
+
+    {
+        std::lock_guard<std::mutex> lock(m_state);
+        if (hasLastExternalResetEvent &&
+            lastExternalResetSource == reset_msg->source &&
+            lastExternalResetEventId == reset_msg->event_id)
+            return;
+        hasLastExternalResetEvent = true;
+        lastExternalResetSource = reset_msg->source;
+        lastExternalResetEventId = reset_msg->event_id;
+    }
+
+    if (reset_msg->source == "map_optimization") {
+        std::lock_guard<std::mutex> lock(m_reset);
+        latestLidarResetId = reset_msg->reset_id;
+    }
+
+    resetEstimatorState(estimator);
+    con.notify_all();
+    RCLCPP_INFO(
+        rclcpp::get_logger("visual_estimator"),
+        "Applied localization reset event: source=%s reason=%u reset_id=%llu detail=%s",
+        reset_msg->source.c_str(), static_cast<unsigned int>(reset_msg->reason),
+        static_cast<unsigned long long>(reset_msg->reset_id),
+        reset_msg->detail.c_str());
+}
+
+void publishVisualResetEvent(
+    const std_msgs::msg::Header &header,
+    const std::uint64_t reset_id,
+    const std::string &detail)
+{
+    if (!pubLocalizationReset)
+        return;
+    ++visualResetEventSequence;
+    lvi_sam_msgs::msg::LocalizationReset reset_msg;
+    reset_msg.header = header;
+    reset_msg.event_id = visualResetEventSequence;
+    reset_msg.reset_id = reset_id;
+    reset_msg.reason = lvi_sam_msgs::msg::LocalizationReset::REASON_VINS_FAILURE;
+    reset_msg.source = "visual_estimator";
+    reset_msg.reset_imu = false;
+    reset_msg.restart_visual = true;
+    reset_msg.detail = detail;
+    pubLocalizationReset->publish(reset_msg);
 }
 
 // thread: visual-inertial odometry
@@ -470,8 +538,31 @@ void process(Estimator &estimator)
                     rclcpp::Time(img_msg->header.stamp).seconds() + estimator.td);
             }
 
+            if (!initialization_info.empty() &&
+                std::isfinite(initialization_info[0]) &&
+                initialization_info[0] >= 0.0f &&
+                std::abs(initialization_info[0] -
+                         std::round(initialization_info[0])) < 1e-6f) {
+                std::lock_guard<std::mutex> lock(m_reset);
+                latestLidarResetId = static_cast<std::uint64_t>(
+                    std::llround(initialization_info[0]));
+            }
+
 
             estimator.processImage(image, initialization_info, img_msg->header);
+            if (estimator.failure_event_pending) {
+                std::uint64_t reset_id = 0;
+                {
+                    std::lock_guard<std::mutex> lock(m_reset);
+                    reset_id = latestLidarResetId;
+                }
+                publishVisualResetEvent(
+                    img_msg->header, reset_id,
+                    "vins_failure_detection");
+                // Keep the original estimator flags untouched; consume only
+                // the new one-shot notification bit.
+                estimator.failure_event_pending = false;
+            }
             // double whole_t = t_s.toc();
             // printStatistics(estimator, whole_t);
 
@@ -508,6 +599,9 @@ int main(int argc, char **argv)
     RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Visual Odometry Estimator setParameter completed.\033[0m");
     registerPub(node);
     RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Visual Odometry Estimator registerPub completed.\033[0m");
+    pubLocalizationReset =
+        node->create_publisher<lvi_sam_msgs::msg::LocalizationReset>(
+            LOCALIZATION_RESET_TOPIC, rclcpp::QoS(10).reliable());
     odomRegister = std::make_unique<OdometryRegister>(node);
     RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Visual Odometry Estimator odometryRegister constructor completed.\033[0m");
 
@@ -530,6 +624,14 @@ int main(int argc, char **argv)
         lvi_sam::topics::project_topic(PROJECT_NAME, lvi_sam::topics::kFeatureRestart), 1,
         std::function<void(const std_msgs::msg::Bool::ConstSharedPtr&)>(
             std::bind(restart_callback, std::placeholders::_1, std::ref(estimator))));
+
+    auto sub_localization_reset =
+        node->create_subscription<lvi_sam_msgs::msg::LocalizationReset>(
+            LOCALIZATION_RESET_TOPIC, rclcpp::QoS(10).reliable(),
+            std::function<void(
+                const lvi_sam_msgs::msg::LocalizationReset::ConstSharedPtr&)>(
+                std::bind(localization_reset_callback, std::placeholders::_1,
+                          std::ref(estimator))));
 
     RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Visual Odometry Estimator Subscribers created.\033[0m");
 

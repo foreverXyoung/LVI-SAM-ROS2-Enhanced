@@ -85,6 +85,7 @@ void Estimator::clearState()
     f_manager.clearState();
 
     failure_occur = 0;
+    failure_event_pending = false;
 }
 
 void Estimator::processIMU(double dt, const Vector3d &linear_acceleration, const Vector3d &angular_velocity)
@@ -201,6 +202,7 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
             RCLCPP_ERROR(this->get_logger(), "VINS failure detection!");
             failure_occur = 1;
             clearState();
+            failure_event_pending = true;
             setParameter();
             RCLCPP_ERROR(this->get_logger(), "VINS system reboot!");
             return;

@@ -35,6 +35,8 @@ extern int IMAGE_ROW, IMAGE_COL;
 
 void registerPub(std::shared_ptr<rclcpp::Node> node);
 
+void resetVisualTfState();
+
 geometry_msgs::msg::TransformStamped transformConversion(const geometry_msgs::msg::TransformStamped& t);
 
 void pubLatestOdometry(const Eigen::Vector3d &P, const Eigen::Quaterniond &Q, const Eigen::Vector3d &V, const std_msgs::msg::Header &header, const int &failureId);

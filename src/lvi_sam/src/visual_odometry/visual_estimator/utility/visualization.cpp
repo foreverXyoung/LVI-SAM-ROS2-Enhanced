@@ -19,9 +19,25 @@ CameraPoseVisualization cameraposevisual(0, 1, 0, 1);
 CameraPoseVisualization keyframebasevisual(0.0, 0.0, 1.0, 1.0);
 static double sum_of_path = 0;
 static Vector3d last_path(0.0, 0.0, 0.0);
+static double latest_align_time = -1.0;
+static double latest_path_save_time = -1.0;
+static geometry_msgs::msg::TransformStamped odom_world_tf;
+static bool has_odom_world_tf = false;
 static std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster;
 static std::shared_ptr<tf2_ros::Buffer> tf_buffer;
 static std::shared_ptr<tf2_ros::TransformListener> tf_listener;
+
+void resetVisualTfState()
+{
+    latest_align_time = -1.0;
+    latest_path_save_time = -1.0;
+    has_odom_world_tf = false;
+    odom_world_tf = geometry_msgs::msg::TransformStamped();
+    path.poses.clear();
+    path.header = std_msgs::msg::Header();
+    sum_of_path = 0.0;
+    last_path.setZero();
+}
 
 void registerPub(std::shared_ptr<rclcpp::Node> n)
 {
@@ -74,8 +90,6 @@ geometry_msgs::msg::TransformStamped transformConversion(const geometry_msgs::ms
 
 void pubLatestOdometry(const Eigen::Vector3d &P, const Eigen::Quaterniond &Q, const Eigen::Vector3d &V, const std_msgs::msg::Header &header, const int& failureId)
 {
-    static double last_align_time = -1;
-
     // Quternion not normalized
     if (Q.norm() < 0.99)
         return;
@@ -133,11 +147,10 @@ void pubLatestOdometry(const Eigen::Vector3d &P, const Eigen::Quaterniond &Q, co
     // Handle camera-lidar alignment
     if (ALIGN_CAMERA_LIDAR_COORDINATE)
     {
-        static geometry_msgs::msg::TransformStamped tf_odom_world;
-
         rclcpp::Time stamp = header.stamp;
 
-        if ((stamp.seconds() - last_align_time) > 1.0)
+        if (!has_odom_world_tf ||
+            (stamp.seconds() - latest_align_time) > 1.0)
         {
             try
             {
@@ -149,11 +162,12 @@ void pubLatestOdometry(const Eigen::Vector3d &P, const Eigen::Quaterniond &Q, co
                 tf2::fromMsg(tf_cam.transform, T_world_vins);
 
                 tf2::Transform T_odom_world = T_odom_baselink * T_world_vins.inverse();
-                tf_odom_world.header.stamp = header.stamp;
-                tf_odom_world.header.frame_id = "odom";
-                tf_odom_world.child_frame_id = "vins_world";
-                tf_odom_world.transform = tf2::toMsg(T_odom_world);
-                last_align_time = stamp.seconds();
+                odom_world_tf.header.stamp = header.stamp;
+                odom_world_tf.header.frame_id = "odom";
+                odom_world_tf.child_frame_id = "vins_world";
+                odom_world_tf.transform = tf2::toMsg(T_odom_world);
+                latest_align_time = stamp.seconds();
+                has_odom_world_tf = true;
             }
             catch (tf2::TransformException &ex)
             {
@@ -162,7 +176,8 @@ void pubLatestOdometry(const Eigen::Vector3d &P, const Eigen::Quaterniond &Q, co
             }
         }
 
-        tf_broadcaster->sendTransform(tf_odom_world);
+        if (has_odom_world_tf)
+            tf_broadcaster->sendTransform(odom_world_tf);
     }
     else
     {
@@ -242,10 +257,9 @@ void pubOdometry(const Estimator &estimator, const std_msgs::msg::Header &header
         odometry.twist.twist.linear.z = estimator.Vs[WINDOW_SIZE].z();
         pub_odometry->publish(odometry);
 
-        static double path_save_time = -1;
-        if (rclcpp::Time(header.stamp).seconds() - path_save_time > 0.5)
+        if (rclcpp::Time(header.stamp).seconds() - latest_path_save_time > 0.5)
         {
-            path_save_time = rclcpp::Time(header.stamp).seconds();
+            latest_path_save_time = rclcpp::Time(header.stamp).seconds();
             geometry_msgs::msg::PoseStamped pose_stamped;
             pose_stamped.header = header;
             pose_stamped.header.frame_id = "vins_world";

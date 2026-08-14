@@ -101,6 +101,7 @@ set(visual_dependencies
   tf2
   tf2_ros
   tf2_geometry_msgs
+  lvi_sam_msgs
 )
 
 # LiDAR-inertial subsystem.

@@ -37,6 +37,28 @@
 
 ## 3. 原逻辑兼容性结论
 
+### 3.0 定位状态接口与分阶段复位事件
+
+本轮没有重写点云匹配、局部地图、因子图或 VINS 滑窗算法。首先增加了
+`lvi_sam_msgs/msg/LocalizationStatus`，由 `lvi_sam_mapOptimization` 以
+`/lio_sam/localization/status` 发布，供上层状态机按数值状态进行门控：
+`MAPPING`、`RELOCALIZING`、`VERIFYING`、`TRACKING`、`DEGRADED`、`LOST`。
+其中 `VERIFYING` 与 `DEGRADED` 是观测层质量状态，不会反向驱动旧算法；
+`pose_valid` 也不等价于可运动，正常导航应只在 `TRACKING` 放行。
+
+随后增加了独立的 `LocalizationReset` 事件接口，默认话题为
+`/lio_sam/localization/reset`，并通过 `localization_reset_topic` 统一配置。
+地图优化节点仍是 `reset_id` 的唯一所有者，旧的里程计协方差元数据继续发布，
+因此旧消费者保持兼容。地图重定位、强制重定位、回环图修正会清理 IMU/VIS
+跨代队列；VINS 或 IMU 自身故障只发布明确的下游复位请求，不修改 LiDAR 匹配
+和地图因子图。所有接收者按 `(source,event_id)` 去重，避免多发布者同题自回环。
+
+对应契约与测试见 `docs/LOCALIZATION_STATUS_INTERFACE.md`、
+`docs/LOCALIZATION_RESET_INTERFACE.md` 以及 `test_localization_*_contract.cpp`。
+这一层的实机验收仍需在 Orin 上按 mapping、定位、丢失和强制重定位四条路径
+分别执行；在验收前，上层只能把 reset 事件作为诊断/协同信号，不能把它当作
+Nav2 速度或 TF 指令。
+
 ### 3.1 纯激光建图
 
 主执行顺序未被重排：Mid-360 CustomMsg → 去畸变 → LOAM 特征 → 初值更新 → 局部地图 →

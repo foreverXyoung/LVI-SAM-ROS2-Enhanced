@@ -49,6 +49,7 @@ typedef pcl::PointXYZI PointType;
 std::string IMAGE_TOPIC;
 std::string IMU_TOPIC;
 std::string POINT_CLOUD_TOPIC;
+std::string LOCALIZATION_RESET_TOPIC;
 std::string PROJECT_NAME;
 
 std::vector<std::string> CAM_NAMES;
@@ -110,10 +111,17 @@ void readParameters(std::shared_ptr<rclcpp::Node> n)
     n->get_parameter("imu_topic", IMU_TOPIC);
     n->declare_parameter("point_cloud_topic", "");
     n->get_parameter("point_cloud_topic", POINT_CLOUD_TOPIC);
+    n->declare_parameter(
+        "localization_reset_topic", "/lio_sam/localization/reset");
+    n->get_parameter("localization_reset_topic", LOCALIZATION_RESET_TOPIC);
     if (IMAGE_TOPIC.empty())
         throw std::runtime_error("image_topic must not be empty");
     if (IMU_TOPIC.empty())
         throw std::runtime_error("imu_topic must not be empty");
+    if (LOCALIZATION_RESET_TOPIC.empty() ||
+        LOCALIZATION_RESET_TOPIC.front() != '/')
+        throw std::runtime_error(
+            "localization_reset_topic must be an absolute topic");
     // fsSettings["image_topic"]       >> IMAGE_TOPIC;
     // fsSettings["imu_topic"]         >> IMU_TOPIC;
     // fsSettings["point_cloud_topic"] >> POINT_CLOUD_TOPIC;

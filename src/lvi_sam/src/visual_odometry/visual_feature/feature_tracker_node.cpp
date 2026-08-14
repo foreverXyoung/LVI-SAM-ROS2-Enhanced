@@ -39,6 +39,49 @@ int pub_count = 1;
 bool first_image_flag = true;
 double last_image_time = 0;
 bool init_pub = 0;
+std::string lastResetSource;
+std::uint64_t lastResetEventId = 0;
+bool hasLastResetEvent = false;
+
+void resetFeatureState()
+{
+    first_image_flag = true;
+    first_image_time = 0;
+    last_image_time = 0;
+    pub_count = 1;
+    init_pub = false;
+    for (auto &tracker : trackerData)
+        tracker.reset();
+    {
+        std::lock_guard<std::mutex> lock(mtx_lidar);
+        cloudQueue.clear();
+        timeQueue.clear();
+        depthCloud->clear();
+        lastLidarTime = -1.0;
+        ++lidarResetGeneration;
+    }
+}
+
+void localizationResetCallback(
+    const lvi_sam_msgs::msg::LocalizationReset::ConstSharedPtr &reset_msg)
+{
+    if (!reset_msg || !reset_msg->restart_visual ||
+        reset_msg->source == "feature_tracker")
+        return;
+    if (hasLastResetEvent && lastResetSource == reset_msg->source &&
+        lastResetEventId == reset_msg->event_id)
+        return;
+    hasLastResetEvent = true;
+    lastResetSource = reset_msg->source;
+    lastResetEventId = reset_msg->event_id;
+    resetFeatureState();
+    RCLCPP_INFO(
+        rclcpp::get_logger("visual_feature"),
+        "Applied localization reset event: source=%s reason=%u reset_id=%llu detail=%s",
+        reset_msg->source.c_str(), static_cast<unsigned int>(reset_msg->reason),
+        static_cast<unsigned long long>(reset_msg->reset_id),
+        reset_msg->detail.c_str());
+}
 
 
 
@@ -59,20 +102,7 @@ void img_callback(const sensor_msgs::msg::Image::ConstSharedPtr &img_msg)
     if (cur_img_time - last_image_time > 1.0 || cur_img_time <= last_image_time)
     {
         // RCLCPP_WARN(this->get_logger(), "image discontinue! reset the feature tracker!");
-        first_image_flag = true; 
-        last_image_time = 0;
-        pub_count = 1;
-        init_pub = false;
-        for (auto &tracker : trackerData)
-            tracker.reset();
-        {
-            std::lock_guard<std::mutex> lock(mtx_lidar);
-            cloudQueue.clear();
-            timeQueue.clear();
-            depthCloud->clear();
-            lastLidarTime = -1.0;
-            ++lidarResetGeneration;
-        }
+        resetFeatureState();
         std_msgs::msg::Bool restart_flag;
         restart_flag.data = true;
         pub_restart->publish(restart_flag);
@@ -441,6 +471,10 @@ int main(int argc, char **argv)
     auto sub_img = n->create_subscription<sensor_msgs::msg::Image>(
         IMAGE_TOPIC, rclcpp::SensorDataQoS().keep_last(5), img_callback,
         image_options);
+
+    auto sub_reset = n->create_subscription<lvi_sam_msgs::msg::LocalizationReset>(
+        LOCALIZATION_RESET_TOPIC, rclcpp::QoS(10).reliable(),
+        localizationResetCallback, image_options);
 
     auto sub_lidar = n->create_subscription<sensor_msgs::msg::PointCloud2>(
         POINT_CLOUD_TOPIC, rclcpp::SensorDataQoS().keep_last(5), lidar_callback,

@@ -15,6 +15,7 @@
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "sensor_msgs/image_encodings.hpp"
 #include "nav_msgs/msg/odometry.hpp"
+#include "lvi_sam_msgs/msg/localization_reset.hpp"
 
 // TF2 for ROS 2
 #include <tf2/LinearMath/Quaternion.h>
@@ -86,6 +87,7 @@ extern int NUM_ITERATIONS;
 extern std::string PROJECT_NAME;
 extern std::string IMU_TOPIC;
 extern std::string ODOM_TOPIC;
+extern std::string LOCALIZATION_RESET_TOPIC;
 extern double TD;
 extern double TR;
 extern int ESTIMATE_TD;
