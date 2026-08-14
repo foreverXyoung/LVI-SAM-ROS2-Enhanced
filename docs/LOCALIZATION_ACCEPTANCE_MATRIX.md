@@ -41,7 +41,8 @@ ros2 topic echo /lio_sam/localization/reset
 
 每次地图基准变化只增加一次 `reset_id`。旧代次的
 `/lio_sam/mapping/odometry_incremental`、`/odometry/imu_incremental` 和
-视觉先验不应重新进入下游队列。
+视觉先验不应重新进入下游队列；收到低于当前代次的地图复位事件也必须被
+丢弃，不能回退 IMU 图优化状态。
 
 ### B.2 视觉失败复位
 

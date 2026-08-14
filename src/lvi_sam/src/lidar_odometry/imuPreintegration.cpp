@@ -51,6 +51,8 @@ public:
     tf2::Transform configuredLidarToBase;
 
     double lidarOdomTime = -1;
+    bool hasLidarOdomAffine = false;
+    double lastImuOdomTime = -1;
     deque<nav_msgs::msg::Odometry> imuOdomQueue;
     nav_msgs::msg::Path imuPath;
     double lastPathTime = -1.0;
@@ -128,7 +130,11 @@ public:
 
     void clearPropagationState() {
         imuOdomQueue.clear();
-        lidarOdomTime = -1.0;
+        // Keep timestamp watermarks across a reset.  Reset events clear the
+        // propagation history, but DDS may still deliver samples that were
+        // queued before the event.  Re-zeroing these watermarks would allow
+        // those delayed samples to seed the new generation again.
+        hasLidarOdomAffine = false;
         lidarOdomAffine.setIdentity();
         imuPath.poses.clear();
         lastPathTime = -1.0;
@@ -174,6 +180,7 @@ public:
 
         lidarOdomAffine = odom2affine(*odomMsg);
         lidarOdomTime = timestamp;
+        hasLidarOdomAffine = true;
     }
 
     void localizationResetHandler(
@@ -207,8 +214,7 @@ public:
 
         const double imuOdomTime = stamp2Sec(odomMsg->header.stamp);
         if (!validOdometryPose(*odomMsg) ||
-            (!imuOdomQueue.empty() &&
-             imuOdomTime <= stamp2Sec(imuOdomQueue.back().header.stamp))) {
+            (lastImuOdomTime >= 0.0 && imuOdomTime <= lastImuOdomTime)) {
             RCLCPP_WARN_THROTTLE(
                 get_logger(), *get_clock(), 2000,
                 "Discarding invalid or non-monotonic IMU odometry");
@@ -219,6 +225,7 @@ public:
                 lvi_sam::internal_odom_metadata::visual_prior::kResetId))
             return;
 
+        lastImuOdomTime = imuOdomTime;
         imuOdomQueue.push_back(*odomMsg);
         if (imuOdomQueue.size() > kMaxImuOdomQueueSize) {
             imuOdomQueue.pop_front();
@@ -228,7 +235,7 @@ public:
         }
 
         // get latest odometry (at current IMU stamp)
-        if (lidarOdomTime == -1) {
+        if (!hasLidarOdomAffine) {
             if (requireFreshLidarOdomForTF && !publishImuPredictedOdomWhenUnlocalized) {
                 imuOdomQueue.clear();
             }
@@ -446,12 +453,17 @@ public:
     }
 
     void resetParams() {
+        // Keep ingress timestamp watermarks across a reset.  Resetting the
+        // graph and integrators must not make delayed DDS samples appear to
+        // be the first sample of a new generation.
+        const double receivedTimeWatermark = lastImuT_received;
+        const double correctionTimeWatermark = lastCorrectionTime;
         imuQueOpt.clear();
         imuQueImu.clear();
-        lastImuT_received = -1;
+        lastImuT_received = receivedTimeWatermark;
         lastImuT_imu = -1;
         lastImuT_opt = -1;
-        lastCorrectionTime = -1.0;
+        lastCorrectionTime = correctionTimeWatermark;
         doneFirstOpt = false;
         systemInitialized = false;
         key = 1;
@@ -507,22 +519,31 @@ public:
         // because it is a separate consumer with its own propagation queue.
         if (msg->source == "imu_preintegration") return;
 
-        // If the compatibility covariance channel already carried this
-        // map-owned generation, the state has already been reset. This guard
-        // prevents a late event from discarding new IMU samples.
-        if (msg->source == "map_optimization" &&
-            msg->reset_id == static_cast<std::uint64_t>(
-                std::max(0, imuPreintegrationResetId))) {
-            return;
-        }
-        if (msg->source == "map_optimization" &&
-            msg->reset_id > static_cast<std::uint64_t>(
-                std::numeric_limits<int>::max())) {
-            RCLCPP_ERROR(
-                get_logger(),
-                "Ignoring map reset_id=%llu because the legacy covariance metadata is int-sized",
-                static_cast<unsigned long long>(msg->reset_id));
-            return;
+        if (msg->source == "map_optimization") {
+            if (msg->reset_id > static_cast<std::uint64_t>(
+                    std::numeric_limits<int>::max())) {
+                RCLCPP_ERROR(
+                    get_logger(),
+                    "Ignoring map reset_id=%llu because the legacy covariance metadata is int-sized",
+                    static_cast<unsigned long long>(msg->reset_id));
+                return;
+            }
+
+            const auto currentResetId = static_cast<std::uint64_t>(
+                std::max(0, imuPreintegrationResetId));
+            if (msg->reset_id == currentResetId) {
+                // The compatibility covariance channel already carried this
+                // map-owned generation. Do not discard newer IMU samples.
+                return;
+            }
+            if (msg->reset_id < currentResetId) {
+                RCLCPP_WARN(
+                    get_logger(),
+                    "Ignoring stale map reset_id=%llu; current reset_id=%llu",
+                    static_cast<unsigned long long>(msg->reset_id),
+                    static_cast<unsigned long long>(currentResetId));
+                return;
+            }
         }
 
         resetParams();
