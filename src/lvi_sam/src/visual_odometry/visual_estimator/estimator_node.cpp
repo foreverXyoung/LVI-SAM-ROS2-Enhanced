@@ -15,6 +15,7 @@
 #include <lvi_sam_msgs/msg/localization_reset.hpp>
 
 #include "estimator.h"
+#include "lvi_sam/internal_odom_metadata.hpp"
 #include "parameters.h"
 #include "utility/visualization.h"
 #include "lvi_sam/topic_names.hpp"
@@ -302,14 +303,30 @@ void odom_callback(const nav_msgs::msg::Odometry::ConstSharedPtr& odom_msg)
     for (std::size_t i = 0; i < 8; ++i)
         covariance_is_finite = covariance_is_finite &&
                                std::isfinite(odom_msg->pose.covariance[i]);
+    const double reset_id_value = odom_msg->pose.covariance[
+        lvi_sam::internal_odom_metadata::visual_prior::kResetId];
     if (!std::isfinite(rclcpp::Time(odom_msg->header.stamp).seconds()) ||
         !std::isfinite(position.x) || !std::isfinite(position.y) ||
         !std::isfinite(position.z) || !std::isfinite(orientation.x) ||
         !std::isfinite(orientation.y) || !std::isfinite(orientation.z) ||
         !std::isfinite(orientation.w) || quaternion_norm < 1e-9 ||
         !std::isfinite(velocity.x) || !std::isfinite(velocity.y) ||
-        !std::isfinite(velocity.z) || !covariance_is_finite)
+        !std::isfinite(velocity.z) || !covariance_is_finite ||
+        !std::isfinite(reset_id_value) || reset_id_value < 0.0 ||
+        std::abs(reset_id_value - std::round(reset_id_value)) > 1e-6)
         return;
+    const std::uint64_t reset_id = static_cast<std::uint64_t>(
+        std::llround(reset_id_value));
+    {
+        std::lock_guard<std::mutex> lock(m_reset);
+        // DDS does not order messages across the reset and odometry topics.
+        // Once a map generation is known, reject late odometry from an older
+        // generation instead of reintroducing it after the queue was cleared.
+        if (reset_id < latestLidarResetId)
+            return;
+        if (reset_id > latestLidarResetId)
+            latestLidarResetId = reset_id;
+    }
     std::lock_guard<std::mutex> lock(m_odom);
     const double odom_time = rclcpp::Time(odom_msg->header.stamp).seconds();
     if (last_odom_t >= 0.0 && odom_time <= last_odom_t)
@@ -404,6 +421,8 @@ void localization_reset_callback(
 
     if (reset_msg->source == "map_optimization") {
         std::lock_guard<std::mutex> lock(m_reset);
+        if (reset_msg->reset_id < latestLidarResetId)
+            return;
         latestLidarResetId = reset_msg->reset_id;
     }
 
