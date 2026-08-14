@@ -21,6 +21,7 @@
 #include <filesystem>
 #include <stdexcept>
 #include <algorithm>
+#include <cstdint>
 #include <limits>
 #include <map>
 #include <memory>
