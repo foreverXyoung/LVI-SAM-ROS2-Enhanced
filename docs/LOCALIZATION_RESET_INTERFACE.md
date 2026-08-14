@@ -59,7 +59,10 @@ not reset the LiDAR map or increment the LiDAR-owned `reset_id`.
    stale data.
 4. A receiver must clear queued data from the previous generation before
    accepting new data. This is the important distinction from merely resetting
-   an estimator flag.
+   an estimator flag. It must also retain monotonic timestamp watermarks across
+   the reset; otherwise a delayed DDS sample can be mistaken for the first
+   sample of the new generation. The propagation node keeps the LiDAR anchor
+   invalid until a fresh LiDAR odometry sample arrives.
 
 ## Staged rollout
 
