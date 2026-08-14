@@ -63,7 +63,11 @@ ros2 topic echo /lio_sam/localization/reset
 ```bash
 cd /data/return_station_ws/src/LVI-SAM-ROS2-Enhanced
 git fetch origin agent/visual-rviz-defaults
-git switch agent/visual-rviz-defaults
+if git show-ref --verify --quiet refs/heads/agent/visual-rviz-defaults; then
+  git switch agent/visual-rviz-defaults
+else
+  git switch --track -c agent/visual-rviz-defaults origin/agent/visual-rviz-defaults
+fi
 git pull --ff-only origin agent/visual-rviz-defaults
 
 cd /data/return_station_ws
