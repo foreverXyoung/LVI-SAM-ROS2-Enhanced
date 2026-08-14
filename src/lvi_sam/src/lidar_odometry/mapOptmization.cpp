@@ -1661,6 +1661,7 @@ public:
             }
 
             publishOdometry();
+            publishRegisteredRawCloud();
 
             // This is an algorithm input for VIS depth registration, not an
             // RViz-only diagnostic topic.
@@ -3704,6 +3705,27 @@ public:
         pubLaserOdometryIncremental->publish(laserOdomIncremental);
     }
 
+    // Publish the accepted, deskewed scan after applying the current
+    // LiDAR-to-odometry pose.  This is intentionally independent of RViz:
+    // downstream depth/registration stages use this topic as an algorithm
+    // input, not only as a visualization topic.
+    void publishRegisteredRawCloud() {
+        if (pubCloudRegisteredRaw->get_subscription_count() == 0) return;
+        if (!cloudInfo.cloud_deskewed || cloudInfo.cloud_deskewed->empty()) {
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 2000,
+                "Skipping cloud_registered_raw publication: accepted deskewed cloud is empty");
+            return;
+        }
+
+        PointTypePose currentPose = trans2PointTypePose(transformTobeMapped);
+        auto registeredCloud = transformPointCloud(cloudInfo.cloud_deskewed, &currentPose);
+        if (!registeredCloud || registeredCloud->empty()) return;
+
+        publishCloud(pubCloudRegisteredRaw, registeredCloud,
+                     cloudInfo.header.stamp, odometryFrame);
+    }
+
     void publishFrames() {
         if (cloudKeyPoses3D->points.empty()) return;
         // publish key poses
@@ -3718,14 +3740,6 @@ public:
             *cloudOut += *transformPointCloud(laserCloudSurfLastDS, &thisPose6D);
             publishCloud(pubRecentKeyFrame, cloudOut, timeLaserInfoStamp, odometryFrame);
         }
-        // publish registered high-res raw cloud
-        // if (pubCloudRegisteredRaw->get_subscription_count() != 0) {
-        //     pcl::PointCloud<PointType>::Ptr cloudOut(new pcl::PointCloud<PointType>());
-        //     pcl::fromROSMsg(cloudInfo.cloud_deskewed, *cloudOut);
-        //     PointTypePose thisPose6D = trans2PointTypePose(transformTobeMapped);
-        //     *cloudOut = *transformPointCloud(cloudOut, &thisPose6D);
-        //     publishCloud(pubCloudRegisteredRaw, cloudOut, timeLaserInfoStamp, odometryFrame);
-        // }
         // publish path
         if (pubPath->get_subscription_count() != 0) {
             globalPath.header.stamp = timeLaserInfoStamp;

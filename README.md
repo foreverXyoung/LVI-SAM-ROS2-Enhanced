@@ -194,6 +194,7 @@ ros2 launch lvi_sam run.launch.py \
 | `/lio_sam/mapping/odometry` | `nav_msgs/Odometry` | LIS 里程计 → 对外 |
 | `/odometry/imu` | `nav_msgs/Odometry` | **LIS → VIS 位姿+尺度先验** |
 | `/lio_sam/deskew/cloud_deskewed` | `sensor_msgs/PointCloud2` | **LIS → VIS 激光深度** |
+| `/lio_sam/mapping/cloud_registered_raw` | `sensor_msgs/PointCloud2` | 当前去畸变扫描注册到 `odometryFrame`，供后续深度/配准流程 |
 | `/lvi_sam/vins/loop/match_frame` | `std_msgs/Float64MultiArray` | **VIS → LIS 视觉回环候选** |
 | `/lio_sam/mapping/cloud_registered` | `sensor_msgs/PointCloud2` | LIS 建图点云 |
 

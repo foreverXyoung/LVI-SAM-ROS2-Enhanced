@@ -194,6 +194,7 @@ TF 查询作为物理外参兜底。
 | LIS 输出 | `/lio_sam/mapping/odometry` | `nav_msgs/msg/Odometry` |
 | LIS→VIS | `/odometry/imu` | `nav_msgs/msg/Odometry`（含内部兼容元数据） |
 | LIS→VIS | `/lio_sam/deskew/cloud_deskewed` | `sensor_msgs/msg/PointCloud2` |
+| LIS 输出 | `/lio_sam/mapping/cloud_registered_raw` | `sensor_msgs/msg/PointCloud2`（当前去畸变扫描按当前 LiDAR 位姿注册到 `odometryFrame`） |
 | VIS→LIS | `/lvi_sam/vins/loop/match_frame` | `std_msgs/msg/Float64MultiArray` |
 
 完整 QoS、坐标系、时间和内部元数据语义见

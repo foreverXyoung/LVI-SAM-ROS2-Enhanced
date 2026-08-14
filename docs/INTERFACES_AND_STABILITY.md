@@ -88,6 +88,7 @@ URDF/Xacro 都必须使用绝对路径。入口会在创建节点前检查文件
 | `/lio_sam/mapping/odometry_incremental` | `nav_msgs/msg/Odometry` | 地图优化增量结果，`child_frame_id=lidarFrame` |
 | `/lio_sam/deskew/cloud_deskewed` | `sensor_msgs/msg/PointCloud2` | 去畸变点云，可选供 VIS 深度注册 |
 | `/lio_sam/mapping/cloud_registered` | `sensor_msgs/msg/PointCloud2` | 已注册点云，供 RViz/下游定位使用 |
+| `/lio_sam/mapping/cloud_registered_raw` | `sensor_msgs/msg/PointCloud2` | 当前已接受扫描的高分辨率注册点云，供后续深度/配准流程；`frame_id=odometryFrame` |
 | `/lio_sam/mapping/icp_loop_closure_history_cloud` | `sensor_msgs/msg/PointCloud2` | 回环候选的历史局部点云，仅用于诊断 |
 | `/lio_sam/mapping/icp_loop_closure_corrected_cloud` | `sensor_msgs/msg/PointCloud2` | ICP 对齐后的回环点云，仅用于诊断 |
 | `/lio_sam/localization/state` | `std_msgs/msg/String` | 定位状态机输出 |

@@ -236,6 +236,17 @@ ros2 launch lvi_sam run.launch.py \
   use_sim_time:=false
 ```
 
+启动后应同时检查注册高分辨率扫描；该话题不依赖 `enable_rviz`，关闭 RViz 后仍应有数据：
+
+```bash
+timeout 15 ros2 topic hz /lio_sam/mapping/cloud_registered_raw
+ros2 topic echo /lio_sam/mapping/cloud_registered_raw --once --field header
+```
+
+正常情况下频率应接近实际处理帧率，`frame_id` 应为配置中的 `odometryFrame`（当前实机通常为
+`odom`），时间戳应随当前雷达扫描递增。它发布的是已经过范围/本体过滤、投影和去畸变的高分辨率
+点云，不是未处理的 `/livox/lidar` CustomMsg。
+
 保持机器人静止并记录外置 IMU 结果后，使用新的空地图目录切换到 MID-360 内置 IMU：
 
 ```bash

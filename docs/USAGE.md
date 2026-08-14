@@ -143,6 +143,7 @@ ros2 topic echo /lvi_sam/vins/loop/match_frame --once
 # 四大对外/topic 是否正常
 ros2 topic hz /lio_sam/mapping/odometry
 ros2 topic hz /lio_sam/mapping/cloud_registered
+ros2 topic hz /lio_sam/mapping/cloud_registered_raw
 ```
 
 ### 关键话题一览
@@ -157,6 +158,7 @@ ros2 topic hz /lio_sam/mapping/cloud_registered
 | `/lvi_sam/vins/loop/match_frame` | `std_msgs/Float64MultiArray` | **VIS→LIS** 视觉回环候选 `[cur_ts, old_ts]` |
 | `/lio_sam/mapping/odometry` | `nav_msgs/Odometry` | LIS 对外里程计 |
 | `/lio_sam/mapping/cloud_registered` | `sensor_msgs/PointCloud2` | LIS 建图点云 |
+| `/lio_sam/mapping/cloud_registered_raw` | `sensor_msgs/PointCloud2` | 当前扫描经 `transformTobeMapped` 注册到 `odometryFrame` 的高分辨率点云；不依赖 RViz 开关 |
 
 > `odom_topic` 会同时覆盖 LIS 的 `odomTopic` 与 VIS 的 `odom_topic`。不要只 remap
 > 其中一侧，否则会切断位姿/尺度先验。默认统一使用绝对话题 `/odometry/imu`。

@@ -139,6 +139,13 @@ LiDAR-camera 全局对齐继续关闭，避免一次引入多条耦合链路。
 
 ### 3.4 本次复审确认并修正的问题
 
+- 恢复 `/lio_sam/mapping/cloud_registered_raw` 的实际发布。原实现只创建了 publisher，
+  注册高分辨率点云的代码整段处于注释状态；同时原代码把它放在受 `useRviz` 和关键帧非空条件
+  控制的 `publishFrames()` 中。现在它在每个已接受的处理帧完成当前位姿更新后独立发布，不再
+  依赖 RViz，也不再因为首个关键帧尚未保存而丢失首帧。输出使用现有的
+  `cloudInfo.cloud_deskewed`（已投影、去畸变并经过距离/本体过滤的高分辨率扫描），按
+  `transformTobeMapped` 转到 `odometryFrame`，时间戳沿用该扫描的 header。它不是未经处理的
+  Livox 原始 CustomMsg；未通过输入校验、定位尚未初始化或没有进入处理周期的扫描不会发布。
 - 视觉回环匹配图仍使用 OpenCV 2/3 时代的 `CV_GRAY2RGB` 宏，在 Orin 的 OpenCV 4.8
   编译失败；已改为命名空间化的 `cv::COLOR_GRAY2RGB`。GCC 关于 C++17 `std::pair` 参数传递
   变化的输出只是 ABI note，不是构建错误。
