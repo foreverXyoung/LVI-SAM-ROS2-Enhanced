@@ -14,10 +14,13 @@
 // #include <gtsam_unstable/nonlinear/IncrementalFixedLagSmoother.h>
 
 #include <cmath>
+#include <cstdint>
+#include <limits>
 #include <memory>
 
 #include "utility.hpp"
 #include "lvi_sam/internal_odom_metadata.hpp"
+#include "lvi_sam_msgs/msg/localization_reset.hpp"
 
 using gtsam::symbol_shorthand::B;  // Bias  (ax,ay,az,gx,gy,gz)
 using gtsam::symbol_shorthand::V;  // Vel   (xdot,ydot,zdot)
@@ -31,6 +34,8 @@ public:
 
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subImuOdometry;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subLaserOdometry;
+    rclcpp::Subscription<lvi_sam_msgs::msg::LocalizationReset>::SharedPtr
+        subLocalizationReset;
 
     rclcpp::CallbackGroup::SharedPtr callbackGroupImuOdometry;
     rclcpp::CallbackGroup::SharedPtr callbackGroupLaserOdometry;
@@ -47,6 +52,11 @@ public:
 
     double lidarOdomTime = -1;
     deque<nav_msgs::msg::Odometry> imuOdomQueue;
+    nav_msgs::msg::Path imuPath;
+    double lastPathTime = -1.0;
+    std::string lastResetSource;
+    std::uint64_t lastResetEventId = 0;
+    bool hasLastResetEvent = false;
 
     explicit TransformFusion(const rclcpp::NodeOptions& options)
         : ParamServer("TransformFusionParamServer", options) {
@@ -83,6 +93,10 @@ public:
             "lio_sam/mapping/odometry", qos, std::bind(&TransformFusion::lidarOdometryHandler, this, std::placeholders::_1), laserOdomOpt);
         subImuOdometry = create_subscription<nav_msgs::msg::Odometry>(odomTopic + "_incremental", qos_imu,
                                                                       std::bind(&TransformFusion::imuOdometryHandler, this, std::placeholders::_1), imuOdomOpt);
+        subLocalizationReset = create_subscription<lvi_sam_msgs::msg::LocalizationReset>(
+            localizationResetTopic, rclcpp::QoS(10).reliable(),
+            std::bind(&TransformFusion::localizationResetHandler, this,
+                      std::placeholders::_1), odomOpt);
 
         pubImuOdometry = create_publisher<nav_msgs::msg::Odometry>(odomTopic, qos_imu);
         pubImuPath = create_publisher<nav_msgs::msg::Path>("lio_sam/imu/path", qos);
@@ -124,6 +138,31 @@ public:
 
         lidarOdomAffine = odom2affine(*odomMsg);
         lidarOdomTime = timestamp;
+    }
+
+    void localizationResetHandler(
+        const lvi_sam_msgs::msg::LocalizationReset::SharedPtr msg) {
+        if (!msg) return;
+        std::lock_guard<std::mutex> lock(mtx);
+        if (hasLastResetEvent && lastResetSource == msg->source &&
+            lastResetEventId == msg->event_id) {
+            return;
+        }
+        lastResetSource = msg->source;
+        lastResetEventId = msg->event_id;
+        hasLastResetEvent = true;
+        if (!msg->reset_imu) return;
+
+        imuOdomQueue.clear();
+        lidarOdomTime = -1.0;
+        lidarOdomAffine.setIdentity();
+        imuPath.poses.clear();
+        lastPathTime = -1.0;
+        RCLCPP_INFO(
+            get_logger(),
+            "Applied localization reset event: source=%s reason=%u reset_id=%llu detail=%s",
+            msg->source.c_str(), static_cast<unsigned int>(msg->reason),
+            static_cast<unsigned long long>(msg->reset_id), msg->detail.c_str());
     }
 
     void imuOdometryHandler(const nav_msgs::msg::Odometry::SharedPtr odomMsg) {
@@ -213,11 +252,9 @@ public:
         }
 
         // publish IMU path
-        static nav_msgs::msg::Path imuPath;
-        static double last_path_time = -1;
         double imuTime = stamp2Sec(imuOdomQueue.back().header.stamp);
-        if (imuTime - last_path_time > 0.1) {
-            last_path_time = imuTime;
+        if (imuTime - lastPathTime > 0.1) {
+            lastPathTime = imuTime;
             geometry_msgs::msg::PoseStamped pose_stamped;
             pose_stamped.header.stamp = imuOdomQueue.back().header.stamp;
             pose_stamped.header.frame_id = odometryFrame;
@@ -239,7 +276,11 @@ public:
 
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr subImu;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr subOdometry;
+    rclcpp::Subscription<lvi_sam_msgs::msg::LocalizationReset>::SharedPtr
+        subLocalizationReset;
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubImuOdometry;
+    rclcpp::Publisher<lvi_sam_msgs::msg::LocalizationReset>::SharedPtr
+        pubLocalizationReset;
     // rclcpp::Publisher<autorccar_interfaces::msg::NavState>::SharedPtr pubNavState;
 
     rclcpp::CallbackGroup::SharedPtr callbackGroupImu;
@@ -282,6 +323,10 @@ public:
     int key = 1;
     int imuPreintegrationResetId = 0;
     double lastCorrectionTime = -1.0;
+    std::uint64_t localizationResetEventSequence = 0;
+    std::string lastResetSource;
+    std::uint64_t lastResetEventId = 0;
+    bool hasLastResetEvent = false;
 
     // imuToLidarTranslation is the lever arm from the physical IMU origin to the
     // LiDAR origin, expressed in the raw IMU axes (the same convention as the
@@ -315,8 +360,14 @@ public:
         subImu = create_subscription<sensor_msgs::msg::Imu>(imuTopic, qos_imu, std::bind(&IMUPreintegration::imuHandler, this, std::placeholders::_1), imuOpt);
         subOdometry = create_subscription<nav_msgs::msg::Odometry>("lio_sam/mapping/odometry_incremental", qos,
                                                                    std::bind(&IMUPreintegration::odometryHandler, this, std::placeholders::_1), odomOpt);
+        subLocalizationReset = create_subscription<lvi_sam_msgs::msg::LocalizationReset>(
+            localizationResetTopic, rclcpp::QoS(10).reliable(),
+            std::bind(&IMUPreintegration::localizationResetHandler, this,
+                      std::placeholders::_1), odomOpt);
 
         pubImuOdometry = create_publisher<nav_msgs::msg::Odometry>(odomTopic + "_incremental", qos_imu);
+        pubLocalizationReset = create_publisher<lvi_sam_msgs::msg::LocalizationReset>(
+            localizationResetTopic, rclcpp::QoS(10).reliable());
         // pubNavState = create_publisher<autorccar_interfaces::msg::NavState>("/nav_topic", 10);
 
         boost::shared_ptr<gtsam::PreintegrationParams> p = gtsam::PreintegrationParams::MakeSharedU(imuGravity);
@@ -354,9 +405,87 @@ public:
     }
 
     void resetParams() {
+        imuQueOpt.clear();
+        imuQueImu.clear();
+        lastImuT_received = -1;
         lastImuT_imu = -1;
+        lastImuT_opt = -1;
+        lastCorrectionTime = -1.0;
         doneFirstOpt = false;
         systemInitialized = false;
+        key = 1;
+        resetOptimization();
+        const gtsam::imuBias::ConstantBias zeroBias;
+        if (imuIntegratorOpt_) {
+            imuIntegratorOpt_->resetIntegrationAndSetBias(zeroBias);
+        }
+        if (imuIntegratorImu_) {
+            imuIntegratorImu_->resetIntegrationAndSetBias(zeroBias);
+        }
+    }
+
+    void publishImuFailureResetEvent(const std::string& detail) {
+        ++localizationResetEventSequence;
+        if (!pubLocalizationReset) return;
+        lvi_sam_msgs::msg::LocalizationReset msg;
+        msg.header.stamp = this->now().to_msg();
+        msg.header.frame_id = odometryFrame;
+        msg.event_id = localizationResetEventSequence;
+        msg.reset_id = static_cast<std::uint64_t>(
+            std::max(0, imuPreintegrationResetId));
+        msg.reason = lvi_sam_msgs::msg::LocalizationReset::REASON_IMU_FAILURE;
+        msg.source = "imu_preintegration";
+        msg.reset_imu = true;
+        msg.restart_visual = true;
+        msg.detail = detail;
+        pubLocalizationReset->publish(msg);
+        RCLCPP_WARN(
+            get_logger(),
+            "Published IMU failure reset event: reset_id=%llu event_id=%llu detail=%s",
+            static_cast<unsigned long long>(msg.reset_id),
+            static_cast<unsigned long long>(msg.event_id), detail.c_str());
+    }
+
+    void localizationResetHandler(
+        const lvi_sam_msgs::msg::LocalizationReset::SharedPtr msg) {
+        if (!msg) return;
+        std::lock_guard<std::mutex> lock(mtx);
+        if (hasLastResetEvent && lastResetSource == msg->source &&
+            lastResetEventId == msg->event_id) {
+            return;
+        }
+        lastResetSource = msg->source;
+        lastResetEventId = msg->event_id;
+        hasLastResetEvent = true;
+        if (!msg->reset_imu) return;
+
+        // If the compatibility covariance channel already carried this
+        // map-owned generation, the state has already been reset. This guard
+        // prevents a late event from discarding new IMU samples.
+        if (msg->source == "map_optimization" &&
+            msg->reset_id == static_cast<std::uint64_t>(
+                std::max(0, imuPreintegrationResetId))) {
+            return;
+        }
+        if (msg->source == "map_optimization" &&
+            msg->reset_id > static_cast<std::uint64_t>(
+                std::numeric_limits<int>::max())) {
+            RCLCPP_ERROR(
+                get_logger(),
+                "Ignoring map reset_id=%llu because the legacy covariance metadata is int-sized",
+                static_cast<unsigned long long>(msg->reset_id));
+            return;
+        }
+
+        resetParams();
+        if (msg->source == "map_optimization") {
+            imuPreintegrationResetId = static_cast<int>(msg->reset_id);
+        }
+        RCLCPP_INFO(
+            get_logger(),
+            "Applied localization reset event: source=%s reason=%u reset_id=%llu detail=%s",
+            msg->source.c_str(), static_cast<unsigned int>(msg->reason),
+            static_cast<unsigned long long>(msg->reset_id), msg->detail.c_str());
     }
 
     bool integrateImuMeasurement(
@@ -568,6 +697,7 @@ public:
         // check optimization
         if (failureDetection(prevVel_, prevBias_)) {
             resetParams();
+            publishImuFailureResetEvent("optimized_velocity_or_bias_threshold");
             return;
         }
 
