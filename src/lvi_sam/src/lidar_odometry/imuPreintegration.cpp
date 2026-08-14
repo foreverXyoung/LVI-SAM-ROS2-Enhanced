@@ -57,6 +57,8 @@ public:
     std::string lastResetSource;
     std::uint64_t lastResetEventId = 0;
     bool hasLastResetEvent = false;
+    std::uint64_t resetGeneration = 0;
+    bool hasResetGeneration = false;
 
     explicit TransformFusion(const rclcpp::NodeOptions& options)
         : ParamServer("TransformFusionParamServer", options) {
@@ -124,6 +126,36 @@ public:
                quaternionNorm > 1e-9;
     }
 
+    void clearPropagationState() {
+        imuOdomQueue.clear();
+        lidarOdomTime = -1.0;
+        lidarOdomAffine.setIdentity();
+        imuPath.poses.clear();
+        lastPathTime = -1.0;
+    }
+
+    bool acceptResetGeneration(
+        const nav_msgs::msg::Odometry& odom,
+        const std::size_t metadataIndex) {
+        const double resetIdValue = odom.pose.covariance[metadataIndex];
+        if (!std::isfinite(resetIdValue) || resetIdValue < 0.0 ||
+            std::abs(resetIdValue - std::round(resetIdValue)) > 1e-6)
+            return false;
+        const auto resetId = static_cast<std::uint64_t>(
+            std::llround(resetIdValue));
+        if (hasResetGeneration && resetId < resetGeneration)
+            return false;
+        const bool generationChanged =
+            !hasResetGeneration || resetId > resetGeneration;
+        if (generationChanged) {
+            if (hasResetGeneration)
+                clearPropagationState();
+            resetGeneration = resetId;
+            hasResetGeneration = true;
+        }
+        return true;
+    }
+
     void lidarOdometryHandler(const nav_msgs::msg::Odometry::SharedPtr odomMsg) {
         std::lock_guard<std::mutex> lock(mtx);
 
@@ -135,6 +167,10 @@ public:
                 "Discarding invalid or non-monotonic LiDAR odometry");
             return;
         }
+        if (!acceptResetGeneration(
+                *odomMsg,
+                lvi_sam::internal_odom_metadata::mapping_correction::kResetId))
+            return;
 
         lidarOdomAffine = odom2affine(*odomMsg);
         lidarOdomTime = timestamp;
@@ -153,11 +189,12 @@ public:
         hasLastResetEvent = true;
         if (!msg->reset_imu) return;
 
-        imuOdomQueue.clear();
-        lidarOdomTime = -1.0;
-        lidarOdomAffine.setIdentity();
-        imuPath.poses.clear();
-        lastPathTime = -1.0;
+        if (hasResetGeneration && msg->reset_id < resetGeneration)
+            return;
+        resetGeneration = msg->reset_id;
+        hasResetGeneration = true;
+
+        clearPropagationState();
         RCLCPP_INFO(
             get_logger(),
             "Applied localization reset event: source=%s reason=%u reset_id=%llu detail=%s",
@@ -177,6 +214,10 @@ public:
                 "Discarding invalid or non-monotonic IMU odometry");
             return;
         }
+        if (!acceptResetGeneration(
+                *odomMsg,
+                lvi_sam::internal_odom_metadata::visual_prior::kResetId))
+            return;
 
         imuOdomQueue.push_back(*odomMsg);
         if (imuOdomQueue.size() > kMaxImuOdomQueueSize) {
