@@ -35,6 +35,7 @@
 
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
+#include <lvi_sam_msgs/msg/localization_reset.hpp>
 #include <lvi_sam_msgs/msg/localization_status.hpp>
 #include <std_msgs/msg/float32.hpp>
 #include <std_msgs/msg/string.hpp>
@@ -279,6 +280,8 @@ public:
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pubLocalizationState;
     rclcpp::Publisher<lvi_sam_msgs::msg::LocalizationStatus>::SharedPtr
         pubLocalizationStatus;
+    rclcpp::Publisher<lvi_sam_msgs::msg::LocalizationReset>::SharedPtr
+        pubLocalizationReset;
     rclcpp::TimerBase::SharedPtr localizationStatusTimer;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr srvForceRelocalize;
 
@@ -360,6 +363,11 @@ public:
         localizationStatusQos.reliable().transient_local();
         pubLocalizationStatus = create_publisher<lvi_sam_msgs::msg::LocalizationStatus>(
             "lio_sam/localization/status", localizationStatusQos);
+        rclcpp::QoS localizationResetQos(10);
+        localizationResetQos.reliable().durability_volatile();
+        pubLocalizationReset =
+            create_publisher<lvi_sam_msgs::msg::LocalizationReset>(
+                localizationResetTopic, localizationResetQos);
 
         downSizeFilterCorner.setLeafSize(mappingCornerLeafSize, mappingCornerLeafSize, mappingCornerLeafSize);
         downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
@@ -554,6 +562,7 @@ public:
     uint8_t previousStructuredLocalizationState = 255;
     uint64_t localizationStatusTransitionSequence = 0;
     uint32_t localizationLossCount = 0;
+    uint64_t localizationResetEventSequence = 0;
     rclcpp::Time localizationStateEnteredAt{0, 0, RCL_ROS_TIME};
     rclcpp::Time lastValidLocalizationPoseAt{0, 0, RCL_ROS_TIME};
     rclcpp::Time lastLocalizationLossAt{0, 0, RCL_ROS_TIME};
@@ -611,6 +620,49 @@ public:
                 return "ERROR";
             default:
                 return "UNKNOWN";
+        }
+    }
+
+    void publishMapResetEvent(
+        const uint8_t reason,
+        const bool resetImu,
+        const bool restartVisual,
+        const std::string& detail) {
+        // This is the existing internal generation consumed through odometry
+        // covariance metadata. Keep it owned by mapOptimization and advance
+        // it exactly once for every accepted map-basis change.
+        ++imuPreintegrationResetId;
+        ++localizationResetEventSequence;
+        if (!pubLocalizationReset) return;
+
+        lvi_sam_msgs::msg::LocalizationReset msg;
+        msg.header.stamp = this->now().to_msg();
+        msg.header.frame_id = odometryFrame;
+        msg.event_id = localizationResetEventSequence;
+        msg.reset_id = static_cast<uint64_t>(std::max(0, imuPreintegrationResetId));
+        msg.reason = reason;
+        msg.source = "map_optimization";
+        msg.reset_imu = resetImu;
+        msg.restart_visual = restartVisual;
+        msg.detail = detail;
+        pubLocalizationReset->publish(msg);
+        RCLCPP_INFO(
+            get_logger(),
+            "Published localization reset: reason=%u reset_id=%llu event_id=%llu detail=%s",
+            static_cast<unsigned int>(reason),
+            static_cast<unsigned long long>(msg.reset_id),
+            static_cast<unsigned long long>(msg.event_id),
+            detail.c_str());
+    }
+
+    void markLocalizationInitialized(const std::string& detail) {
+        const bool wasInitialized =
+            LocInitSta == InitializedFlag::Initialized;
+        LocInitSta = InitializedFlag::Initialized;
+        if (!wasInitialized) {
+            publishMapResetEvent(
+                lvi_sam_msgs::msg::LocalizationReset::REASON_RELOCALIZATION,
+                true, true, detail);
         }
     }
 
@@ -754,6 +806,9 @@ public:
         relocalizationAttemptCount = 0;
         rtkInitializationSamples.clear();
         resetInitialGuessSeed = true;
+        publishMapResetEvent(
+            lvi_sam_msgs::msg::LocalizationReset::REASON_FORCE_RELOCALIZATION,
+            true, true, "force_relocalize_service");
         publishLocalizationState(true);
 
         response->success = true;
@@ -1318,7 +1373,7 @@ public:
         lastPoses3D.z = transformTobeMapped[5] = init_guess.size() >= 6 ? init_guess[5] : 0.0;
         lastPoses6D = trans2PointTypePose(transformTobeMapped);
         lastPoses6D.time = timeLaserInfoCur;
-        LocInitSta = InitializedFlag::Initialized;
+        markLocalizationInitialized("rtk_initialization");
         rtkInitializationSamples.clear();
         RCLCPP_INFO(get_logger(),
                     "Localization initialized from %d stable map-aligned RTK samples: x=%.3f y=%.3f yaw=%.3f heading=%s",
@@ -1488,7 +1543,7 @@ public:
 
         std::cout << "[ReLoc is OK] the pose loop is: x" << x << " y" << y << " z" << z << std::endl;
 
-        LocInitSta = InitializedFlag::Initialized;
+        markLocalizationInitialized("scan_context_icp_relocalization");
         publishLocalizationState(true);
     }
 
@@ -1575,6 +1630,9 @@ public:
                         dynamicFilterFrameCount = 0;
                         rtkInitializationSamples.clear();
                         resetInitialGuessSeed = true;
+                        publishMapResetEvent(
+                            lvi_sam_msgs::msg::LocalizationReset::REASON_RELOCALIZATION,
+                            true, true, "localization_lost");
                         RCLCPP_ERROR(get_logger(), "Localization lost, switch back to relocalizing");
                     }
                     return;
@@ -2448,7 +2506,7 @@ public:
                 lastPoses6D = trans2PointTypePose(transformTobeMapped);
                 lastPoses6D.time = timeLaserInfoCur;
 
-                LocInitSta = InitializedFlag::Initialized;
+                markLocalizationInitialized("configured_initial_guess");
             }
 
             lastImuTransformation = pcl::getTransformation(0, 0, 0, cloudInfo.imu_roll_init, cloudInfo.imu_pitch_init, cloudInfo.imu_yaw_init);
@@ -3533,7 +3591,9 @@ public:
             }
 
             aLoopIsClosed = false;
-            ++imuPreintegrationResetId;
+            publishMapResetEvent(
+                lvi_sam_msgs::msg::LocalizationReset::REASON_MAP_CORRECTION,
+                true, true, "loop_closure_graph_correction");
         }
     }
 

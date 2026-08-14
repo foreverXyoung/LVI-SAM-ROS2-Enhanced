@@ -92,6 +92,13 @@ def generate_launch_description():
         'odom_topic', default_value='/odometry/imu',
         description='LIS IMU preintegration output and VIS odometry-prior input')
 
+    localization_reset_topic_arg = DeclareLaunchArgument(
+        'localization_reset_topic',
+        default_value='/lio_sam/localization/reset',
+        description=(
+            'Cross-component reset-event topic; must be absolute and is '
+            'shared by LIS and VIS nodes'))
+
     project_name_arg = DeclareLaunchArgument(
         'project_name', default_value='lvi_sam',
         description='Visual pipeline topic root; publishes under /<name>/vins')
@@ -154,6 +161,8 @@ def generate_launch_description():
             'mount_params_file').perform(context).strip()
         imu_topic = LaunchConfiguration('imu_topic').perform(context).strip()
         odom_topic = LaunchConfiguration('odom_topic').perform(context).strip()
+        localization_reset_topic = LaunchConfiguration(
+            'localization_reset_topic').perform(context).strip()
         project_name = LaunchConfiguration('project_name').perform(
             context).strip().strip('/')
         gps_topic = LaunchConfiguration('gps_topic').perform(context).strip()
@@ -194,6 +203,9 @@ def generate_launch_description():
             raise RuntimeError('use_sim_time must be true or false')
         if not odom_topic.strip():
             raise RuntimeError('odom_topic must not be empty')
+        if not localization_reset_topic.startswith('/'):
+            raise RuntimeError(
+                'localization_reset_topic must be an absolute topic')
         if not project_name:
             raise RuntimeError('project_name must not be empty')
         if not re.fullmatch(
@@ -289,6 +301,7 @@ def generate_launch_description():
             {'use_sim_time': use_sim_time == 'true'},
             {'imuTopic': selected_imu_topic},
             {'odomTopic': odom_topic},
+            {'localizationResetTopic': localization_reset_topic},
             {'publishFusedBaseTF': publish_fused_tf == 'true'},
             {'savePCDDirectory': pcd_directory},
             {'Loc': {'loadPCDDirectory': pcd_directory}},
@@ -300,6 +313,7 @@ def generate_launch_description():
             {'imu_topic': selected_imu_topic},
             {'odom_topic': odom_topic},
             {'image_topic': image_topic},
+            {'localization_reset_topic': localization_reset_topic},
             {'PROJECT_NAME': project_name},
             {'vins_config_file': camera_params},
         ]
@@ -406,6 +420,7 @@ def generate_launch_description():
         mount_params_arg,
         imu_topic_arg,
         odom_topic_arg,
+        localization_reset_topic_arg,
         project_name_arg,
         gps_topic_arg,
         enable_visual_arg,

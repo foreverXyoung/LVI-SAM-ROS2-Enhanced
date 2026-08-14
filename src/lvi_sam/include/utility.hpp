@@ -95,6 +95,9 @@ public:
     // Topics
     string pointCloudTopic, imuTopic;
     string odomTopic, gpsTopic;
+    // Cross-component reset-event topic. This is an explicit configuration
+    // input; no estimator reads a reset transform from the TF tree.
+    string localizationResetTopic;
 
     // Frames
     string lidarFrame, baselinkFrame, odometryFrame, mapFrame;
@@ -211,6 +214,9 @@ public:
         declare_and_get_parameter<std::string>("imuTopic", imuTopic, "imu/data");
         declare_and_get_parameter<std::string>("odomTopic", odomTopic, "/odometry/imu");
         declare_and_get_parameter<std::string>("gpsTopic", gpsTopic, "lio_sam/odometry/gps");
+        declare_and_get_parameter<std::string>(
+            "localizationResetTopic", localizationResetTopic,
+            "/lio_sam/localization/reset");
 
         declare_and_get_parameter<std::string>("lidarFrame", lidarFrame, "laser_data_frame");
         declare_and_get_parameter<std::string>("baselinkFrame", baselinkFrame, "base_link");
@@ -491,6 +497,8 @@ public:
         declare_and_get_parameter<float>("globalMapVisualizationLeafSize", globalMapVisualizationLeafSize, 1.0);
 
         if (pointCloudTopic.empty() || imuTopic.empty() || odomTopic.empty() ||
+            localizationResetTopic.empty() ||
+            localizationResetTopic.front() != '/' ||
             lidarFrame.empty() || baselinkFrame.empty() ||
             odometryFrame.empty() || mapFrame.empty()) {
             throw std::runtime_error(
