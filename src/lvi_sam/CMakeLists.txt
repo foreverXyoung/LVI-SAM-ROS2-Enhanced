@@ -246,6 +246,7 @@ install(
 install(
   PROGRAMS scripts/verify_localization_status.py
   DESTINATION lib/${PROJECT_NAME}
+  RENAME verify_localization_status
 )
 install(
   PROGRAMS scripts/validate_config.py
