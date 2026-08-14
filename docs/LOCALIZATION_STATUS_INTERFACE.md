@@ -43,7 +43,7 @@ the numeric `state` and `mode` constants.
 
 | Existing condition | `mode` | `state` | Legacy string | Meaning |
 |---|---:|---:|---|---|
-| `Loc.EnableFlag=false` | `MODE_MAPPING` | `MAPPING` | `MAPPING` | Mapping path is active; the adapter does not claim a prior-map pose. |
+| `Loc.EnableFlag=false` | `MODE_MAPPING` | `MAPPING` | unchanged/ not forced | Mapping path is active; the new structured topic is authoritative and the legacy string publisher is not changed to add a mapping heartbeat. |
 | `LocInitSta=NonInitialized` | `MODE_LOCALIZATION` | `RELOCALIZING` | `RELOCALIZING` | No valid prior-map initialization has been accepted yet. |
 | `LocInitSta=Initializing` | `MODE_LOCALIZATION` | `RELOCALIZING` | `RELOCALIZING` | The existing RTK/Scan Context/configured-guess initialization path is running. |
 | `LocInitSta=Initialized` | `MODE_LOCALIZATION` | `TRACKING` | `LOCALIZED` | Existing initialization succeeded; scan-to-map continues to decide output. |
@@ -107,6 +107,24 @@ ros2 interface show lvi_sam_msgs/msg/LocalizationStatus
 ros2 topic echo /lio_sam/localization/status --once
 ```
 
-Run the existing mapping, localization, lost, and
+The repository also installs a runtime contract checker. Run one case per
+launch session:
+
+```bash
+# mapping launch
+ros2 run lvi_sam verify_localization_status --case mapping
+
+# localization launch; wait for the prior-map initialization to succeed
+ros2 run lvi_sam verify_localization_status --case localization
+
+# localization launch; call the existing service and verify the state output
+ros2 run lvi_sam verify_localization_status --case force_relocalize
+
+# while deliberately reproducing the configured bad-match/lost condition
+ros2 run lvi_sam verify_localization_status --case lost --timeout 60
+```
+
+The `lost` case must be run while the transient loss is occurring; it does not
+inject faults. Run the existing mapping, localization, lost, and
 `/lio_sam/localization/force_relocalize` checks before enabling any later state
 machine behavior. The expected legacy topics and odometry must remain unchanged.

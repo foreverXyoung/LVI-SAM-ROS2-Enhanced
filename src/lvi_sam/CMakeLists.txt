@@ -244,6 +244,10 @@ install(
   RENAME gps_to_cartesian_node
 )
 install(
+  PROGRAMS scripts/verify_localization_status.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+install(
   PROGRAMS scripts/validate_config.py
   DESTINATION lib/${PROJECT_NAME}
   RENAME lvi_sam_validate_config
