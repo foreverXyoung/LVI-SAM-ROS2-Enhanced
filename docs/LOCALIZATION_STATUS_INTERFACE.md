@@ -59,7 +59,9 @@ from a localization state.
 - `pose_valid` is true only when the current legacy state is `Initialized` in
   localization mode. It is not a covariance or accuracy guarantee.
 - `odometry_valid` is a conservative availability flag for the active LiDAR
-  processing path; it is not a replacement for `/lio_sam/mapping/odometry`.
+  processing path; in localization mode it becomes true only after a
+  scan-to-map frame has succeeded. It is not a replacement for
+  `/lio_sam/mapping/odometry`.
 - `sensors_ready` reports that the adapter has observed the required LiDAR,
   IMU, and incremental-odometry inputs. A true value only means messages have
   arrived, not that calibration or timing is correct.

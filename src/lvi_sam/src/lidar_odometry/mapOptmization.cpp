@@ -547,6 +547,7 @@ public:
     bool hasIncrementalOdomInput = false;
     bool hasProcessedLidar = false;
     bool localizationLossEventPending = false;
+    bool hasValidLocalizationOdometry = false;
     uint32_t localizationConsecutiveSuccesses = 0;
     uint8_t lastStructuredLocalizationState = 255;
     uint8_t previousStructuredLocalizationState = 255;
@@ -678,7 +679,9 @@ public:
         const bool poseValid =
             LocEnableFlag && LocInitSta == InitializedFlag::Initialized;
         msg.pose_valid = poseValid;
-        msg.odometry_valid = hasProcessedLidar && (!LocEnableFlag || poseValid);
+        msg.odometry_valid = LocEnableFlag
+            ? hasValidLocalizationOdometry
+            : hasProcessedLidar;
         msg.sensors_ready =
             hasValidLidarInput && hasImuInput && hasIncrementalOdomInput;
         msg.map_ready = priorMapReady;
@@ -741,6 +744,7 @@ public:
         localizationBadMatchCount = 0;
         localizationConsecutiveSuccesses = 0;
         localizationLossEventPending = false;
+        hasValidLocalizationOdometry = false;
         dynamicFilterFrameCount = 0;
         relocalizationAttemptCount = 0;
         rtkInitializationSamples.clear();
@@ -1546,8 +1550,11 @@ public:
                 if (scanMatchOk) {
                     localizationBadMatchCount = 0;
                     ++localizationConsecutiveSuccesses;
+                    hasValidLocalizationOdometry = true;
+                    lastValidLocalizationPoseAt = this->now();
                 } else {
                     localizationConsecutiveSuccesses = 0;
+                    hasValidLocalizationOdometry = false;
                     ++localizationBadMatchCount;
                     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
                                          "Localization scan-to-map failed, skip this odometry frame. bad_count=%d/%d",
@@ -1559,6 +1566,7 @@ public:
                         LocInitSta = InitializedFlag::NonInitialized;
                         localizationBadMatchCount = 0;
                         localizationConsecutiveSuccesses = 0;
+                        hasValidLocalizationOdometry = false;
                         dynamicFilterFrameCount = 0;
                         rtkInitializationSamples.clear();
                         resetInitialGuessSeed = true;
