@@ -123,7 +123,12 @@ def verify_localization(
             status.mode == LocalizationStatus.MODE_LOCALIZATION
             and status.map_ready
             and status.state
-            in (LocalizationStatus.RELOCALIZING, LocalizationStatus.TRACKING)
+            in (
+                LocalizationStatus.RELOCALIZING,
+                LocalizationStatus.VERIFYING,
+                LocalizationStatus.DEGRADED,
+                LocalizationStatus.TRACKING,
+            )
         ),
         timeout,
         "localization status",
@@ -162,6 +167,19 @@ def verify_lost(verifier: StatusVerifier, timeout: float) -> bool:
     )
 
 
+def verify_quality_state(
+    verifier: StatusVerifier, timeout: float, state: int, description: str
+) -> bool:
+    return verifier.wait_for(
+        lambda status: (
+            status.mode == LocalizationStatus.MODE_LOCALIZATION
+            and status.state == state
+        ),
+        timeout,
+        description,
+    )
+
+
 def verify_force(verifier: StatusVerifier, timeout: float) -> bool:
     if not verifier.call_force_relocalize(timeout):
         return False
@@ -180,7 +198,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--case",
-        choices=("mapping", "localization", "lost", "force_relocalize"),
+        choices=(
+            "mapping",
+            "localization",
+            "verifying",
+            "degraded",
+            "lost",
+            "force_relocalize",
+        ),
         required=True,
     )
     parser.add_argument("--timeout", type=float, default=15.0)
@@ -201,6 +226,20 @@ def main() -> int:
         elif args.case == "localization":
             passed = verify_localization(
                 verifier, args.timeout, not args.allow_uninitialized
+            )
+        elif args.case == "verifying":
+            passed = verify_quality_state(
+                verifier,
+                args.timeout,
+                LocalizationStatus.VERIFYING,
+                "VERIFYING status",
+            )
+        elif args.case == "degraded":
+            passed = verify_quality_state(
+                verifier,
+                args.timeout,
+                LocalizationStatus.DEGRADED,
+                "DEGRADED status",
             )
         elif args.case == "lost":
             passed = verify_lost(verifier, args.timeout)

@@ -586,6 +586,8 @@ public:
         input.legacy_state = static_cast<
             lvi_sam::localization_status::LegacyState>(LocInitSta);
         input.loss_event_pending = localizationLossEventPending;
+        input.has_valid_localization_odometry = hasValidLocalizationOdometry;
+        input.consecutive_failures = localizationBadMatchCount;
         return lvi_sam::localization_status::project_state(input);
     }
 
@@ -663,6 +665,12 @@ public:
             case lvi_sam_msgs::msg::LocalizationStatus::TRACKING:
                 msg.reason = "legacy_localization_initialized";
                 break;
+            case lvi_sam_msgs::msg::LocalizationStatus::VERIFYING:
+                msg.reason = "awaiting_first_valid_scan_match";
+                break;
+            case lvi_sam_msgs::msg::LocalizationStatus::DEGRADED:
+                msg.reason = "scan_match_quality_degraded";
+                break;
             case lvi_sam_msgs::msg::LocalizationStatus::LOST:
                 msg.reason = "legacy_bad_match_threshold";
                 break;
@@ -683,7 +691,8 @@ public:
         msg.relocalization_active =
             state == lvi_sam_msgs::msg::LocalizationStatus::RELOCALIZING ||
             state == lvi_sam_msgs::msg::LocalizationStatus::LOST;
-        msg.quality_degraded = false;
+        msg.quality_degraded =
+            state == lvi_sam_msgs::msg::LocalizationStatus::DEGRADED;
 
         // Quality metrics are reserved for a later phase. -1 is the explicit
         // unknown sentinel and prevents consumers from mistaking a placeholder

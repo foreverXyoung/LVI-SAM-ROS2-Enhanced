@@ -20,6 +20,8 @@ struct ProjectionInput {
   bool mapping_mode = false;
   LegacyState legacy_state = LegacyState::NonInitialized;
   bool loss_event_pending = false;
+  bool has_valid_localization_odometry = false;
+  int consecutive_failures = 0;
 };
 
 inline std::uint8_t project_state(const ProjectionInput &input) {
@@ -35,6 +37,12 @@ inline std::uint8_t project_state(const ProjectionInput &input) {
     case LegacyState::Initializing:
       return Status::RELOCALIZING;
     case LegacyState::Initialized:
+      if (input.consecutive_failures > 0) {
+        return Status::DEGRADED;
+      }
+      if (!input.has_valid_localization_odometry) {
+        return Status::VERIFYING;
+      }
       return Status::TRACKING;
     case LegacyState::MayLost:
       return Status::LOST;

@@ -27,7 +27,22 @@ TEST(LocalizationStatusProjection, MapsInitializationStatesToRelocalizing) {
 TEST(LocalizationStatusProjection, MapsInitializedStateToTracking) {
   ProjectionInput input;
   input.legacy_state = LegacyState::Initialized;
+  input.has_valid_localization_odometry = true;
   EXPECT_EQ(project_state(input), Status::TRACKING);
+}
+
+TEST(LocalizationStatusProjection, ReportsVerificationBeforeFirstScanMatch) {
+  ProjectionInput input;
+  input.legacy_state = LegacyState::Initialized;
+  EXPECT_EQ(project_state(input), Status::VERIFYING);
+}
+
+TEST(LocalizationStatusProjection, ReportsDegradedAfterAFailedScanMatch) {
+  ProjectionInput input;
+  input.legacy_state = LegacyState::Initialized;
+  input.has_valid_localization_odometry = false;
+  input.consecutive_failures = 1;
+  EXPECT_EQ(project_state(input), Status::DEGRADED);
 }
 
 TEST(LocalizationStatusProjection, PreservesTransientLossEvent) {

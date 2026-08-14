@@ -24,9 +24,11 @@ This phase adds only:
 It does **not** change point-cloud filtering, scan matching, graph optimization,
 loop closure, TF, odometry values, or the existing force-relocalization service.
 
-The projection header currently preserves the four legacy paths exactly. It is
-the intended seam for the later `VERIFYING`/`DEGRADED` states; those states are
-not inferred or emitted until the four-path runtime checks pass.
+The projection header preserves the four legacy decision paths exactly. The
+`VERIFYING`/`DEGRADED` values are now emitted as observational quality states
+through that seam; they do not feed back into the legacy algorithm. Runtime
+regression of all four original paths is still required before the reset/IMU/
+VINS coupling work begins.
 
 ## Topic contract
 
@@ -51,18 +53,23 @@ the numeric `state` and `mode` constants.
 | `Loc.EnableFlag=false` | `MODE_MAPPING` | `MAPPING` | unchanged/ not forced | Mapping path is active; the new structured topic is authoritative and the legacy string publisher is not changed to add a mapping heartbeat. |
 | `LocInitSta=NonInitialized` | `MODE_LOCALIZATION` | `RELOCALIZING` | `RELOCALIZING` | No valid prior-map initialization has been accepted yet. |
 | `LocInitSta=Initializing` | `MODE_LOCALIZATION` | `RELOCALIZING` | `RELOCALIZING` | The existing RTK/Scan Context/configured-guess initialization path is running. |
-| `LocInitSta=Initialized` | `MODE_LOCALIZATION` | `TRACKING` | `LOCALIZED` | Existing initialization succeeded; scan-to-map continues to decide output. |
+| `LocInitSta=Initialized`, no successful scan-to-map frame yet | `MODE_LOCALIZATION` | `VERIFYING` | `LOCALIZED` | Initialization was accepted, but the adapter is waiting for the first successful scan-to-map frame. |
+| `LocInitSta=Initialized`, current bad-match count > 0 | `MODE_LOCALIZATION` | `DEGRADED` | `LOCALIZED` | The existing algorithm remains initialized, but the latest scan-to-map quality is degraded. |
+| `LocInitSta=Initialized`, current scan-to-map succeeds | `MODE_LOCALIZATION` | `TRACKING` | `LOCALIZED` | Existing initialization and the current scan-to-map frame are valid. |
 | `LocInitSta=MayLost` | `MODE_LOCALIZATION` | `LOST` | `LOST` | Existing bad-match threshold was reached. The adapter latches this transient event for one status publication, while the algorithm still immediately returns to `NonInitialized`. |
 
-`VERIFYING`, `DEGRADED`, `WAITING_FOR_SENSORS`, and `ERROR` are reserved for
-later phases and are not emitted by this adapter yet. `MAPPING` is an explicit
-structured state so an upper-layer state machine does not need to infer mapping
-from a localization state.
+`WAITING_FOR_SENSORS` and `ERROR` remain reserved for later phases. `MAPPING`
+is an explicit structured state so an upper-layer state machine does not need to
+infer mapping from a localization state. `VERIFYING` and `DEGRADED` are
+observational quality states only; they do not change the underlying matcher or
+relocalization decisions.
 
 ## Field semantics
 
-- `pose_valid` is true only when the current legacy state is `Initialized` in
-  localization mode. It is not a covariance or accuracy guarantee.
+- `pose_valid` is true when the current legacy state is `Initialized` in
+  localization mode, including `VERIFYING` and `DEGRADED`. It is not a
+  covariance or accuracy guarantee; upper layers should gate normal motion on
+  `TRACKING` instead.
 - `odometry_valid` is a conservative availability flag for the active LiDAR
   processing path; in localization mode it becomes true only after a
   scan-to-map frame has succeeded. It is not a replacement for
@@ -73,7 +80,7 @@ from a localization state.
 - `map_ready` is true after a prior map has been loaded successfully in
   localization mode and false in mapping mode.
 - `relocalization_active` is true for `RELOCALIZING` and `LOST`.
-- `quality_degraded` is reserved and remains false in phase 1.
+- `quality_degraded` is true only in `DEGRADED`.
 - `match_score`, `confidence`, and the three `*_age` fields are `-1.0` while
   their computation is not part of the frozen behavior. Consumers must not use
   these fields for control until a later contract revision.
@@ -93,7 +100,8 @@ logic must not parse it.
 The safe first integration is to gate navigation on the numeric state:
 
 - allow normal operation only in `MODE_LOCALIZATION + TRACKING`;
-- stop or hold motion in `RELOCALIZING`, `LOST`, or `ERROR`;
+- stop or hold motion in `RELOCALIZING`, `VERIFYING`, `DEGRADED`, `LOST`, or
+  `ERROR`;
 - treat `MAPPING` as a separate commissioning mode.
 
 Do not use the new status message to reset LVI-SAM, rewrite TF, or modify an
@@ -123,6 +131,10 @@ ros2 run lvi_sam verify_localization_status --case mapping
 
 # localization launch; wait for the prior-map initialization to succeed
 ros2 run lvi_sam verify_localization_status --case localization
+
+# optional quality-state observations during a controlled test
+ros2 run lvi_sam verify_localization_status --case verifying
+ros2 run lvi_sam verify_localization_status --case degraded
 
 # localization launch; call the existing service and verify the state output
 ros2 run lvi_sam verify_localization_status --case force_relocalize
