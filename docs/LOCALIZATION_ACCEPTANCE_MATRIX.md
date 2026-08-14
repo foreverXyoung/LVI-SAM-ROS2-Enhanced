@@ -24,7 +24,7 @@
 
 ## B. 复位联动阶段
 
-当前功能分支基线：`cc64433`（远端 `agent/visual-rviz-defaults`）。
+当前功能分支基线：`4bb5ca5`（远端 `agent/visual-rviz-defaults`）。
 
 ### B.1 地图代次复位
 
