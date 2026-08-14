@@ -1,5 +1,6 @@
 #include "utility.hpp"
 #include "lvi_sam/internal_odom_metadata.hpp"
+#include "lvi_sam/localization_status_projection.hpp"
 #include "file_tools.hpp"
 
 #include <gtsam/geometry/Rot3.h>
@@ -580,18 +581,12 @@ public:
     }
 
     uint8_t structuredLocalizationState() const {
-        if (!LocEnableFlag) return lvi_sam_msgs::msg::LocalizationStatus::MAPPING;
-        switch (LocInitSta) {
-            case InitializedFlag::NonInitialized:
-            case InitializedFlag::Initializing:
-                return lvi_sam_msgs::msg::LocalizationStatus::RELOCALIZING;
-            case InitializedFlag::Initialized:
-                return lvi_sam_msgs::msg::LocalizationStatus::TRACKING;
-            case InitializedFlag::MayLost:
-                return lvi_sam_msgs::msg::LocalizationStatus::LOST;
-            default:
-                return lvi_sam_msgs::msg::LocalizationStatus::STATE_UNKNOWN;
-        }
+        lvi_sam::localization_status::ProjectionInput input;
+        input.mapping_mode = !LocEnableFlag;
+        input.legacy_state = static_cast<
+            lvi_sam::localization_status::LegacyState>(LocInitSta);
+        input.loss_event_pending = localizationLossEventPending;
+        return lvi_sam::localization_status::project_state(input);
     }
 
     static std::string structuredLocalizationStateName(const uint8_t state) {

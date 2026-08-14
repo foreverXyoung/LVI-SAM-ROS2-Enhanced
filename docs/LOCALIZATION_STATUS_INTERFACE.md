@@ -15,6 +15,7 @@ and localization behavior can be compared against this commit at every step.
 This phase adds only:
 
 - the independent `lvi_sam_msgs` ROS 2 interface package;
+- a small, side-effect-free state projection header with unit coverage;
 - a structured status topic from `lvi_sam_mapOptimization`;
 - a compatibility mapping from the existing `LocInitSta` enum and legacy string
   topic; and
@@ -22,6 +23,10 @@ This phase adds only:
 
 It does **not** change point-cloud filtering, scan matching, graph optimization,
 loop closure, TF, odometry values, or the existing force-relocalization service.
+
+The projection header currently preserves the four legacy paths exactly. It is
+the intended seam for the later `VERIFYING`/`DEGRADED` states; those states are
+not inferred or emitted until the four-path runtime checks pass.
 
 ## Topic contract
 
