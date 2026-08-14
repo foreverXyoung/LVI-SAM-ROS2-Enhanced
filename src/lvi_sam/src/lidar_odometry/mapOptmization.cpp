@@ -33,6 +33,7 @@
 
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
+#include <lvi_sam_msgs/msg/localization_status.hpp>
 #include <std_msgs/msg/float32.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/trigger.hpp>
@@ -274,6 +275,9 @@ public:
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubDynamicFilterRejectedPoints;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr pubDynamicFilterKeepRatio;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pubLocalizationState;
+    rclcpp::Publisher<lvi_sam_msgs::msg::LocalizationStatus>::SharedPtr
+        pubLocalizationStatus;
+    rclcpp::TimerBase::SharedPtr localizationStatusTimer;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr srvForceRelocalize;
 
     /////////////////////////////////// SC Start ///////////////////////////////////
@@ -300,10 +304,24 @@ public:
         pubPath = create_publisher<nav_msgs::msg::Path>("lio_sam/mapping/path", 1);
         br = std::make_unique<tf2_ros::TransformBroadcaster>(this);
 
-        subImu = create_subscription<sensor_msgs::msg::Imu>(imuTopic, qos_imu,
-                                                            [this](const sensor_msgs::msg::Imu::SharedPtr msg) { imageProjection.imuHandler(msg); });
-        subOdom = create_subscription<nav_msgs::msg::Odometry>(odomTopic + "_incremental", qos_imu,
-                                                               [this](const nav_msgs::msg::Odometry::SharedPtr msg) { imageProjection.odometryHandler(msg); });
+        subImu = create_subscription<sensor_msgs::msg::Imu>(
+            imuTopic, qos_imu,
+            [this](const sensor_msgs::msg::Imu::SharedPtr msg) {
+                {
+                    std::lock_guard<std::mutex> lock(mtx);
+                    hasImuInput = true;
+                }
+                imageProjection.imuHandler(msg);
+            });
+        subOdom = create_subscription<nav_msgs::msg::Odometry>(
+            odomTopic + "_incremental", qos_imu,
+            [this](const nav_msgs::msg::Odometry::SharedPtr msg) {
+                {
+                    std::lock_guard<std::mutex> lock(mtx);
+                    hasIncrementalOdomInput = true;
+                }
+                imageProjection.odometryHandler(msg);
+            });
 
         subCloud = create_subscription<livox_ros_driver2::msg::CustomMsg>(pointCloudTopic, qos_lidar,
                                                                           std::bind(&MapOptimization::laserCloudInfoHandler, this, std::placeholders::_1));
@@ -336,6 +354,10 @@ public:
             create_publisher<std_msgs::msg::Float32>("lio_sam/localization/dynamic_filter/keep_ratio", 1);
         pubLocalizationState =
             create_publisher<std_msgs::msg::String>("lio_sam/localization/state", 1);
+        rclcpp::QoS localizationStatusQos(1);
+        localizationStatusQos.reliable().transient_local();
+        pubLocalizationStatus = create_publisher<lvi_sam_msgs::msg::LocalizationStatus>(
+            "lio_sam/localization/status", localizationStatusQos);
 
         downSizeFilterCorner.setLeafSize(mappingCornerLeafSize, mappingCornerLeafSize, mappingCornerLeafSize);
         downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
@@ -380,6 +402,13 @@ public:
         }
 
         InitLocationMode();
+        localizationStatusTimer = create_wall_timer(
+            std::chrono::milliseconds(200),
+            [this]() {
+                std::lock_guard<std::mutex> lock(mtx);
+                publishStructuredLocalizationStatus();
+            });
+        publishStructuredLocalizationStatus(true);
 
         // Mapping GPS factors and localization RTK assistance are independent
         // consumers of the same map-aligned odometry interface. Subscribe when
@@ -511,6 +540,19 @@ public:
     InitializedFlag LocInitSta = InitializedFlag::NonInitialized;
     int relocalizationAttemptCount = 0;
     std::string lastPublishedLocalizationState;
+    bool priorMapReady = false;
+    bool hasValidLidarInput = false;
+    bool hasImuInput = false;
+    bool hasIncrementalOdomInput = false;
+    bool hasProcessedLidar = false;
+    uint32_t localizationConsecutiveSuccesses = 0;
+    uint8_t lastStructuredLocalizationState = 255;
+    uint8_t previousStructuredLocalizationState = 255;
+    uint64_t localizationStatusTransitionSequence = 0;
+    uint32_t localizationLossCount = 0;
+    rclcpp::Time localizationStateEnteredAt{0, 0, RCL_ROS_TIME};
+    rclcpp::Time lastValidLocalizationPoseAt{0, 0, RCL_ROS_TIME};
+    rclcpp::Time lastLocalizationLossAt{0, 0, RCL_ROS_TIME};
 
     template <typename T>
     void declare_and_get_parameter(const std::string& name, T& variable, const T& default_value) {
@@ -534,19 +576,143 @@ public:
         }
     }
 
+    uint8_t structuredLocalizationState() const {
+        if (!LocEnableFlag) return lvi_sam_msgs::msg::LocalizationStatus::MAPPING;
+        switch (LocInitSta) {
+            case InitializedFlag::NonInitialized:
+            case InitializedFlag::Initializing:
+                return lvi_sam_msgs::msg::LocalizationStatus::RELOCALIZING;
+            case InitializedFlag::Initialized:
+                return lvi_sam_msgs::msg::LocalizationStatus::TRACKING;
+            case InitializedFlag::MayLost:
+                return lvi_sam_msgs::msg::LocalizationStatus::LOST;
+            default:
+                return lvi_sam_msgs::msg::LocalizationStatus::STATE_UNKNOWN;
+        }
+    }
+
+    static std::string structuredLocalizationStateName(const uint8_t state) {
+        switch (state) {
+            case lvi_sam_msgs::msg::LocalizationStatus::MAPPING:
+                return "MAPPING";
+            case lvi_sam_msgs::msg::LocalizationStatus::RELOCALIZING:
+                return "RELOCALIZING";
+            case lvi_sam_msgs::msg::LocalizationStatus::TRACKING:
+                return "TRACKING";
+            case lvi_sam_msgs::msg::LocalizationStatus::LOST:
+                return "LOST";
+            case lvi_sam_msgs::msg::LocalizationStatus::VERIFYING:
+                return "VERIFYING";
+            case lvi_sam_msgs::msg::LocalizationStatus::DEGRADED:
+                return "DEGRADED";
+            case lvi_sam_msgs::msg::LocalizationStatus::WAITING_FOR_SENSORS:
+                return "WAITING_FOR_SENSORS";
+            case lvi_sam_msgs::msg::LocalizationStatus::ERROR:
+                return "ERROR";
+            default:
+                return "UNKNOWN";
+        }
+    }
+
+    void publishStructuredLocalizationStatus(bool force = false) {
+        if (!pubLocalizationStatus) return;
+
+        const auto now = this->now();
+        const uint8_t state = structuredLocalizationState();
+        const bool stateChanged = state != lastStructuredLocalizationState;
+        if (stateChanged) {
+            previousStructuredLocalizationState = lastStructuredLocalizationState;
+            lastStructuredLocalizationState = state;
+            ++localizationStatusTransitionSequence;
+            localizationStateEnteredAt = now;
+            if (state == lvi_sam_msgs::msg::LocalizationStatus::TRACKING) {
+                lastValidLocalizationPoseAt = now;
+            }
+            if (state == lvi_sam_msgs::msg::LocalizationStatus::LOST) {
+                lastLocalizationLossAt = now;
+                ++localizationLossCount;
+            }
+        }
+
+        // `force` is intentionally only a publication hint. It never changes
+        // the underlying algorithm state; the timer publishes the same
+        // snapshot periodically as a low-rate heartbeat.
+        (void)force;
+        lvi_sam_msgs::msg::LocalizationStatus msg;
+        msg.header.stamp = now.to_msg();
+        msg.state = state;
+        msg.previous_state = previousStructuredLocalizationState;
+        msg.mode = LocEnableFlag
+            ? lvi_sam_msgs::msg::LocalizationStatus::MODE_LOCALIZATION
+            : lvi_sam_msgs::msg::LocalizationStatus::MODE_MAPPING;
+        msg.state_name = structuredLocalizationStateName(state);
+        msg.previous_state_name =
+            structuredLocalizationStateName(previousStructuredLocalizationState);
+        switch (state) {
+            case lvi_sam_msgs::msg::LocalizationStatus::MAPPING:
+                msg.reason = "mapping_mode";
+                break;
+            case lvi_sam_msgs::msg::LocalizationStatus::RELOCALIZING:
+                msg.reason = "relocalization_pending";
+                break;
+            case lvi_sam_msgs::msg::LocalizationStatus::TRACKING:
+                msg.reason = "legacy_localization_initialized";
+                break;
+            case lvi_sam_msgs::msg::LocalizationStatus::LOST:
+                msg.reason = "legacy_bad_match_threshold";
+                break;
+            default:
+                msg.reason = "state_not_emitted_in_phase_1";
+                break;
+        }
+
+        const bool poseValid =
+            LocEnableFlag && LocInitSta == InitializedFlag::Initialized;
+        msg.pose_valid = poseValid;
+        msg.odometry_valid = hasProcessedLidar && (!LocEnableFlag || poseValid);
+        msg.sensors_ready =
+            hasValidLidarInput && hasImuInput && hasIncrementalOdomInput;
+        msg.map_ready = priorMapReady;
+        msg.relocalization_active =
+            state == lvi_sam_msgs::msg::LocalizationStatus::RELOCALIZING ||
+            state == lvi_sam_msgs::msg::LocalizationStatus::LOST;
+        msg.quality_degraded = false;
+
+        // Quality metrics are reserved for a later phase. -1 is the explicit
+        // unknown sentinel and prevents consumers from mistaking a placeholder
+        // for a real matcher score or timing measurement.
+        msg.match_score = -1.0f;
+        msg.confidence = -1.0f;
+        msg.lidar_age = -1.0f;
+        msg.imu_age = -1.0f;
+        msg.odometry_age = -1.0f;
+        msg.consecutive_successes = localizationConsecutiveSuccesses;
+        msg.consecutive_failures =
+            static_cast<uint32_t>(std::max(0, localizationBadMatchCount));
+        msg.relocalization_attempts =
+            static_cast<uint32_t>(std::max(0, relocalizationAttemptCount));
+        msg.transition_sequence = localizationStatusTransitionSequence;
+        msg.loss_count = localizationLossCount;
+        msg.last_valid_pose_stamp = lastValidLocalizationPoseAt.to_msg();
+        msg.state_enter_stamp = localizationStateEnteredAt.to_msg();
+        msg.last_lost_stamp = lastLocalizationLossAt.to_msg();
+        pubLocalizationStatus->publish(msg);
+    }
+
     void publishLocalizationState(bool force = false) {
-        if (!pubLocalizationState) return;
-
         const std::string state = localizationStateName();
-        static double lastPublishTime = -1.0;
-        const double now = this->now().seconds();
-        if (!force && state == lastPublishedLocalizationState && now - lastPublishTime < 1.0) return;
-
-        std_msgs::msg::String msg;
-        msg.data = state;
-        pubLocalizationState->publish(msg);
-        lastPublishedLocalizationState = state;
-        lastPublishTime = now;
+        if (pubLocalizationState) {
+            static double lastPublishTime = -1.0;
+            const double now = this->now().seconds();
+            if (force || state != lastPublishedLocalizationState ||
+                now - lastPublishTime >= 1.0) {
+                std_msgs::msg::String msg;
+                msg.data = state;
+                pubLocalizationState->publish(msg);
+                lastPublishedLocalizationState = state;
+                lastPublishTime = now;
+            }
+        }
     }
 
     void forceRelocalizeHandler(
@@ -564,6 +730,7 @@ public:
 
         LocInitSta = InitializedFlag::NonInitialized;
         localizationBadMatchCount = 0;
+        localizationConsecutiveSuccesses = 0;
         dynamicFilterFrameCount = 0;
         relocalizationAttemptCount = 0;
         rtkInitializationSamples.clear();
@@ -656,6 +823,7 @@ public:
                     "Loc prior-map directory/search parameters are invalid");
             }
             LoadPriorMap();
+            priorMapReady = true;
             publishLocalizationState(true);
         }
     }
@@ -1318,6 +1486,8 @@ public:
         // The loop-closure worker snapshots these values while holding mtx.
         // Keep their updates in the same critical section to avoid a data race.
         std::lock_guard<std::mutex> lock(mtx);
+        hasValidLidarInput = true;
+        hasProcessedLidar = true;
 
         // extract time stamp
         timeLaserInfoStamp = cloudInfo.header.stamp;
@@ -1365,7 +1535,9 @@ public:
             if (LocEnableFlag) {
                 if (scanMatchOk) {
                     localizationBadMatchCount = 0;
+                    ++localizationConsecutiveSuccesses;
                 } else {
+                    localizationConsecutiveSuccesses = 0;
                     ++localizationBadMatchCount;
                     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
                                          "Localization scan-to-map failed, skip this odometry frame. bad_count=%d/%d",
@@ -1375,6 +1547,7 @@ public:
                         publishLocalizationState(true);
                         LocInitSta = InitializedFlag::NonInitialized;
                         localizationBadMatchCount = 0;
+                        localizationConsecutiveSuccesses = 0;
                         dynamicFilterFrameCount = 0;
                         rtkInitializationSamples.clear();
                         resetInitialGuessSeed = true;

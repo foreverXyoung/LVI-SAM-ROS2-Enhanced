@@ -32,6 +32,7 @@
   <depend>gtsam</depend>
   <depend>eigen</depend>
   <depend>livox_ros_driver2</depend>
+  <depend>lvi_sam_msgs</depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>launch</exec_depend>

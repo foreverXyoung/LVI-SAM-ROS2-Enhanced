@@ -32,6 +32,7 @@ find_package(tf2_geometry_msgs REQUIRED)
 find_package(tf2_eigen REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(livox_ros_driver2 REQUIRED)
+find_package(lvi_sam_msgs REQUIRED)
 
 # Native libraries. The package-local image adapter deliberately avoids
 # cv_bridge so each executable resolves one OpenCV ABI selected by this find.
@@ -85,6 +86,7 @@ set(lidar_dependencies
   tf2_eigen
   tf2_geometry_msgs
   livox_ros_driver2
+  lvi_sam_msgs
 )
 
 set(visual_dependencies
@@ -221,6 +223,13 @@ if(BUILD_TESTING)
       test_internal_odom_metadata
       test/test_internal_odom_metadata.cpp
     )
+    ament_add_gtest(
+      test_localization_status_contract
+      test/test_localization_status_contract.cpp
+    )
+    if(TARGET test_localization_status_contract)
+      ament_target_dependencies(test_localization_status_contract lvi_sam_msgs)
+    endif()
   else()
     message(WARNING "ament_cmake_gtest not found; C++ unit tests are skipped")
   endif()
@@ -254,5 +263,5 @@ endif()
 install(TARGETS ${install_targets} DESTINATION lib/${PROJECT_NAME})
 
 ament_export_include_directories(include)
-ament_export_dependencies(ament_index_cpp sensor_msgs std_msgs)
+ament_export_dependencies(ament_index_cpp sensor_msgs std_msgs lvi_sam_msgs)
 ament_package()
