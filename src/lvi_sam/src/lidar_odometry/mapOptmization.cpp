@@ -800,7 +800,10 @@ public:
         LocInitSta = InitializedFlag::NonInitialized;
         localizationBadMatchCount = 0;
         localizationConsecutiveSuccesses = 0;
-        localizationLossEventPending = false;
+        // Do not erase a just-observed loss before the structured status
+        // heartbeat can publish it.  The force request still changes the
+        // algorithm state immediately; the status stream will report LOST
+        // once and then RELOCALIZING.
         hasValidLocalizationOdometry = false;
         dynamicFilterFrameCount = 0;
         relocalizationAttemptCount = 0;
