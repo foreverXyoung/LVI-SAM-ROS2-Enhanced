@@ -8,9 +8,13 @@ relocalization decisions.
 
 ## Scope and baseline
 
-The baseline for this phase is commit `9cfeb11` (`fix OpenCV 4 visual loop color
-conversion`). The implementation is staged in small increments so that mapping
-and localization behavior can be compared against this commit at every step.
+The status-only baseline for this phase is commit `d87189f` (`add observational
+verifying and degraded states`). The implementation is staged in small
+increments so that mapping and localization behavior can be compared against
+that baseline at every step. The current feature branch may contain the later
+`LocalizationReset`/VINS restart coupling; that is a separate acceptance
+phase and must not be enabled by an upper-layer controller until the status
+contract has passed its own runtime checks.
 
 This phase adds only:
 
