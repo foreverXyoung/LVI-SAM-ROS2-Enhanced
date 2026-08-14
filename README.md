@@ -8,6 +8,24 @@
 以独立、可开关的节点栈形式接入，实现激光/视觉双模态定位。两子系统通过 ROS 话题交换信息，
 而非把相机重投影因子塞进激光因子图（即「话题级松耦合」，详见下文架构）。
 
+## 0. 当前版本与阅读顺序
+
+当前维护分支为 `agent/visual-rviz-defaults`。用于复现算法实现的稳定锚点是
+`4bb5ca5`；`d87189f` 是只包含观测型定位状态接口的分阶段基线。后续只修改文档的提交
+不会改变这两个实现边界；目标机部署后仍应执行 `git rev-parse HEAD` 记录实际检出的版本。
+
+建议按以下顺序阅读：
+
+1. [`docs/CHANGE_SUMMARY.md`](docs/CHANGE_SUMMARY.md)：本轮改动、未改动逻辑、兼容性结论和证据边界；
+2. [`src/lvi_sam/config/README.md`](src/lvi_sam/config/README.md)：场景、IMU、安装外参和相机配置入口；
+3. [`docs/USAGE.md`](docs/USAGE.md)：日常建图/定位/视觉启动流程；
+4. [`docs/LOCALIZATION_STATUS_INTERFACE.md`](docs/LOCALIZATION_STATUS_INTERFACE.md) 与
+   [`docs/LOCALIZATION_RESET_INTERFACE.md`](docs/LOCALIZATION_RESET_INTERFACE.md)：上层状态机和复位事件契约；
+5. [`docs/LOCALIZATION_ACCEPTANCE_MATRIX.md`](docs/LOCALIZATION_ACCEPTANCE_MATRIX.md)：先状态、后复位的实机验收顺序。
+
+当前文档不会把“能够编译”写成“已经完成实机验收”。完整 ROS 2、GTSAM、PCL、Ceres 构建和
+真实传感器运行仍以 Orin 的命令输出为准。
+
 ---
 
 ## 1. 特性

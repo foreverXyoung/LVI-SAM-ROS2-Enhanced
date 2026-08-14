@@ -75,6 +75,30 @@
   明确拒绝初始化，避免未初始化内存或除零把随机姿态带入后端。
 - 回环候选历史点云与 ICP 校正后点云拆分为两个诊断话题，避免不同坐标状态的数据在同一话题交替发布。
 
+### 1.6 定位状态与跨节点复位
+
+- 新增 `lvi_sam_msgs/msg/LocalizationStatus`，通过 `/lio_sam/localization/status` 输出
+  `MAPPING`、`RELOCALIZING`、`VERIFYING`、`TRACKING`、`DEGRADED`、`LOST` 六类结构化状态；
+  旧的 `/lio_sam/localization/state` 字符串话题继续保留。
+- 新增 `lvi_sam_msgs/msg/LocalizationReset`，通过 `/lio_sam/localization/reset` 传递
+  地图重定位、强制重定位、回环图修正、VINS/IMU 失败等事件。`mapOptimization` 是唯一的
+  `reset_id` 所有者，接收节点按代次清理旧队列，避免旧 DDS 样本跨复位进入新估计。
+- 状态接口是上层导航的观察/门控接口；复位接口是节点协同事件。两者都不是 Nav2 速度命令，
+  也不替代 `map -> odom -> base_link` TF。
+- 验收必须分两阶段执行：先验证状态输出和旧 LIS 结果，再验证 IMU/VIS 队列清理、时间戳水位线、
+  VINS 重启和低代次事件丢弃。详见 `LOCALIZATION_ACCEPTANCE_MATRIX.md`。
+
+### 1.7 明确的兼容性边界
+
+- 合法输入下，点云匹配、IMU 预积分、因子图、VINS 滑窗和原有回环求解器未被替换；新增代码
+  主要负责配置、输入校验、线程生命周期、地图事务和接口输出。
+- 视觉默认启动是 launch 策略，不代表 LIS 依赖相机；纯激光排障仍使用
+  `enable_visual:=false`，纯 LIS 构建仍使用 `-DBUILD_VISUAL=OFF`。
+- 所有物理外参都来自 YAML profile。更换 IMU、雷达安装位置或相机时优先复制/修改对应 profile，
+  不在 C++ 中添加设备专用常量，也不依赖 TF 查询作为外参兜底。
+- Windows 审阅环境只能完成配置、脚本和静态检查；没有 Orin 的真实运行日志时，不能声称
+  `LOST`、强制重定位、VINS 失败复位和低质量 RTK 已通过实机验收。
+
 ## 2. 远程电脑首次部署
 
 ### 2.1 拉取代码
