@@ -1,4 +1,7 @@
 #include "visualization.h"
+
+#include <mutex>
+
 #include "lvi_sam/topic_names.hpp"
 #include "lvi_sam/visual_frame_conventions.hpp"
 
@@ -23,12 +26,14 @@ static double latest_align_time = -1.0;
 static double latest_path_save_time = -1.0;
 static geometry_msgs::msg::TransformStamped odom_world_tf;
 static bool has_odom_world_tf = false;
+static std::mutex visual_state_mutex;
 static std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster;
 static std::shared_ptr<tf2_ros::Buffer> tf_buffer;
 static std::shared_ptr<tf2_ros::TransformListener> tf_listener;
 
 void resetVisualTfState()
 {
+    std::lock_guard<std::mutex> lock(visual_state_mutex);
     latest_align_time = -1.0;
     latest_path_save_time = -1.0;
     has_odom_world_tf = false;
@@ -90,6 +95,7 @@ geometry_msgs::msg::TransformStamped transformConversion(const geometry_msgs::ms
 
 void pubLatestOdometry(const Eigen::Vector3d &P, const Eigen::Quaterniond &Q, const Eigen::Vector3d &V, const std_msgs::msg::Header &header, const int& failureId)
 {
+    std::lock_guard<std::mutex> lock(visual_state_mutex);
     // Quternion not normalized
     if (Q.norm() < 0.99)
         return;
@@ -197,6 +203,7 @@ void pubLatestOdometry(const Eigen::Vector3d &P, const Eigen::Quaterniond &Q, co
 
 void printStatistics(const Estimator &estimator, double t)
 {
+    std::lock_guard<std::mutex> lock(visual_state_mutex);
     if (estimator.solver_flag != Estimator::SolverFlag::NON_LINEAR)
         return;
     printf("position: %f, %f, %f\r", estimator.Ps[WINDOW_SIZE].x(), estimator.Ps[WINDOW_SIZE].y(), estimator.Ps[WINDOW_SIZE].z());
@@ -237,6 +244,7 @@ void printStatistics(const Estimator &estimator, double t)
 
 void pubOdometry(const Estimator &estimator, const std_msgs::msg::Header &header)
 {
+    std::lock_guard<std::mutex> lock(visual_state_mutex);
     if (estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR)
     {
         nav_msgs::msg::Odometry odometry;
@@ -311,6 +319,7 @@ void pubKeyPoses(const Estimator &estimator, const std_msgs::msg::Header &header
 
 void pubCameraPose(const Estimator &estimator, const std_msgs::msg::Header &header)
 {
+    std::lock_guard<std::mutex> lock(visual_state_mutex);
     if (pub_camera_pose_visual->get_subscription_count() == 0)
         return;
 

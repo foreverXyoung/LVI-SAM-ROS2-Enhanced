@@ -389,6 +389,39 @@ void resetEstimatorState(Estimator &estimator)
     resetVisualTfState();
 }
 
+// Estimator::processImage() clears its own sliding-window state when VINS
+// failure detection fires.  This companion path clears only the ROS-side
+// queues and prediction/visualization anchors; it deliberately does not call
+// estimator.clearState() again while the process thread already owns
+// m_estimator.
+void resetEstimatorAuxiliaryStateAfterFailure()
+{
+    std::scoped_lock lock(m_buf, m_state, m_odom);
+    while (!feature_buf.empty())
+        feature_buf.pop();
+    while (!imu_buf.empty())
+        imu_buf.pop();
+    current_time = -1;
+    latest_time = 0;
+    last_imu_t = 0;
+    last_feature_t = -1;
+    init_imu = true;
+    init_feature = false;
+    tmp_P.setZero();
+    tmp_Q.setIdentity();
+    tmp_V.setZero();
+    tmp_Ba.setZero();
+    tmp_Bg.setZero();
+    acc_0.setZero();
+    gyr_0.setZero();
+    reset_generation.fetch_add(1, std::memory_order_release);
+    odomQueue.clear();
+    // Keep last_odom_t as a timestamp barrier.  This rejects delayed old
+    // odometry from the same map generation without rejecting a valid stream
+    // whose timestamps remain monotonic after the VINS-only restart.
+    resetVisualTfState();
+}
+
 void restart_callback(
     const std_msgs::msg::Bool::ConstSharedPtr &restart_msg,
     Estimator &estimator)
@@ -463,6 +496,7 @@ void process(Estimator &estimator)
     {
         std::vector<std::pair<std::vector<sensor_msgs::msg::Imu::ConstSharedPtr>, sensor_msgs::msg::PointCloud::ConstSharedPtr>> measurements;
         std::uint64_t measurement_generation = 0;
+        bool auxiliary_reset_requested = false;
         std::unique_lock<std::mutex> lk(m_buf);
         con.wait(lk, [&]
                  {
@@ -578,9 +612,11 @@ void process(Estimator &estimator)
                 publishVisualResetEvent(
                     img_msg->header, reset_id,
                     "vins_failure_detection");
+                auxiliary_reset_requested = true;
                 // Keep the original estimator flags untouched; consume only
                 // the new one-shot notification bit.
                 estimator.failure_event_pending = false;
+                break;
             }
             // double whole_t = t_s.toc();
             // printStatistics(estimator, whole_t);
@@ -595,6 +631,9 @@ void process(Estimator &estimator)
             pubKeyframe(estimator);
         }
         }
+
+        if (auxiliary_reset_requested)
+            resetEstimatorAuxiliaryStateAfterFailure();
 
         std::scoped_lock state_lock(m_buf, m_state, m_estimator);
         if (estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR)
