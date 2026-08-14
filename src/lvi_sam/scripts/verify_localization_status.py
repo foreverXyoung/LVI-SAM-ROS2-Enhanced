@@ -11,6 +11,7 @@ import sys
 import time
 
 import rclpy
+from lvi_sam_msgs.msg import LocalizationReset
 from lvi_sam_msgs.msg import LocalizationStatus
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
@@ -19,6 +20,7 @@ from std_srvs.srv import Trigger
 
 
 STATUS_TOPIC = "/lio_sam/localization/status"
+RESET_TOPIC = "/lio_sam/localization/reset"
 LEGACY_TOPIC = "/lio_sam/localization/state"
 FORCE_SERVICE = "/lio_sam/localization/force_relocalize"
 
@@ -34,11 +36,20 @@ class StatusVerifier(Node):
         self.status = None
         self.legacy_state = None
         self.status_history = []
+        self.reset_events = []
         self.create_subscription(
             LocalizationStatus, STATUS_TOPIC, self._status_callback, status_qos
         )
         self.create_subscription(
             String, LEGACY_TOPIC, self._legacy_callback, 10
+        )
+        reset_qos = QoSProfile(
+            depth=10,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+        )
+        self.create_subscription(
+            LocalizationReset, RESET_TOPIC, self._reset_callback, reset_qos
         )
         self.force_client = self.create_client(Trigger, FORCE_SERVICE)
 
@@ -49,6 +60,10 @@ class StatusVerifier(Node):
 
     def _legacy_callback(self, message: String) -> None:
         self.legacy_state = message.data
+
+    def _reset_callback(self, message: LocalizationReset) -> None:
+        self.reset_events.append(message)
+        self.reset_events = self.reset_events[-100:]
 
     def wait_for(self, predicate, timeout: float, description: str) -> bool:
         deadline = time.monotonic() + timeout
@@ -61,6 +76,19 @@ class StatusVerifier(Node):
             description,
             self._format_status(self.status),
             self.legacy_state,
+        )
+        return False
+
+    def wait_for_reset(self, predicate, timeout: float, description: str) -> bool:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline and rclpy.ok():
+            rclpy.spin_once(self, timeout_sec=0.1)
+            if any(predicate(event) for event in self.reset_events):
+                return True
+        self.get_logger().error(
+            "Timed out waiting for %s (reset_events=%d)",
+            description,
+            len(self.reset_events),
         )
         return False
 
@@ -181,7 +209,26 @@ def verify_quality_state(
 
 
 def verify_force(verifier: StatusVerifier, timeout: float) -> bool:
+    if not verifier.wait_for(
+        lambda status: status.mode == LocalizationStatus.MODE_LOCALIZATION,
+        timeout,
+        "localization mode before force_relocalize",
+    ):
+        return False
+    reset_id_before = verifier.status.reset_id
     if not verifier.call_force_relocalize(timeout):
+        return False
+    if not verifier.wait_for_reset(
+        lambda event: (
+            event.source == "map_optimization"
+            and event.reason == LocalizationReset.REASON_FORCE_RELOCALIZATION
+            and event.reset_imu
+            and event.restart_visual
+            and event.reset_id > reset_id_before
+        ),
+        timeout,
+        "map-owned FORCE_RELOCALIZATION reset event",
+    ):
         return False
     return verifier.wait_for(
         lambda status: (
