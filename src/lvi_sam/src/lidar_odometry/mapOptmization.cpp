@@ -3753,7 +3753,11 @@ int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
 
     rclcpp::NodeOptions options;
-    options.use_intra_process_comms(true);
+    // The structured localization status publisher is transient-local so a
+    // late upper-layer subscriber receives the current state.  Humble rejects
+    // transient-local publishers when intra-process communication is enabled,
+    // so keep this node on DDS communication for QoS correctness.
+    options.use_intra_process_comms(false);
     rclcpp::executors::SingleThreadedExecutor exec;
 
     auto MO = std::make_shared<MapOptimization>(options);

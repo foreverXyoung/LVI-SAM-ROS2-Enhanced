@@ -142,6 +142,10 @@ LiDAR-camera 全局对齐继续关闭，避免一次引入多条耦合链路。
 - 针对部分 Orin ROS 2 Humble 镜像没有 `rclcpp::Time::to_msg()` 的情况，新增公共
   `toBuiltinTime()` 纳秒级转换，复位事件和结构化定位状态统一使用该适配，不改变消息时间戳
   语义；定位复位契约测试同时显式包含 `LocalizationStatus` 头文件，避免依赖其他消息的传递包含。
+- `LocalizationStatus` 使用 `reliable + transient_local`，而 ROS 2 Humble 不允许开启进程内通信的
+  节点创建该 QoS 的发布器；`mapOptimization` 已关闭 `use_intra_process_comms`，保留状态接口的
+  late-joiner 语义。该节点内部前端本来就是直接函数调用，不依赖进程内话题，因此不会改变 LIS
+  算法数据流。
 - 恢复 `/lio_sam/mapping/cloud_registered_raw` 的实际发布。原实现只创建了 publisher，
   注册高分辨率点云的代码整段处于注释状态；同时原代码把它放在受 `useRviz` 和关键帧非空条件
   控制的 `publishFrames()` 中。现在它在每个已接受的处理帧完成当前位姿更新后独立发布，不再

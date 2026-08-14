@@ -172,6 +172,11 @@ colcon build --symlink-install \
 如果日志提示 `rclcpp::Time` 没有 `to_msg()`，应确认已经拉取包含兼容时间转换的最新分支；
 当前源码使用 `utility.hpp` 中的 `toBuiltinTime()`，不要求修改系统 ROS 2 或重新编译驱动。
 
+如果启动 `mapOptimization` 时出现
+`intraprocess communication allowed only with volatile durability`，说明运行的仍是旧版本；
+当前版本已关闭该节点的进程内通信，以保留 `/lio_sam/localization/status` 的
+`transient_local` QoS。重新拉取并编译 `lvi_sam` 后即可恢复启动。
+
 也可以直接在仓库目录执行 `bash scripts/build.sh --clean`；脚本会识别上层
 `/data/return_station_ws`，自动复用其 `install/livox_ros_driver2` 并只清理
 `lvi_sam` 自身产物。
