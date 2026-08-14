@@ -61,8 +61,8 @@ Nav2 速度或 TF 指令。
 
 严格按“先状态、后复位”验收时，可将 `d87189f` 作为状态接口专用基线（包含
 `VERIFYING/DEGRADED`，不含复位事件订阅）；状态接口通过后，再切换到当前
-`6747b7c`，逐项验证 `LocalizationReset`、IMU 队列清理、旧代数据丢弃和
-VINS 重启联动。
+`agent/visual-rviz-defaults` 功能分支（代码验收基线 `6747b7c`），逐项验证
+`LocalizationReset`、IMU 队列清理、旧代数据丢弃和 VINS 重启联动。
 中间提交 `6fe3e07`、`6333b29`、`8fe1329` 分别对应复位契约、地图事件和
 IMU 传播接入；`1500818`、`0497e69` 是 force/lost 验收器增强，便于出现问题
 时精确回退。
