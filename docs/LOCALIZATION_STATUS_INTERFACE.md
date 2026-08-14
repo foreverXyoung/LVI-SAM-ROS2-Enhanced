@@ -47,7 +47,7 @@ the numeric `state` and `mode` constants.
 | `LocInitSta=NonInitialized` | `MODE_LOCALIZATION` | `RELOCALIZING` | `RELOCALIZING` | No valid prior-map initialization has been accepted yet. |
 | `LocInitSta=Initializing` | `MODE_LOCALIZATION` | `RELOCALIZING` | `RELOCALIZING` | The existing RTK/Scan Context/configured-guess initialization path is running. |
 | `LocInitSta=Initialized` | `MODE_LOCALIZATION` | `TRACKING` | `LOCALIZED` | Existing initialization succeeded; scan-to-map continues to decide output. |
-| `LocInitSta=MayLost` | `MODE_LOCALIZATION` | `LOST` | `LOST` | Existing bad-match threshold was reached. The current code then returns to `NonInitialized`. |
+| `LocInitSta=MayLost` | `MODE_LOCALIZATION` | `LOST` | `LOST` | Existing bad-match threshold was reached. The adapter latches this transient event for one status publication, while the algorithm still immediately returns to `NonInitialized`. |
 
 `VERIFYING`, `DEGRADED`, `WAITING_FOR_SENSORS`, and `ERROR` are reserved for
 later phases and are not emitted by this adapter yet. `MAPPING` is an explicit
@@ -74,6 +74,9 @@ from a localization state.
   `previous_state` and `previous_state_name` identify the preceding structured
   state. The first message uses `STATE_UNKNOWN` as the previous state.
 - `loss_count` increases when the existing `MayLost` state is observed.
+- `LOST` is emitted for at least one heartbeat after the existing bad-match
+  threshold, even though the frozen algorithm immediately continues in
+  `NonInitialized`/`RELOCALIZING`.
 
 `reason` is diagnostic text and is deliberately non-normative. Upper-layer
 logic must not parse it.

@@ -545,6 +545,7 @@ public:
     bool hasImuInput = false;
     bool hasIncrementalOdomInput = false;
     bool hasProcessedLidar = false;
+    bool localizationLossEventPending = false;
     uint32_t localizationConsecutiveSuccesses = 0;
     uint8_t lastStructuredLocalizationState = 255;
     uint8_t previousStructuredLocalizationState = 255;
@@ -618,7 +619,14 @@ public:
         if (!pubLocalizationStatus) return;
 
         const auto now = this->now();
-        const uint8_t state = structuredLocalizationState();
+        // MayLost is intentionally transient in the frozen algorithm: the
+        // same LiDAR callback immediately returns to NonInitialized. Latch it
+        // only for this status stream so consumers cannot miss the loss event.
+        const bool reportingLatchedLoss = localizationLossEventPending;
+        const uint8_t state = reportingLatchedLoss
+            ? lvi_sam_msgs::msg::LocalizationStatus::LOST
+            : structuredLocalizationState();
+        if (reportingLatchedLoss) localizationLossEventPending = false;
         const bool stateChanged = state != lastStructuredLocalizationState;
         if (stateChanged) {
             previousStructuredLocalizationState = lastStructuredLocalizationState;
@@ -731,6 +739,7 @@ public:
         LocInitSta = InitializedFlag::NonInitialized;
         localizationBadMatchCount = 0;
         localizationConsecutiveSuccesses = 0;
+        localizationLossEventPending = false;
         dynamicFilterFrameCount = 0;
         relocalizationAttemptCount = 0;
         rtkInitializationSamples.clear();
@@ -1544,6 +1553,7 @@ public:
                                          localizationBadMatchCount, lostBadMatchThreshold);
                     if (lostDetectionEnable && localizationBadMatchCount >= lostBadMatchThreshold) {
                         LocInitSta = InitializedFlag::MayLost;
+                        localizationLossEventPending = true;
                         publishLocalizationState(true);
                         LocInitSta = InitializedFlag::NonInitialized;
                         localizationBadMatchCount = 0;
