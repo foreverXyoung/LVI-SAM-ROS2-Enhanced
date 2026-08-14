@@ -636,7 +636,7 @@ public:
         if (!pubLocalizationReset) return;
 
         lvi_sam_msgs::msg::LocalizationReset msg;
-        msg.header.stamp = this->now().to_msg();
+        msg.header.stamp = toBuiltinTime(this->now());
         msg.header.frame_id = odometryFrame;
         msg.event_id = localizationResetEventSequence;
         msg.reset_id = static_cast<uint64_t>(std::max(0, imuPreintegrationResetId));
@@ -698,7 +698,7 @@ public:
         // snapshot periodically as a low-rate heartbeat.
         (void)force;
         lvi_sam_msgs::msg::LocalizationStatus msg;
-        msg.header.stamp = now.to_msg();
+        msg.header.stamp = toBuiltinTime(now);
         msg.state = state;
         msg.previous_state = previousStructuredLocalizationState;
         msg.mode = LocEnableFlag
@@ -762,9 +762,9 @@ public:
         msg.transition_sequence = localizationStatusTransitionSequence;
         msg.loss_count = localizationLossCount;
         msg.reset_id = static_cast<uint64_t>(std::max(0, imuPreintegrationResetId));
-        msg.last_valid_pose_stamp = lastValidLocalizationPoseAt.to_msg();
-        msg.state_enter_stamp = localizationStateEnteredAt.to_msg();
-        msg.last_lost_stamp = lastLocalizationLossAt.to_msg();
+        msg.last_valid_pose_stamp = toBuiltinTime(lastValidLocalizationPoseAt);
+        msg.state_enter_stamp = toBuiltinTime(localizationStateEnteredAt);
+        msg.last_lost_stamp = toBuiltinTime(lastLocalizationLossAt);
         pubLocalizationStatus->publish(msg);
     }
 

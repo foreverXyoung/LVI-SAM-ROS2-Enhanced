@@ -153,6 +153,25 @@ colcon test --packages-select lvi_sam --event-handlers console_direct+
 colcon test-result --verbose
 ```
 
+如果编译日志提示 `lvi_sam_msgs::msg::LocalizationStatus` 不存在，说明消息包仍在使用旧的
+安装产物。先单独重新生成接口，再编译算法包：
+
+```bash
+colcon build --symlink-install \
+  --packages-select lvi_sam_msgs \
+  --cmake-clean-cache
+source install/setup.bash
+ros2 interface show lvi_sam_msgs/msg/LocalizationStatus
+
+colcon build --symlink-install \
+  --packages-select lvi_sam \
+  --cmake-clean-cache \
+  --cmake-args -DCMAKE_BUILD_TYPE=Release -DBUILD_VISUAL=OFF
+```
+
+如果日志提示 `rclcpp::Time` 没有 `to_msg()`，应确认已经拉取包含兼容时间转换的最新分支；
+当前源码使用 `utility.hpp` 中的 `toBuiltinTime()`，不要求修改系统 ROS 2 或重新编译驱动。
+
 也可以直接在仓库目录执行 `bash scripts/build.sh --clean`；脚本会识别上层
 `/data/return_station_ws`，自动复用其 `install/livox_ros_driver2` 并只清理
 `lvi_sam` 自身产物。

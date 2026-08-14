@@ -20,6 +20,7 @@ option(BUILD_VISUAL "Build the camera/VINS/DBoW2 pipeline" ON)
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(ament_index_cpp REQUIRED)
+find_package(builtin_interfaces REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -74,6 +75,7 @@ add_definitions(${PCL_DEFINITIONS})
 
 set(lidar_dependencies
   rclcpp
+  builtin_interfaces
   std_msgs
   std_srvs
   sensor_msgs
@@ -283,5 +285,5 @@ endif()
 install(TARGETS ${install_targets} DESTINATION lib/${PROJECT_NAME})
 
 ament_export_include_directories(include)
-ament_export_dependencies(ament_index_cpp sensor_msgs std_msgs lvi_sam_msgs)
+ament_export_dependencies(ament_index_cpp builtin_interfaces sensor_msgs std_msgs lvi_sam_msgs)
 ament_package()

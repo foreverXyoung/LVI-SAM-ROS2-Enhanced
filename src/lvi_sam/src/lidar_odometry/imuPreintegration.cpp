@@ -481,7 +481,7 @@ public:
         ++localizationResetEventSequence;
         if (!pubLocalizationReset) return;
         lvi_sam_msgs::msg::LocalizationReset msg;
-        msg.header.stamp = this->now().to_msg();
+        msg.header.stamp = toBuiltinTime(this->now());
         msg.header.frame_id = odometryFrame;
         msg.event_id = localizationResetEventSequence;
         msg.reset_id = static_cast<std::uint64_t>(

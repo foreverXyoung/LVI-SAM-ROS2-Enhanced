@@ -4,6 +4,7 @@
 
 #include <rclcpp/rclcpp.hpp>
 
+#include <builtin_interfaces/msg/time.hpp>
 #include <std_msgs/msg/header.hpp>
 #include <std_msgs/msg/float64_multi_array.hpp>
 #include <sensor_msgs/msg/imu.hpp>
@@ -31,6 +32,7 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
+#include <cstdint>
 #include <fstream>
 #include <string>
 #include <thread>
@@ -44,6 +46,26 @@ typedef pcl::PointXYZI PointType;
 using CloudType = pcl::PointCloud<PointType>;
 using CloudPtr = pcl::PointCloud<PointType>::Ptr;
 using PointVector = std::vector<PointType, Eigen::aligned_allocator<PointType>>;
+
+// Keep message timestamp conversion compatible with the Humble rclcpp
+// versions used on the target Orin image.  Some images do not expose the
+// convenience rclcpp::Time::to_msg() member even though they use the same
+// builtin_interfaces/msg/Time wire type.
+inline builtin_interfaces::msg::Time toBuiltinTime(const rclcpp::Time& time) {
+    constexpr int64_t kNanosecondsPerSecond = 1000000000LL;
+    const int64_t totalNanoseconds = time.nanoseconds();
+    int64_t seconds = totalNanoseconds / kNanosecondsPerSecond;
+    int64_t nanoseconds = totalNanoseconds % kNanosecondsPerSecond;
+    if (nanoseconds < 0) {
+        --seconds;
+        nanoseconds += kNanosecondsPerSecond;
+    }
+
+    builtin_interfaces::msg::Time result;
+    result.sec = static_cast<int32_t>(seconds);
+    result.nanosec = static_cast<uint32_t>(nanoseconds);
+    return result;
+}
 
 enum class SensorType { VELODYNE, OUSTER, LIVOX };
 

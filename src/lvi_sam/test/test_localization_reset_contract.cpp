@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <lvi_sam_msgs/msg/localization_reset.hpp>
+#include <lvi_sam_msgs/msg/localization_status.hpp>
 
 TEST(LocalizationResetContract, StableReasonValues) {
   using Reset = lvi_sam_msgs::msg::LocalizationReset;
