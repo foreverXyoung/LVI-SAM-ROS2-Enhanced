@@ -188,6 +188,18 @@ def verify_lost(verifier: StatusVerifier, timeout: float) -> bool:
         "latched LOST status",
     ):
         return False
+    if not verifier.wait_for_reset(
+        lambda event: (
+            event.source == "map_optimization"
+            and event.reason == LocalizationReset.REASON_RELOCALIZATION
+            and event.reset_imu
+            and event.restart_visual
+            and event.detail == "localization_lost"
+        ),
+        timeout,
+        "map-owned localization_lost reset event",
+    ):
+        return False
     return verifier.wait_for(
         lambda status: status.state == LocalizationStatus.RELOCALIZING,
         timeout,
