@@ -79,6 +79,11 @@ ros2 launch lvi_sam run.launch.py \
 接入第三种 IMU 时复制现有 profile，完整填写同一组字段，然后通过绝对路径
 `imu_params_file:=/path/to/params_imu_new.yaml` 加载；不需要修改 launch 或 C++。
 
+`localization_reset_topic` 是跨节点复位事件的部署级话题，默认
+`/lio_sam/localization/reset`。通常不需要修改；只有同一 ROS graph 中运行多套
+LVI-SAM 实例时，才为每套实例指定不同的绝对话题。它不是 Nav2 的速度或 TF 指令，
+上层应优先消费结构化 `/lio_sam/localization/status`，并按事件中的动作标志进行协同。
+
 注意两个名称相近但作用不同的开关：launch 的 `enable_rviz` 控制是否启动 RViz2 进程；LIS
 YAML 顶层的 `useRviz` 控制是否发布较重的点云/轨迹可视化数据。`useRviz` 不能缩进到 `Loc`。
 
