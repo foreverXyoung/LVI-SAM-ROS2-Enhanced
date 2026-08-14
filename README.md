@@ -26,6 +26,9 @@
 - `/odometry/imu` 保留原 LVI-SAM 的 VIS 初始化元数据兼容契约（重置编号、IMU bias、重力）。
   这些字段不是统计协方差；准确索引、校验规则及面向 Nav2 的使用边界见
   [`docs/INTERFACES_AND_STABILITY.md`](docs/INTERFACES_AND_STABILITY.md#321-lisvis-内部里程计元数据)。
+- **定位状态接口**：上层状态机使用 `/lio_sam/localization/status` 的结构化
+  `LocalizationStatus`；复位联动使用独立的 `/lio_sam/localization/reset` 事件。
+  两个阶段的验收顺序见 [`docs/LOCALIZATION_ACCEPTANCE_MATRIX.md`](docs/LOCALIZATION_ACCEPTANCE_MATRIX.md)。
 - **配置外置**：全部参数集中在 [`src/lvi_sam/config/`](src/lvi_sam/config/README.md)，
   随包安装（`install(DIRECTORY config)`），无源码硬编码路径。
 - **源码二分**：`src/lvi_sam/src/` 下严格分为 `lidar_odometry/`（激光）与 `visual_odometry/`（视觉），
@@ -200,6 +203,8 @@ ros2 launch lvi_sam run.launch.py \
 | [`docs/USAGE.md`](docs/USAGE.md) | **详细使用说明**：构建、URDF/相机/IMU 准备、launch 参数、话题接线表、参数文件、最小验证闭环、排错与调参。 |
 | [`docs/ARCHITECTURE_AND_MAP_FORMAT.md`](docs/ARCHITECTURE_AND_MAP_FORMAT.md) | 模块职责、地图版本、视觉跨会话重定位数据集和 RTK 输入契约。 |
 | [`docs/INTERFACES_AND_STABILITY.md`](docs/INTERFACES_AND_STABILITY.md) | **工程接口与稳定性契约**：模块边界、话题/QoS、时间与坐标、依赖所有权、降级策略、扩展规则和 Orin 验收门槛。 |
+| [`docs/LOCALIZATION_STATUS_INTERFACE.md`](docs/LOCALIZATION_STATUS_INTERFACE.md) / [`docs/LOCALIZATION_RESET_INTERFACE.md`](docs/LOCALIZATION_RESET_INTERFACE.md) | 定位状态位、复位事件字段、代次语义和上层控制边界。 |
+| [`docs/LOCALIZATION_ACCEPTANCE_MATRIX.md`](docs/LOCALIZATION_ACCEPTANCE_MATRIX.md) | **分阶段验收矩阵**：先验证状态输出，再验证 IMU/VINS/代次复位联动。 |
 | [`docs/REMOTE_TEST_AND_CHANGES.md`](docs/REMOTE_TEST_AND_CHANGES.md) | **本次修改说明与远程测试手册**：拉取、编译、分阶段建图/定位、视觉、RTK、验收及已知边界。 |
 | [`scripts/setup.sh`](scripts/setup.sh) | 一键编排：子模块初始化 → 依赖安装 → 编译。 |
 | [`scripts/install_deps.sh`](scripts/install_deps.sh) | 安装系统/ROS 依赖，复用兼容 GTSAM 4.x 或按需源码构建 GTSAM/Livox-SDK2（重跑安全）。 |
