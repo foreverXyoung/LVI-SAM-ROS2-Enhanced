@@ -628,10 +628,9 @@ public:
         const bool resetImu,
         const bool restartVisual,
         const std::string& detail) {
-        // This is the existing internal generation consumed through odometry
-        // covariance metadata. Keep it owned by mapOptimization and advance
-        // it exactly once for every accepted map-basis change.
-        ++imuPreintegrationResetId;
+        // This is an observational interface for the upper-level state
+        // machine. Publishing an event must not mutate estimator state or the
+        // legacy reset generation carried by mapping odometry.
         ++localizationResetEventSequence;
         if (!pubLocalizationReset) return;
 
@@ -3595,6 +3594,10 @@ public:
             }
 
             aLoopIsClosed = false;
+            // Preserve the original LIO-SAM control path: only an accepted
+            // graph correction advances the reset generation consumed from
+            // mapping odometry. The event publisher remains passive.
+            ++imuPreintegrationResetId;
             publishMapResetEvent(
                 lvi_sam_msgs::msg::LocalizationReset::REASON_MAP_CORRECTION,
                 true, true, "loop_closure_graph_correction");

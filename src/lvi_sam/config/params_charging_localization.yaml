@@ -137,7 +137,9 @@
 
     # CPU Params
     numberOfCores: 8
-    mappingProcessInterval: 0.10
+    # Process every accepted frame; scan matching still determines the
+    # achievable output rate.
+    mappingProcessInterval: 0.0
 
     # Surrounding map
     surroundingkeyframeAddingDistThreshold: 0.2

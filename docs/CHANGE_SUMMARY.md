@@ -6,8 +6,8 @@
 版本锚点（用于复现和排查）：
 
 - **状态接口基线**：`d87189f`，只包含观测型 `LocalizationStatus`，不包含复位订阅联动；
-- **功能实现基线**：`4bb5ca5`，包含状态接口、`LocalizationReset`、IMU/VIS 代次保护和
-  失败复位联动；
+- **历史联动基线**：`4bb5ca5` 曾把 `LocalizationReset` 接入 IMU/VIS 复位；实机发现该做法
+  改变了原算法时序，现已撤销内部订阅，事件恢复为观察性输出；
 - `4bb5ca5` 之后的 `f1c13ac` 等提交只修订文档引用，不改变算法代码。后续若出现新的代码提交，
   应以该代码提交重新执行本文档第 6 节的 Orin 验收，而不能只看提交能否编译。
 
@@ -28,7 +28,7 @@
 | IMU/安装外参 | external/MID-360 profile、机器人安装 profile 和相机 profile 分离 | 传感器更换只改 YAML；算法不查询 TF 猜外参 |
 | RTK | 时间、帧、协方差、创新量和质量门控；默认关闭 | 低质量 RTK 被拒绝，不直接污染图优化 |
 | 状态接口 | 发布结构化 `LocalizationStatus`，保留旧字符串状态话题 | 只观察/门控，不反向改变匹配和图优化 |
-| 复位联动 | 发布 `LocalizationReset`，按 `reset_id` 清理 IMU/VIS 跨代队列 | 地图基准改变时短暂等待新锚点，避免旧数据跨代拼接 |
+| 定位事件 | 发布观察型 `LocalizationReset`，供上层记录和决策 | 不清理 IMU/VIS 队列，不重置因子图、bias 或视觉滑窗 |
 | 可视化/文档 | RViz 默认项、部署脚本、配置和验收文档统一 | 只改变启动便利性和诊断手段 |
 
 下列内容**明确没有被本轮重写**：LOAM 特征定义、scan-to-map 优化目标、因子图噪声模型、
@@ -53,7 +53,7 @@ VINS 滑窗因子、DBoW2/BRIEF 描述子和 Nav2 的上层规划逻辑。若这
 | 统一启动 | `run.launch.py` | `mode × scene` 选配置；VIS/RViz 默认开启；话题、地图目录、TF 发布显式覆盖；启动前检查文件 | 默认会多启动 VIS/RViz；纯 LIS 用开关恢复最小链路 |
 | 配置治理 | `config/*.yaml`、`validate_config.py`、`config/README.md` | 配置集中；同场景 mapping/localization 传感器及外参一致性；数值/资源/接口校验 | 不改变合法参数；错误配置在节点创建前失败 |
 | Mid-360 前端 | `imageProjection.hpp`、`featureExtraction.hpp` | 容器 RAII、边界/有限值/时间检查、队列上限；保留最后一个 Livox 点；修正特征排序末端遗漏 | 合法帧计算链不变；修复原先最后点/末端元素遗漏 |
-| IMU 预积分 | `imuPreintegration.cpp`、`internal_odom_metadata.hpp` | 有限值和单调时间检查；智能指针；队列上限；图优化重置编号；帧语义统一为物理 LiDAR | 正常积分方程不变；图优化发生跳变时主动重建积分状态 |
+| IMU 预积分 | `imuPreintegration.cpp`、`internal_odom_metadata.hpp` | 有限值和单调时间检查；智能指针；队列上限；图优化重置编号；零时长积分保护；帧语义统一为物理 LiDAR | 正常积分方程不变；图优化发生跳变或暂时没有有效 IMU 区间时安全等待/重建，不再让 GTSAM 欠约束异常终止进程 |
 | 地图优化 | `mapOptmization.cpp`、`file_tools.hpp` | 线程快照、输入门限、Scan Context+ICP、地图清单/事务、定位状态机、RTK 门控 | 普通 mapping 主顺序仍为初值→局部图→降采样→scan-to-map→因子图→发布 |
 | 先验地图定位 | `mapOptmization.cpp`、localization YAML | 加载 PCD/SCD/manifest；Scan Context 全局重定位；丢失检测和强制重定位服务 | 仅 `Loc.EnableFlag=true` 进入；mapping 不执行先验地图分支 |
 | 地图持久化 | `mapOptmization.cpp`、地图格式文档 | 新/空目录要求；写入中标记；逐帧 PCD/SCD；最终 manifest 原子提交；帧和维度核对 | 改变旧版“可覆盖目录”习惯，避免混合旧地图；不改变在线里程计 |
@@ -78,11 +78,15 @@ VINS 滑窗因子、DBoW2/BRIEF 描述子和 Nav2 的上层规划逻辑。若这
 `pose_valid` 也不等价于可运动，正常导航应只在 `TRACKING` 放行。
 
 随后增加了独立的 `LocalizationReset` 事件接口，默认话题为
-`/lio_sam/localization/reset`，并通过 `localization_reset_topic` 统一配置。
-地图优化节点仍是 `reset_id` 的唯一所有者，旧的里程计协方差元数据继续发布，
-因此旧消费者保持兼容。地图重定位、强制重定位、回环图修正会清理 IMU/VIS
-跨代队列；VINS 或 IMU 自身故障只发布明确的下游复位请求，不修改 LiDAR 匹配
-和地图因子图。所有接收者按 `(source,event_id)` 去重，避免多发布者同题自回环。
+`/lio_sam/localization/reset`，并通过 `localization_reset_topic` 统一配置。早期实现曾让
+IMU、融合传播和视觉节点订阅该话题并直接清理队列、重建图或重启滑窗。实机验证表明，
+该联动改变了原有预积分时序：重定位后可能在没有有效 IMU 区间时构造零时长 Bias 因子，
+触发 `IndeterminantLinearSystemException`（常报告在 `b0` 附近）。
+
+当前接口已恢复为纯观察输出：内部估计器不订阅 `LocalizationReset`。事件发布也不再递增
+`imuPreintegrationResetId`；只有原有图修正路径能够改变该代次，并继续通过里程计兼容元数据
+传递。这样既保留上层状态接口，也不让状态发布反向修改 IMU 队列、GTSAM 图、bias 或 VINS
+滑窗。零时长预积分检查作为独立数值安全约束保留，不属于状态机控制。
 
 对应契约与测试见 `docs/LOCALIZATION_STATUS_INTERFACE.md`、
 `docs/LOCALIZATION_RESET_INTERFACE.md` 以及 `test_localization_*_contract.cpp`。
@@ -90,13 +94,9 @@ VINS 滑窗因子、DBoW2/BRIEF 描述子和 Nav2 的上层规划逻辑。若这
 分别执行；在验收前，上层只能把 reset 事件作为诊断/协同信号，不能把它当作
 Nav2 速度或 TF 指令。
 
-严格按“先状态、后复位”验收时，可将 `d87189f` 作为状态接口专用基线（包含
-`VERIFYING/DEGRADED`，不含复位事件订阅）；状态接口通过后，再切换到当前
-`agent/visual-rviz-defaults` 功能分支（功能实现基线 `4bb5ca5`），逐项验证
-`LocalizationReset`、IMU 队列清理、旧代数据丢弃和 VINS 重启联动。
-中间提交 `6fe3e07`、`6333b29`、`8fe1329` 分别对应复位契约、地图事件和
-IMU 传播接入；`1500818`、`0497e69` 是 force/lost 验收器增强，便于出现问题
-时精确回退。
+历史提交 `6fe3e07`、`6333b29`、`8fe1329` 分别引入复位契约、地图事件和 IMU
+主动消费。其中 `8fe1329` 开始清空 IMU 队列和重建预积分状态，是本次回归的主要变化点。
+这些提交仍可用于 A/B 排查，但当前分支不再启用主动消费语义。
 
 ### 3.1 纯激光建图
 
@@ -107,15 +107,18 @@ scan-to-map → 关键帧/因子图 → 位姿与点云发布。以下变化属�
 - 原特征排序区间遗漏末端元素，现使用完整闭区间；
 - 原固定数组和手动资源改为等价 RAII 容器；
 - 非有限、倒序或越界数据在进入 PCL/GTSAM 前丢弃；合法数据不经过额外估计环节；
-- 通用实机的 `params_mapping.yaml` 与 `params_localization.yaml` 均使用
+- 通用实机、charging 和 gazebo 的 mapping/localization 配置均使用
   `mappingProcessInterval=0`，处理每个已接受雷达帧，避免 10 Hz 时间戳抖动导致隔帧；
   实际输出频率仍由扫描匹配和地图搜索耗时决定。旧版兼容 `params.yaml` 同步保持该值。
 
 ### 3.2 IMU 与图优化衔接
 
-预积分公式、噪声模型和 GTSAM 优化结构保留。新增重置编号只在 GPS、外部位姿或回环导致历史
-图位姿整体修正后变化；消费者收到变化后放弃跨坐标跳变的旧积分，从下一次图优化修正重新初始化。
-该行为会在图修正时短暂少发布一段预测，但比把修正前后的积分连续拼接更稳定。
+预积分公式、噪声模型和 GTSAM 优化结构保留。重置编号仍只由原有图修正路径递增，并通过
+mapping odometry 的兼容元数据传递。发布定位状态、初次重定位成功或诊断事件不会改变该编号。
+
+初始化或图修正后的第一帧校正可能早于任何有效 IMU 时间区间。此时不再构造零时长 IMU/Bias
+因子，而是保留队列等待下一帧；若 GTSAM 仍报告欠约束异常，则本地转入正常重新初始化流程并
+发布观察性诊断事件，避免 `b0` 附近的 `IndeterminantLinearSystemException` 直接杀死 ROS 进程。
 
 `/odometry/imu` 的协方差前八个槽位用于兼容原 LVI-SAM 的内部初始化元数据，不是统计协方差。
 Nav2 或通用融合器应使用 `/lio_sam/mapping/odometry`，或由集成层发布带真实协方差的独立话题。

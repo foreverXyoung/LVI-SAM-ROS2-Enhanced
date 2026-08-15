@@ -1,80 +1,52 @@
-# Localization reset-event interface
+# 定位事件接口（观察性）
 
-This document defines the second, event-only seam for controlled reset
-propagation. It is deliberately separate from the existing LiDAR matcher,
-factor graph, TF, and odometry decisions. Adding the topic does not itself
-force a relocalization; each producer explicitly declares which downstream
-component should clear state.
+`/lio_sam/localization/reset` 是面向上层状态机和诊断工具的结构化事件输出。
+它不再是 LVI-SAM 内部估计器的控制输入。
 
-## Message and topic
+## 基本契约
 
-| Item | Value |
+| 项目 | 值 |
 |---|---|
-| Message | `lvi_sam_msgs/msg/LocalizationReset` |
-| Topic | `/lio_sam/localization/reset` |
-| QoS | reliable, depth 10, volatile |
-| Map/LiDAR owner of `reset_id` | `lvi_sam_mapOptimization` |
+| 消息 | `lvi_sam_msgs/msg/LocalizationReset` |
+| 默认话题 | `/lio_sam/localization/reset` |
+| QoS | reliable、depth 10、volatile |
+| `reset_id` 所有者 | `lvi_sam_mapOptimization` |
 
-The launch file exposes the topic as a single `localization_reset_topic`
-argument. The default must remain `/lio_sam/localization/reset`; a custom
-absolute topic may be used when multiple LVI-SAM instances share a ROS graph.
+- `event_id` 只标识同一发布源产生的事件。
+- `reset_id` 反映原有 LIO-SAM 内部地图/图优化代次，不由事件发布函数递增。
+- `reason`、`reset_imu` 和 `restart_visual` 描述事件的性质和建议动作，发布消息本身不执行这些动作。
+- LVI-SAM 的 IMU 预积分、融合传播、视觉特征、视觉估计器和视觉回环节点不订阅该话题来清理内部状态。
 
-## Identifier semantics
+## 与原算法的边界
 
-- `reset_id` is the LiDAR/map continuity generation. It is the same generation
-  that is carried in the existing internal covariance metadata consumed by
-  the IMU preintegration and visual initializer.
-- `event_id` identifies one event from one source. It is not globally unique
-  across processes, so receivers deduplicate by `(source, event_id)` when they
-  need deduplication.
-- `LocalizationStatus.reset_id` reports the most recently owned LiDAR/map
-  generation. It does not mean that every downstream node has already
-  completed its reset.
+内部算法继续使用原有数据通道：
 
-## Reasons and expected actions
+1. `mapOptimization` 仅在原有图修正路径中递增 `imuPreintegrationResetId`；
+2. 该代次通过 `mapping/odometry_incremental` 的兼容元数据传递；
+3. IMU 预积分按原有 `reset_id` 路径重新初始化；
+4. 状态和事件发布不得清空 IMU 队列、重建 GTSAM 图、重置 bias 或重启视觉滑窗。
 
-| Reason | Typical source | `reset_imu` | `restart_visual` | Meaning |
-|---|---|---:|---:|---|
-| `RELOCALIZATION` | map optimization | true | true | A new prior-map pose was accepted. |
-| `FORCE_RELOCALIZATION` | map optimization | true | true | Existing force service requested a fresh initialization. |
-| `MAP_CORRECTION` | map optimization | true | true | A loop/graph correction changed the map pose basis. |
-| `VINS_FAILURE` | visual estimator | false | true | VINS cleared its own state; LiDAR/IMU map state is not replaced. |
-| `IMU_FAILURE` | IMU preintegration | true | true | IMU propagation rejected its optimized state. |
-| `IMAGE_STREAM_RESET` | feature tracker | false | true | Camera timestamps or image stream continuity failed. |
-| `MANUAL` | integration/test tool | explicit | explicit | Reserved for a controlled external test. |
+这样可以保证增加上层状态接口不会改变已经验证过的点云匹配、IMU 预积分、图优化和视觉里程计时序。
 
-The flags are requests for the named downstream action, not a guarantee that
-the receiver has completed it. A receiver must log the event and apply only
-the actions whose flags are true. In particular, a `VINS_FAILURE` event must
-not reset the LiDAR map or increment the LiDAR-owned `reset_id`.
+## 数值安全保护
 
-## Compatibility rules
+数值安全检查不属于状态机控制。若一次激光校正之前没有形成有效 IMU 预积分区间，
+IMU 节点跳过本次图更新，等待下一帧，而不会构造零时长 IMU/Bias 因子。
+若 GTSAM 更新仍抛出异常，节点只重置自身的短时传播状态并发布诊断事件，不能让状态事件反向触发第二次复位。
 
-1. The old covariance reset metadata remains published unchanged. Existing
-   ROS 2 consumers that do not know this message continue to work.
-2. The reset topic is advisory during the staged rollout. No old algorithm
-   branch may depend on a reset subscriber being present.
-3. A reset event is ordered only relative to messages from the same publisher;
-   consumers must use the event timestamp and generation checks to reject
-   stale data.
-4. A receiver must clear queued data from the previous generation before
-   accepting new data. This is the important distinction from merely resetting
-   an estimator flag. It must also retain monotonic timestamp watermarks across
-   the reset; otherwise a delayed DDS sample can be mistaken for the first
-   sample of the new generation. The propagation node keeps the LiDAR anchor
-   invalid until a fresh LiDAR odometry sample arrives.
+## 上层使用规则
 
-## Staged rollout
+上层状态机可以订阅事件用于：
 
-The interface is introduced before any subscriber is enabled. The intended
-order is:
+- 记录重定位、强制重定位、地图修正、VINS 或 IMU 异常；
+- 决定导航任务是否暂停、降速或请求人工处理；
+- 触发独立且经过验收的恢复服务。
 
-1. publish map-owned events while preserving covariance reset metadata;
-2. make IMU propagation clear its queues and integration state on events;
-3. make visual feature/estimator nodes restart on the explicit visual flag;
-4. emit VINS/IMU failure events and verify de-duplication on bags and on the
-   robot.
+上层不得把该话题直接回接为 LVI-SAM 内部队列清理命令。未来若需要主动恢复，必须使用独立服务或动作接口，并单独完成 bag、实机和乱序时序测试。
 
-Until those runtime checks pass, the status topic remains the upper-layer
-control interface and this reset topic must not be used by navigation as a
-direct motion command.
+## 验收要点
+
+1. 发布任意 `LocalizationReset` 消息时，`/lio_sam/mapping/odometry` 和 `/odometry/imu` 不应因为该消息被清空或重新初始化；
+2. 初次先验地图重定位后不应出现由零时长 bias 因子引起的 `IndeterminantLinearSystemException`；
+3. 原有图修正导致 `reset_id` 变化时，兼容路径仍能工作；
+4. 启用或关闭视觉节点不改变上述边界。

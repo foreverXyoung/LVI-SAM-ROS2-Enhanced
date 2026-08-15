@@ -76,7 +76,9 @@
     z_tollerance: 1.0
     rotation_tollerance: 1.0
     numberOfCores: 4
-    mappingProcessInterval: 0.10
+    # Process every accepted frame; scan matching still determines the
+    # achievable output rate.
+    mappingProcessInterval: 0.0
     surroundingkeyframeAddingDistThreshold: 0.20
     surroundingkeyframeAddingAngleThreshold: 0.05
     surroundingKeyframeDensity: 1.0

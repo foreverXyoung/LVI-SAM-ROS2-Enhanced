@@ -33,9 +33,6 @@ camodocal::CameraPtr m_camera;
 Eigen::Vector3d tic = Eigen::Vector3d::Zero();
 Eigen::Matrix3d qic = Eigen::Matrix3d::Identity();
 bool extrinsic_received = false;
-std::string last_reset_source;
-std::uint64_t last_reset_event_id = 0;
-bool has_last_reset_event = false;
 
 std::string PROJECT_NAME;
 std::string IMAGE_TOPIC;
@@ -122,31 +119,6 @@ void point_callback(const sensor_msgs::msg::PointCloud::ConstSharedPtr &point_ms
         ++buffer_generation;
     }
     buffer_condition.notify_one();
-}
-
-void localization_reset_callback(
-    const lvi_sam_msgs::msg::LocalizationReset::ConstSharedPtr &reset_msg)
-{
-    if (!reset_msg || !reset_msg->restart_visual ||
-        reset_msg->source == "visual_loop")
-        return;
-    {
-        std::lock_guard<std::mutex> lock(m_buf);
-        if (has_last_reset_event &&
-            last_reset_source == reset_msg->source &&
-            last_reset_event_id == reset_msg->event_id)
-            return;
-        has_last_reset_event = true;
-        last_reset_source = reset_msg->source;
-        last_reset_event_id = reset_msg->event_id;
-    }
-    new_sequence();
-    RCLCPP_INFO(
-        rclcpp::get_logger("visual_loop"),
-        "Applied localization reset event: source=%s reason=%u reset_id=%llu detail=%s",
-        reset_msg->source.c_str(), static_cast<unsigned int>(reset_msg->reason),
-        static_cast<unsigned long long>(reset_msg->reset_id),
-        reset_msg->detail.c_str());
 }
 
 void pose_callback(const nav_msgs::msg::Odometry::ConstSharedPtr &pose_msg)
@@ -545,10 +517,6 @@ int main(int argc, char **argv)
     auto sub_extrinsic = n->create_subscription<nav_msgs::msg::Odometry>(
         lvi_sam::topics::project_topic(PROJECT_NAME, lvi_sam::topics::kExtrinsic), 3,
         extrinsic_callback);
-    auto sub_localization_reset =
-        n->create_subscription<lvi_sam_msgs::msg::LocalizationReset>(
-            LOCALIZATION_RESET_TOPIC, rclcpp::QoS(10).reliable(),
-            localization_reset_callback);
     RCLCPP_INFO(n->get_logger(), "\033[1;32m----> Visual Loop Detection subscribers created.\033[0m");
 
     pub_match_img = n->create_publisher<sensor_msgs::msg::Image>(

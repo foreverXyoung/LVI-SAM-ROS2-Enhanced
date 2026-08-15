@@ -93,7 +93,7 @@ URDF/Xacro 都必须使用绝对路径。入口会在创建节点前检查文件
 | `/lio_sam/mapping/icp_loop_closure_corrected_cloud` | `sensor_msgs/msg/PointCloud2` | ICP 对齐后的回环点云，仅用于诊断 |
 | `/lio_sam/localization/state` | `std_msgs/msg/String` | 定位状态机输出 |
 | `/lio_sam/localization/status` | `lvi_sam_msgs/msg/LocalizationStatus` | 结构化状态接口；上层按数值 `state/mode` 门控 |
-| `/lio_sam/localization/reset` | `lvi_sam_msgs/msg/LocalizationReset` | 分阶段复位事件；仅按 `reset_imu/restart_visual` 执行动作 |
+| `/lio_sam/localization/reset` | `lvi_sam_msgs/msg/LocalizationReset` | 观察性事件输出；内部估计器不订阅、不据此清队列或重置因子图 |
 | `/lio_sam/localization/force_relocalize` | `std_srvs/srv/Trigger` | 强制重新进入全局重定位流程 |
 
 #### 3.2.1 LIS→VIS 内部里程计元数据

@@ -56,9 +56,6 @@ double last_feature_t = -1;
 double last_odom_t = -1;
 std::atomic<std::uint64_t> reset_generation{0};
 std::uint64_t visualResetEventSequence = 0;
-std::string lastExternalResetSource;
-std::uint64_t lastExternalResetEventId = 0;
-bool hasLastExternalResetEvent = false;
 std::uint64_t latestLidarResetId = 0;
 rclcpp::Publisher<lvi_sam_msgs::msg::LocalizationReset>::SharedPtr
     pubLocalizationReset;
@@ -433,42 +430,6 @@ void restart_callback(
     }
 }
 
-void localization_reset_callback(
-    const lvi_sam_msgs::msg::LocalizationReset::ConstSharedPtr &reset_msg,
-    Estimator &estimator)
-{
-    if (!reset_msg || !reset_msg->restart_visual ||
-        reset_msg->source == "visual_estimator")
-        return;
-
-    {
-        std::lock_guard<std::mutex> lock(m_state);
-        if (hasLastExternalResetEvent &&
-            lastExternalResetSource == reset_msg->source &&
-            lastExternalResetEventId == reset_msg->event_id)
-            return;
-        hasLastExternalResetEvent = true;
-        lastExternalResetSource = reset_msg->source;
-        lastExternalResetEventId = reset_msg->event_id;
-    }
-
-    if (reset_msg->source == "map_optimization") {
-        std::lock_guard<std::mutex> lock(m_reset);
-        if (reset_msg->reset_id < latestLidarResetId)
-            return;
-        latestLidarResetId = reset_msg->reset_id;
-    }
-
-    resetEstimatorState(estimator);
-    con.notify_all();
-    RCLCPP_INFO(
-        rclcpp::get_logger("visual_estimator"),
-        "Applied localization reset event: source=%s reason=%u reset_id=%llu detail=%s",
-        reset_msg->source.c_str(), static_cast<unsigned int>(reset_msg->reason),
-        static_cast<unsigned long long>(reset_msg->reset_id),
-        reset_msg->detail.c_str());
-}
-
 void publishVisualResetEvent(
     const std_msgs::msg::Header &header,
     const std::uint64_t reset_id,
@@ -682,14 +643,6 @@ int main(int argc, char **argv)
         lvi_sam::topics::project_topic(PROJECT_NAME, lvi_sam::topics::kFeatureRestart), 1,
         std::function<void(const std_msgs::msg::Bool::ConstSharedPtr&)>(
             std::bind(restart_callback, std::placeholders::_1, std::ref(estimator))));
-
-    auto sub_localization_reset =
-        node->create_subscription<lvi_sam_msgs::msg::LocalizationReset>(
-            LOCALIZATION_RESET_TOPIC, rclcpp::QoS(10).reliable(),
-            std::function<void(
-                const lvi_sam_msgs::msg::LocalizationReset::ConstSharedPtr&)>(
-                std::bind(localization_reset_callback, std::placeholders::_1,
-                          std::ref(estimator))));
 
     RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Visual Odometry Estimator Subscribers created.\033[0m");
 

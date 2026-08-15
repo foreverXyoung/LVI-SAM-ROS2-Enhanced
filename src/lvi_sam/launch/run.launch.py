@@ -96,8 +96,8 @@ def generate_launch_description():
         'localization_reset_topic',
         default_value='/lio_sam/localization/reset',
         description=(
-            'Cross-component reset-event topic; must be absolute and is '
-            'shared by LIS and VIS nodes'))
+            'Observational localization-event topic for upper-level state '
+            'machines; internal estimators do not consume it as a reset command'))
 
     project_name_arg = DeclareLaunchArgument(
         'project_name', default_value='lvi_sam',
