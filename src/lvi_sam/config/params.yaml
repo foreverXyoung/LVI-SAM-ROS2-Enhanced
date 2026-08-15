@@ -106,7 +106,10 @@
 
     # CPU Params
     numberOfCores: 8                              # number of cores for mapping optimization
-    mappingProcessInterval: 0.10
+    # Keep the legacy profile aligned with the generic localization profile.
+    # Process every accepted frame; scan matching still determines the
+    # achievable output rate.
+    mappingProcessInterval: 0.0
 
     # Surrounding map
     surroundingkeyframeAddingDistThreshold: 0.2   # 2. meters, regulate keyframe adding threshold

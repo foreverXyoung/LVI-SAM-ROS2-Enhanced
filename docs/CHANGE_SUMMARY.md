@@ -107,7 +107,9 @@ scan-to-map → 关键帧/因子图 → 位姿与点云发布。以下变化属�
 - 原特征排序区间遗漏末端元素，现使用完整闭区间；
 - 原固定数组和手动资源改为等价 RAII 容器；
 - 非有限、倒序或越界数据在进入 PCL/GTSAM 前丢弃；合法数据不经过额外估计环节；
-- `mappingProcessInterval=0` 表示处理每个已接受雷达帧，避免 10 Hz 抖动导致隔帧。
+- 通用实机的 `params_mapping.yaml` 与 `params_localization.yaml` 均使用
+  `mappingProcessInterval=0`，处理每个已接受雷达帧，避免 10 Hz 时间戳抖动导致隔帧；
+  实际输出频率仍由扫描匹配和地图搜索耗时决定。旧版兼容 `params.yaml` 同步保持该值。
 
 ### 3.2 IMU 与图优化衔接
 

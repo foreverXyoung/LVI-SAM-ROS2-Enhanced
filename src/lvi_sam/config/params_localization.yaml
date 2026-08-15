@@ -106,7 +106,10 @@
 
     # CPU Params
     numberOfCores: 8                              # number of cores for mapping optimization
-    mappingProcessInterval: 0.10
+    # Process every accepted real-sensor frame. A 0.10 s gate can drop a
+    # nominal 10 Hz frame when the sensor timestamp period is slightly below
+    # 0.10 s; the actual rate remains bounded by scan-to-map compute time.
+    mappingProcessInterval: 0.0
 
     # Surrounding map
     surroundingkeyframeAddingDistThreshold: 0.2   # 2. meters, regulate keyframe adding threshold
