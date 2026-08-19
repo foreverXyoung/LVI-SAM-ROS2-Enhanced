@@ -10,9 +10,10 @@
 
 ## 0. 当前版本与阅读顺序
 
-当前维护分支为 `agent/visual-rviz-defaults`。用于复现算法实现的稳定锚点是
-`4bb5ca5`；`d87189f` 是只包含观测型定位状态接口的分阶段基线。后续只修改文档的提交
-不会改变这两个实现边界；目标机部署后仍应执行 `git rev-parse HEAD` 记录实际检出的版本。
+当前维护和默认部署分支为 `main`。增强功能合并锚点为 `f140df2`，其中完整增强实现来自
+`19ca76a`，并保留旧 `main` 的 ROS 环境脚本兼容修复。`agent/visual-rviz-defaults` 仅作为
+合并前历史备份；目标机部署后仍应执行 `git rev-parse HEAD` 和 `git status --short`，记录
+实际检出的版本和本地改动。
 
 建议按以下顺序阅读：
 
@@ -21,7 +22,7 @@
 3. [`docs/USAGE.md`](docs/USAGE.md)：日常建图/定位/视觉启动流程；
 4. [`docs/LOCALIZATION_STATUS_INTERFACE.md`](docs/LOCALIZATION_STATUS_INTERFACE.md) 与
    [`docs/LOCALIZATION_RESET_INTERFACE.md`](docs/LOCALIZATION_RESET_INTERFACE.md)：上层状态机和复位事件契约；
-5. [`docs/LOCALIZATION_ACCEPTANCE_MATRIX.md`](docs/LOCALIZATION_ACCEPTANCE_MATRIX.md)：先状态、后复位的实机验收顺序。
+5. [`docs/LOCALIZATION_ACCEPTANCE_MATRIX.md`](docs/LOCALIZATION_ACCEPTANCE_MATRIX.md)：状态输出、事件边界和原算法不受干预的实机验收顺序。
 
 当前文档不会把“能够编译”写成“已经完成实机验收”。完整 ROS 2、GTSAM、PCL、Ceres 构建和
 真实传感器运行仍以 Orin 的命令输出为准。
@@ -45,8 +46,9 @@
   这些字段不是统计协方差；准确索引、校验规则及面向 Nav2 的使用边界见
   [`docs/INTERFACES_AND_STABILITY.md`](docs/INTERFACES_AND_STABILITY.md#321-lisvis-内部里程计元数据)。
 - **定位状态接口**：上层状态机使用 `/lio_sam/localization/status` 的结构化
-  `LocalizationStatus`；复位联动使用独立的 `/lio_sam/localization/reset` 事件。
-  两个阶段的验收顺序见 [`docs/LOCALIZATION_ACCEPTANCE_MATRIX.md`](docs/LOCALIZATION_ACCEPTANCE_MATRIX.md)。
+  `LocalizationStatus`；`/lio_sam/localization/reset` 是独立的观察性事件。当前内部估计器
+  不订阅该事件，状态接口不会清空 IMU/VIS 队列、重建因子图或修改 bias。
+  验收顺序见 [`docs/LOCALIZATION_ACCEPTANCE_MATRIX.md`](docs/LOCALIZATION_ACCEPTANCE_MATRIX.md)。
 - **配置外置**：全部参数集中在 [`src/lvi_sam/config/`](src/lvi_sam/config/README.md)，
   随包安装（`install(DIRECTORY config)`），无源码硬编码路径。
 - **源码二分**：`src/lvi_sam/src/` 下严格分为 `lidar_odometry/`（激光）与 `visual_odometry/`（视觉），
@@ -223,7 +225,7 @@ ros2 launch lvi_sam run.launch.py \
 | [`docs/ARCHITECTURE_AND_MAP_FORMAT.md`](docs/ARCHITECTURE_AND_MAP_FORMAT.md) | 模块职责、地图版本、视觉跨会话重定位数据集和 RTK 输入契约。 |
 | [`docs/INTERFACES_AND_STABILITY.md`](docs/INTERFACES_AND_STABILITY.md) | **工程接口与稳定性契约**：模块边界、话题/QoS、时间与坐标、依赖所有权、降级策略、扩展规则和 Orin 验收门槛。 |
 | [`docs/LOCALIZATION_STATUS_INTERFACE.md`](docs/LOCALIZATION_STATUS_INTERFACE.md) / [`docs/LOCALIZATION_RESET_INTERFACE.md`](docs/LOCALIZATION_RESET_INTERFACE.md) | 定位状态位、复位事件字段、代次语义和上层控制边界。 |
-| [`docs/LOCALIZATION_ACCEPTANCE_MATRIX.md`](docs/LOCALIZATION_ACCEPTANCE_MATRIX.md) | **分阶段验收矩阵**：先验证状态输出，再验证 IMU/VINS/代次复位联动。 |
+| [`docs/LOCALIZATION_ACCEPTANCE_MATRIX.md`](docs/LOCALIZATION_ACCEPTANCE_MATRIX.md) | **定位接口验收矩阵**：验证状态、事件、IMU/VINS 数据链以及状态输出不干预原算法。 |
 | [`docs/REMOTE_TEST_AND_CHANGES.md`](docs/REMOTE_TEST_AND_CHANGES.md) | **本次修改说明与远程测试手册**：拉取、编译、分阶段建图/定位、视觉、RTK、验收及已知边界。 |
 | [`scripts/setup.sh`](scripts/setup.sh) | 一键编排：子模块初始化 → 依赖安装 → 编译。 |
 | [`scripts/install_deps.sh`](scripts/install_deps.sh) | 安装系统/ROS 依赖，复用兼容 GTSAM 4.x 或按需源码构建 GTSAM/Livox-SDK2（重跑安全）。 |
