@@ -1,4 +1,5 @@
 #include "parameters.h"
+#include "lvi_sam/package_assets.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 
@@ -33,6 +34,7 @@
 #include <iterator>
 #include <sstream>
 #include <string>
+#include <stdexcept>
 #include <limits>
 #include <iomanip>
 #include <array>
@@ -47,6 +49,7 @@ typedef pcl::PointXYZI PointType;
 std::string IMAGE_TOPIC;
 std::string IMU_TOPIC;
 std::string POINT_CLOUD_TOPIC;
+std::string LOCALIZATION_RESET_TOPIC;
 std::string PROJECT_NAME;
 
 std::vector<std::string> CAM_NAMES;
@@ -95,7 +98,11 @@ void readParameters(std::shared_ptr<rclcpp::Node> n)
     // fsSettings["project_name"] >> PROJECT_NAME;
     n->declare_parameter("PROJECT_NAME", "");
     n->get_parameter("PROJECT_NAME", PROJECT_NAME);
-    std::string pkg_path = get_package_share_directory(PROJECT_NAME);
+    if (PROJECT_NAME.empty())
+        throw std::runtime_error("PROJECT_NAME must not be empty");
+    // PROJECT_NAME is a topic namespace, not an ament package identifier.
+    config_file = lvi_sam::resolve_package_asset(
+        config_file, "camera configuration");
 
     // sensor topics
     n->declare_parameter("image_topic", "");
@@ -104,6 +111,17 @@ void readParameters(std::shared_ptr<rclcpp::Node> n)
     n->get_parameter("imu_topic", IMU_TOPIC);
     n->declare_parameter("point_cloud_topic", "");
     n->get_parameter("point_cloud_topic", POINT_CLOUD_TOPIC);
+    n->declare_parameter(
+        "localization_reset_topic", "/lio_sam/localization/reset");
+    n->get_parameter("localization_reset_topic", LOCALIZATION_RESET_TOPIC);
+    if (IMAGE_TOPIC.empty())
+        throw std::runtime_error("image_topic must not be empty");
+    if (IMU_TOPIC.empty())
+        throw std::runtime_error("imu_topic must not be empty");
+    if (LOCALIZATION_RESET_TOPIC.empty() ||
+        LOCALIZATION_RESET_TOPIC.front() != '/')
+        throw std::runtime_error(
+            "localization_reset_topic must be an absolute topic");
     // fsSettings["image_topic"]       >> IMAGE_TOPIC;
     // fsSettings["imu_topic"]         >> IMU_TOPIC;
     // fsSettings["point_cloud_topic"] >> POINT_CLOUD_TOPIC;
@@ -113,6 +131,13 @@ void readParameters(std::shared_ptr<rclcpp::Node> n)
     n->get_parameter("use_lidar", USE_LIDAR);
     n->declare_parameter("lidar_skip", 1);
     n->get_parameter("lidar_skip", LIDAR_SKIP);
+    if (USE_LIDAR != 0 && USE_LIDAR != 1)
+        throw std::runtime_error("use_lidar must be 0 or 1");
+    if (LIDAR_SKIP < 0)
+        throw std::runtime_error("lidar_skip must be greater than or equal to 0");
+    if (USE_LIDAR == 1 && POINT_CLOUD_TOPIC.empty())
+        throw std::runtime_error(
+            "point_cloud_topic must not be empty when use_lidar is enabled");
     // fsSettings["use_lidar"] >> USE_LIDAR;
     // fsSettings["lidar_skip"] >> LIDAR_SKIP;
 
@@ -133,6 +158,17 @@ void readParameters(std::shared_ptr<rclcpp::Node> n)
     n->get_parameter("show_track", SHOW_TRACK);
     n->declare_parameter("equalize", 1);
     n->get_parameter("equalize", EQUALIZE);
+    if (MAX_CNT <= 0 || MIN_DIST <= 0)
+        throw std::runtime_error("max_cnt and min_dist must be greater than 0");
+    if (ROW <= 0 || COL <= 0)
+        throw std::runtime_error("image_height and image_width must be greater than 0");
+    if (FREQ < 0)
+        throw std::runtime_error("freq must be greater than or equal to 0");
+    if (!std::isfinite(F_THRESHOLD) || F_THRESHOLD <= 0.0)
+        throw std::runtime_error("F_threshold must be finite and greater than 0");
+    if ((SHOW_TRACK != 0 && SHOW_TRACK != 1) ||
+        (EQUALIZE != 0 && EQUALIZE != 1))
+        throw std::runtime_error("show_track and equalize must be 0 or 1");
     // MAX_CNT = fsSettings["max_cnt"];
     // MIN_DIST = fsSettings["min_dist"];
     // ROW = fsSettings["image_height"];
@@ -142,18 +178,26 @@ void readParameters(std::shared_ptr<rclcpp::Node> n)
     // SHOW_TRACK = fsSettings["show_track"];
     // EQUALIZE = fsSettings["equalize"];
 
-    n->declare_parameter("lidar_to_cam_tx", 0.0);
+    const double missing_extrinsic =
+        std::numeric_limits<double>::quiet_NaN();
+    n->declare_parameter("lidar_to_cam_tx", missing_extrinsic);
     n->get_parameter("lidar_to_cam_tx", L_C_TX);
-    n->declare_parameter("lidar_to_cam_ty", 0.0);
+    n->declare_parameter("lidar_to_cam_ty", missing_extrinsic);
     n->get_parameter("lidar_to_cam_ty", L_C_TY);
-    n->declare_parameter("lidar_to_cam_tz", 0.0);
+    n->declare_parameter("lidar_to_cam_tz", missing_extrinsic);
     n->get_parameter("lidar_to_cam_tz", L_C_TZ);
-    n->declare_parameter("lidar_to_cam_rx", 0.0);
+    n->declare_parameter("lidar_to_cam_rx", missing_extrinsic);
     n->get_parameter("lidar_to_cam_rx", L_C_RX);
-    n->declare_parameter("lidar_to_cam_ry", 0.0);
+    n->declare_parameter("lidar_to_cam_ry", missing_extrinsic);
     n->get_parameter("lidar_to_cam_ry", L_C_RY);
-    n->declare_parameter("lidar_to_cam_rz", 0.0);
+    n->declare_parameter("lidar_to_cam_rz", missing_extrinsic);
     n->get_parameter("lidar_to_cam_rz", L_C_RZ);
+    if (!std::isfinite(L_C_TX) || !std::isfinite(L_C_TY) ||
+        !std::isfinite(L_C_TZ) || !std::isfinite(L_C_RX) ||
+        !std::isfinite(L_C_RY) || !std::isfinite(L_C_RZ))
+        throw std::runtime_error(
+            "lidar_to_cam translation and rotation must be explicitly "
+            "configured with finite values; no identity extrinsic is assumed");
 
     // L_C_TX = fsSettings["lidar_to_cam_tx"];
     // L_C_TY = fsSettings["lidar_to_cam_ty"];
@@ -165,17 +209,24 @@ void readParameters(std::shared_ptr<rclcpp::Node> n)
     // fisheye mask
     n->declare_parameter("fisheye", 1);
     n->get_parameter("fisheye", FISHEYE);
+    if (FISHEYE != 0 && FISHEYE != 1)
+        throw std::runtime_error("fisheye must be 0 or 1");
     // FISHEYE = fsSettings["fisheye"];
     if (FISHEYE == 1)
     {
         std::string mask_name;
         n->declare_parameter("fisheye_mask", "");
         n->get_parameter("fisheye_mask", mask_name);
+        if (mask_name.empty())
+            throw std::runtime_error(
+                "fisheye_mask must not be empty when fisheye is enabled");
         // fsSettings["fisheye_mask"] >> mask_name;
-        FISHEYE_MASK = pkg_path + mask_name;
+        FISHEYE_MASK = lvi_sam::resolve_package_asset(
+            mask_name, "fisheye mask");
     }
 
     // camera config
+    CAM_NAMES.clear();
     CAM_NAMES.push_back(config_file);
 
     WINDOW_SIZE = 20;
@@ -183,11 +234,7 @@ void readParameters(std::shared_ptr<rclcpp::Node> n)
     FOCAL_LENGTH = 460;
     PUB_THIS_FRAME = false;
 
-    if (FREQ == 0)
-        FREQ = 100;
-
     // fsSettings.release();
-    usleep(100);
 }
 
 float pointDistance(PointType p)

@@ -8,6 +8,10 @@
 - `visual_estimator`：滑窗视觉惯性估计，为视觉回环提供关键帧位姿和三维点。
 - `visual_loop`：DBoW2/BRIEF 候选检索和 PnP 几何验证。视觉结果只是候选约束，最终仍须由 `mapOptimization` 结合激光/先验地图验证。
 
+视觉进程通过 `include/lvi_sam/image_conversion.hpp` 将标准 `sensor_msgs/Image` 转为持有
+自身内存的 OpenCV 灰度图。该适配层替代对预编译 `cv_bridge` 的直接链接，使每个 LVI-SAM
+进程只加载 CMake 选中的一套 OpenCV；它只改变消息适配，不改变光流、VINS 或回环算法。
+
 TF 的唯一发布原则：机器人主系统或 TransformFusion 负责 `odom→base_link`；只有在不存在其他发布者时，才允许入口 launch 发布静态 `map→odom`。
 
 ## 2. 激光地图格式
@@ -27,7 +31,9 @@ map_directory/
 
 `map_manifest.yaml` 的 `schema_version` 用于阻止不兼容的新格式被旧程序静默加载；Scan Context 的 ring/sector 数也必须与运行程序一致。没有清单的历史地图仍可加载，但会被标记为 legacy map，并继续执行逐文件和维度检查。
 
-地图写入应使用独立的新目录。不要一边定位读取、一边覆盖同一目录中的地图文件。
+地图写入必须使用独立的新目录；程序会拒绝包含旧产物的输出目录。建图期间目录中存在
+`.lvi_sam_mapping_in_progress`，只有全部 PCD/SCD 和 manifest 成功提交后才会删除；定位模式
+会拒绝仍带该标记的未完成地图。不要一边定位读取、一边覆盖同一目录中的地图文件。
 
 ## 3. 相机数据能否用于跨会话重定位
 

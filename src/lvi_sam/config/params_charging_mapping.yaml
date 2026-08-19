@@ -3,17 +3,13 @@
 
     Loc:
       EnableFlag: false
-      loadPCDDirectory: "/tmp/lvi_sam_maps"
-      surroundingKeyframeSearchRadius: 20.0
-      surroundingKeyframeSearchMaxNum: 5
-      useSCReLoc: true
-      init_guess: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-      useRviz: true
+
+    useRviz: true
 
     # Topics
     pointCloudTopic: "/livox/lidar"
     imuTopic: "/IMU_data"
-    odomTopic: "odometry/imu"
+    odomTopic: "/odometry/imu"
     # Local, ENU-aligned RTK observations produced during first-track mapping.
     # No publisher is started during ordinary mapping, so the input is optional.
     gpsTopic: "/gps/lio_sam_odom"
@@ -62,6 +58,7 @@
     lidarMaxRange: 70.0
     # Self-filter box in lidarFrame/livox_frame. Enable after tuning in RViz.
     selfFilterEnable: true
+    selfFilterFrame: "lidar"
     selfFilterBoxMin: [-1.30, -0.50, -0.10]
     selfFilterBoxMax: [ 0.1,  0.50,  1.2]
 
@@ -72,6 +69,7 @@
     imuGyrBiasN: 3.5640318696367613e-05
     imuGravity: 9.80511
     imuRPYWeight: 0.01
+    imuAccelerationScale: 1.0
 
     # LiDAR/IMU extrinsic aligned with the current mobile-base URDF and
     # fast_lio/config/mid360.yaml.
@@ -104,7 +102,9 @@
 
     # CPU Params
     numberOfCores: 8
-    mappingProcessInterval: 0.10
+    # Process every accepted frame; scan matching still determines the
+    # achievable output rate.
+    mappingProcessInterval: 0.0
 
     # Surrounding map
     surroundingkeyframeAddingDistThreshold: 0.2
@@ -122,6 +122,7 @@
     historyKeyframeSearchTimeDiff: 30.0
     historyKeyframeSearchNum: 10
     historyKeyframeFitnessScore: 0.3
+    externalLoopTimeTolerance: 0.2
 
     # Visualization
     globalMapVisualizationSearchRadius: 1000.0

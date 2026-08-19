@@ -1,4 +1,6 @@
 #include "utility.hpp"
+#include "lvi_sam/internal_odom_metadata.hpp"
+#include "lvi_sam/localization_status_projection.hpp"
 #include "file_tools.hpp"
 
 #include <gtsam/geometry/Rot3.h>
@@ -16,17 +18,25 @@
 #include <gtsam/nonlinear/ISAM2.h>
 
 #include <iostream>
+#include <cstdio>
+#include <filesystem>
 #include <stdexcept>
 #include <algorithm>
+#include <cstdint>
 #include <limits>
 #include <map>
+#include <memory>
+#include <set>
 #include <pcl/common/angles.h>
+#include <pcl/filters/filter.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/registration/icp.h>
 #include <opencv2/opencv.hpp>
 
 #include <visualization_msgs/msg/marker.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
+#include <lvi_sam_msgs/msg/localization_reset.hpp>
+#include <lvi_sam_msgs/msg/localization_status.hpp>
 #include <std_msgs/msg/float32.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <std_srvs/srv/trigger.hpp>
@@ -59,8 +69,53 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(PointXYZIRPYT, (float, x, x)(float, y, y)(floa
 
 typedef PointXYZIRPYT PointTypePose;
 
-class mapOptimization : public ParamServer {
+class MapOptimization : public ParamServer {
 public:
+    static constexpr const char* kMapWriteInProgressMarker =
+        ".lvi_sam_mapping_in_progress";
+
+    bool prepareFreshMapOutputDirectory() {
+        namespace fs = std::filesystem;
+        const fs::path root(savePCDDirectory);
+        const std::set<std::string> allowedEmptyDirectories{
+            "Scans", "SCDs", "SurfMap", "CornerMap"};
+        std::error_code error;
+        for (const auto& entry : fs::directory_iterator(root, error)) {
+            if (error) break;
+            const std::string name = entry.path().filename().string();
+            if (entry.is_directory(error) && !error &&
+                allowedEmptyDirectories.count(name) != 0 &&
+                fs::is_empty(entry.path(), error) && !error) {
+                continue;
+            }
+            RCLCPP_ERROR(
+                get_logger(),
+                "Map output directory is not fresh; found existing entry: %s",
+                entry.path().string().c_str());
+            return false;
+        }
+        if (error) {
+            RCLCPP_ERROR(
+                get_logger(), "Unable to inspect map output directory %s: %s",
+                savePCDDirectory.c_str(), error.message().c_str());
+            return false;
+        }
+
+        const std::string markerPath =
+            savePCDDirectory + kMapWriteInProgressMarker;
+        std::ofstream marker(markerPath, std::ios::trunc);
+        marker << "Map serialization is incomplete until map_manifest.yaml "
+                  "is committed.\n";
+        marker.flush();
+        if (!marker.good()) {
+            RCLCPP_ERROR(
+                get_logger(), "Unable to create map transaction marker: %s",
+                markerPath.c_str());
+            return false;
+        }
+        return true;
+    }
+
     template <typename PointT>
     bool savePCDIfNotEmpty(const std::string& path,
                            const pcl::PointCloud<PointT>& cloud,
@@ -68,14 +123,16 @@ public:
         if (cloud.empty()) {
             RCLCPP_WARN(get_logger(),
                         "Skipping empty PCD output: %s", path.c_str());
-            // Truncate any file left by an earlier mapping run so localization
-            // cannot accidentally load stale features for this keyframe index.
+            // PCL's binary writer rejects empty clouds. Keep an explicit
+            // zero-byte marker so keyframe indices remain continuous; the
+            // paired prior-map loader treats that marker as an empty feature
+            // cloud and never passes it to loadPCDFile().
             std::ofstream emptyMarker(path, std::ios::out | std::ios::trunc);
             if (!emptyMarker.good()) {
                 RCLCPP_ERROR(get_logger(),
                              "Failed to clear stale PCD output: %s", path.c_str());
             }
-            return false;
+            return emptyMarker.good();
         }
 
         try {
@@ -98,7 +155,7 @@ public:
     NonlinearFactorGraph gtSAMgraph;
     Values initialEstimate;
     Values optimizedEstimate;
-    ISAM2* isam;
+    std::unique_ptr<ISAM2> isam;
     Values isamCurrentEstimate;
     Eigen::MatrixXd poseCovariance;
 
@@ -122,6 +179,8 @@ public:
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr subLoop;
 
     std::deque<nav_msgs::msg::Odometry> gpsQueue;
+    std::deque<nav_msgs::msg::Odometry> localizationRtkQueue;
+    double lastGpsInputTime = -std::numeric_limits<double>::infinity();
     std::deque<nav_msgs::msg::Odometry> externalPoseQueue;
     nav_msgs::msg::Odometry latestExternalPose;
     bool latestExternalPoseAvailable = false;
@@ -171,6 +230,8 @@ public:
 
     rclcpp::Time timeLaserInfoStamp;
     double timeLaserInfoCur;
+    rclcpp::Time loopSnapshotStamp{0, 0, RCL_ROS_TIME};
+    double loopSnapshotTime = -1.0;
 
     float transformTobeMapped[6];
 
@@ -189,6 +250,8 @@ public:
     int laserCloudSurfLastDSNum = 0;
 
     bool aLoopIsClosed = false;
+    int imuPreintegrationResetId = 0;
+    bool mapArtifactWriteFailed = false;
     map<int, int> loopIndexContainer;  // from new to old
     vector<pair<int, int>> loopIndexQueue;
     vector<gtsam::Pose3> loopPoseQueue;
@@ -215,6 +278,11 @@ public:
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubDynamicFilterRejectedPoints;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr pubDynamicFilterKeepRatio;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pubLocalizationState;
+    rclcpp::Publisher<lvi_sam_msgs::msg::LocalizationStatus>::SharedPtr
+        pubLocalizationStatus;
+    rclcpp::Publisher<lvi_sam_msgs::msg::LocalizationReset>::SharedPtr
+        pubLocalizationReset;
+    rclcpp::TimerBase::SharedPtr localizationStatusTimer;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr srvForceRelocalize;
 
     /////////////////////////////////// SC Start ///////////////////////////////////
@@ -223,12 +291,16 @@ public:
     pcl::PointCloud<PointType>::Ptr laserCloudRawDS{new pcl::PointCloud<PointType>()};  // giseop
     /////////////////////////////////// SC End ///////////////////////////////////
 
-    explicit mapOptimization(const rclcpp::NodeOptions& options)
-        : ParamServer("mapOptimizationParamServer", options) {
+    explicit MapOptimization(const rclcpp::NodeOptions& options)
+        : ParamServer("mapOptimizationParamServer", options),
+          featureExtraction(makeInternalNodeOptions(
+              options, "lvi_sam_feature_extraction_internal")),
+          imageProjection(makeInternalNodeOptions(
+              options, "lvi_sam_image_projection_internal")) {
         ISAM2Params parameters;
         parameters.relinearizeThreshold = 0.1;
         parameters.relinearizeSkip = 1;
-        isam = new ISAM2(parameters);
+        isam = std::make_unique<ISAM2>(parameters);
 
         pubKeyPoses = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/trajectory", 1);
         pubLaserCloudSurround = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/map_global", 1);
@@ -237,25 +309,39 @@ public:
         pubPath = create_publisher<nav_msgs::msg::Path>("lio_sam/mapping/path", 1);
         br = std::make_unique<tf2_ros::TransformBroadcaster>(this);
 
-        subImu = create_subscription<sensor_msgs::msg::Imu>(imuTopic, qos_imu,
-                                                            [this](const sensor_msgs::msg::Imu::SharedPtr msg) { imageProjection.imuHandler(msg); });
-        subOdom = create_subscription<nav_msgs::msg::Odometry>(odomTopic + "_incremental", qos_imu,
-                                                               [this](const nav_msgs::msg::Odometry::SharedPtr msg) { imageProjection.odometryHandler(msg); });
+        subImu = create_subscription<sensor_msgs::msg::Imu>(
+            imuTopic, qos_imu,
+            [this](const sensor_msgs::msg::Imu::SharedPtr msg) {
+                {
+                    std::lock_guard<std::mutex> lock(mtx);
+                    hasImuInput = true;
+                }
+                imageProjection.imuHandler(msg);
+            });
+        subOdom = create_subscription<nav_msgs::msg::Odometry>(
+            odomTopic + "_incremental", qos_imu,
+            [this](const nav_msgs::msg::Odometry::SharedPtr msg) {
+                {
+                    std::lock_guard<std::mutex> lock(mtx);
+                    hasIncrementalOdomInput = true;
+                }
+                imageProjection.odometryHandler(msg);
+            });
 
         subCloud = create_subscription<livox_ros_driver2::msg::CustomMsg>(pointCloudTopic, qos_lidar,
-                                                                          std::bind(&mapOptimization::laserCloudInfoHandler, this, std::placeholders::_1));
+                                                                          std::bind(&MapOptimization::laserCloudInfoHandler, this, std::placeholders::_1));
         if (useExternalPoseFactor) {
             subExternalPose = create_subscription<nav_msgs::msg::Odometry>(
                 externalPoseTopic, 200,
-                std::bind(&mapOptimization::externalPoseHandler, this,
+                std::bind(&MapOptimization::externalPoseHandler, this,
                           std::placeholders::_1));
         }
         subLoop = create_subscription<std_msgs::msg::Float64MultiArray>("lio_loop/loop_closure_detection", qos,
-                                                                        std::bind(&mapOptimization::loopInfoHandler, this, std::placeholders::_1));
+                                                                        std::bind(&MapOptimization::loopInfoHandler, this, std::placeholders::_1));
 
         // srvSaveMap = create_service<lio_sam::srv::SaveMap>("lio_sam/save_map", saveMapService);
         pubHistoryKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/icp_loop_closure_history_cloud", 1);
-        pubIcpKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/icp_loop_closure_history_cloud", 1);
+        pubIcpKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/icp_loop_closure_corrected_cloud", 1);
         pubLoopConstraintEdge = create_publisher<visualization_msgs::msg::MarkerArray>("/lio_sam/mapping/loop_closure_constraints", 1);
 
         pubRecentKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/map_local", 1);
@@ -273,6 +359,15 @@ public:
             create_publisher<std_msgs::msg::Float32>("lio_sam/localization/dynamic_filter/keep_ratio", 1);
         pubLocalizationState =
             create_publisher<std_msgs::msg::String>("lio_sam/localization/state", 1);
+        rclcpp::QoS localizationStatusQos(1);
+        localizationStatusQos.reliable().transient_local();
+        pubLocalizationStatus = create_publisher<lvi_sam_msgs::msg::LocalizationStatus>(
+            "lio_sam/localization/status", localizationStatusQos);
+        rclcpp::QoS localizationResetQos(10);
+        localizationResetQos.reliable().durability_volatile();
+        pubLocalizationReset =
+            create_publisher<lvi_sam_msgs::msg::LocalizationReset>(
+                localizationResetTopic, localizationResetQos);
 
         downSizeFilterCorner.setLeafSize(mappingCornerLeafSize, mappingCornerLeafSize, mappingCornerLeafSize);
         downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
@@ -309,24 +404,21 @@ public:
                     "Failed to prepare LIO-SAM PCD output directory: " +
                     savePCDDirectory);
             }
+            if (!prepareFreshMapOutputDirectory()) {
+                throw std::runtime_error(
+                    "savePCDDirectory must be a new or empty directory: " +
+                    savePCDDirectory);
+            }
         }
 
         InitLocationMode();
-
-        if (gpsCovThreshold <= 0.0f || gpsVarianceFloor <= 0.0f) {
-            throw std::runtime_error(
-                "gpsCovThreshold and gpsVarianceFloor must be positive");
-        }
-        gpsTimeTolerance = std::max(0.01f, gpsTimeTolerance);
-        gpsQueueSize = std::max(1, gpsQueueSize);
-        if (useRTKInitialization && !useRTKAssist) {
-            throw std::runtime_error(
-                "Loc.useRTKInitialization requires Loc.useRTKAssist=true");
-        }
-        if (rtkUseHeading && rtkYawVarianceThreshold <= 0.0f) {
-            throw std::runtime_error(
-                "Loc.rtkYawVarianceThreshold must be positive when RTK heading is enabled");
-        }
+        localizationStatusTimer = create_wall_timer(
+            std::chrono::milliseconds(200),
+            [this]() {
+                std::lock_guard<std::mutex> lock(mtx);
+                publishStructuredLocalizationStatus();
+            });
+        publishStructuredLocalizationStatus(true);
 
         // Mapping GPS factors and localization RTK assistance are independent
         // consumers of the same map-aligned odometry interface. Subscribe when
@@ -353,14 +445,14 @@ public:
                 gpsCovThreshold, gpsTimeTolerance);
             subGPS = create_subscription<nav_msgs::msg::Odometry>(
                 gpsTopic, rclcpp::SensorDataQoS().keep_last(200),
-                std::bind(&mapOptimization::gpsHandler, this,
+                std::bind(&MapOptimization::gpsHandler, this,
                           std::placeholders::_1));
         }
 
         srvForceRelocalize = create_service<std_srvs::srv::Trigger>(
             "/lio_sam/localization/force_relocalize",
             std::bind(
-                &mapOptimization::forceRelocalizeHandler,
+                &MapOptimization::forceRelocalizeHandler,
                 this,
                 std::placeholders::_1,
                 std::placeholders::_2));
@@ -452,12 +544,28 @@ public:
     pcl::PointCloud<PointType>::Ptr laserCloudSurfLastDSFiltered;
     pcl::PointCloud<PointType>::Ptr dynamicFilterKeptPoints;
     pcl::PointCloud<PointType>::Ptr dynamicFilterRejectedPoints;
-    std::vector<double> init_guess{6, 0};
+    std::vector<double> init_guess;
     pcl::PointCloud<PointType>::Ptr idxMap{new pcl::PointCloud<PointType>};
     enum InitializedFlag { NonInitialized, Initializing, Initialized, MayLost };
     InitializedFlag LocInitSta = InitializedFlag::NonInitialized;
     int relocalizationAttemptCount = 0;
     std::string lastPublishedLocalizationState;
+    bool priorMapReady = false;
+    bool hasValidLidarInput = false;
+    bool hasImuInput = false;
+    bool hasIncrementalOdomInput = false;
+    bool hasProcessedLidar = false;
+    bool localizationLossEventPending = false;
+    bool hasValidLocalizationOdometry = false;
+    uint32_t localizationConsecutiveSuccesses = 0;
+    uint8_t lastStructuredLocalizationState = 255;
+    uint8_t previousStructuredLocalizationState = 255;
+    uint64_t localizationStatusTransitionSequence = 0;
+    uint32_t localizationLossCount = 0;
+    uint64_t localizationResetEventSequence = 0;
+    rclcpp::Time localizationStateEnteredAt{0, 0, RCL_ROS_TIME};
+    rclcpp::Time lastValidLocalizationPoseAt{0, 0, RCL_ROS_TIME};
+    rclcpp::Time lastLocalizationLossAt{0, 0, RCL_ROS_TIME};
 
     template <typename T>
     void declare_and_get_parameter(const std::string& name, T& variable, const T& default_value) {
@@ -481,19 +589,198 @@ public:
         }
     }
 
+    uint8_t structuredLocalizationState() const {
+        lvi_sam::localization_status::ProjectionInput input;
+        input.mapping_mode = !LocEnableFlag;
+        input.legacy_state = static_cast<
+            lvi_sam::localization_status::LegacyState>(LocInitSta);
+        input.loss_event_pending = localizationLossEventPending;
+        input.has_valid_localization_odometry = hasValidLocalizationOdometry;
+        input.consecutive_failures = localizationBadMatchCount;
+        return lvi_sam::localization_status::project_state(input);
+    }
+
+    static std::string structuredLocalizationStateName(const uint8_t state) {
+        switch (state) {
+            case lvi_sam_msgs::msg::LocalizationStatus::MAPPING:
+                return "MAPPING";
+            case lvi_sam_msgs::msg::LocalizationStatus::RELOCALIZING:
+                return "RELOCALIZING";
+            case lvi_sam_msgs::msg::LocalizationStatus::TRACKING:
+                return "TRACKING";
+            case lvi_sam_msgs::msg::LocalizationStatus::LOST:
+                return "LOST";
+            case lvi_sam_msgs::msg::LocalizationStatus::VERIFYING:
+                return "VERIFYING";
+            case lvi_sam_msgs::msg::LocalizationStatus::DEGRADED:
+                return "DEGRADED";
+            case lvi_sam_msgs::msg::LocalizationStatus::WAITING_FOR_SENSORS:
+                return "WAITING_FOR_SENSORS";
+            case lvi_sam_msgs::msg::LocalizationStatus::ERROR:
+                return "ERROR";
+            default:
+                return "UNKNOWN";
+        }
+    }
+
+    void publishMapResetEvent(
+        const uint8_t reason,
+        const bool resetImu,
+        const bool restartVisual,
+        const std::string& detail) {
+        // This is an observational interface for the upper-level state
+        // machine. Publishing an event must not mutate estimator state or the
+        // legacy reset generation carried by mapping odometry.
+        ++localizationResetEventSequence;
+        if (!pubLocalizationReset) return;
+
+        lvi_sam_msgs::msg::LocalizationReset msg;
+        msg.header.stamp = toBuiltinTime(this->now());
+        msg.header.frame_id = odometryFrame;
+        msg.event_id = localizationResetEventSequence;
+        msg.reset_id = static_cast<uint64_t>(std::max(0, imuPreintegrationResetId));
+        msg.reason = reason;
+        msg.source = "map_optimization";
+        msg.reset_imu = resetImu;
+        msg.restart_visual = restartVisual;
+        msg.detail = detail;
+        pubLocalizationReset->publish(msg);
+        RCLCPP_INFO(
+            get_logger(),
+            "Published localization reset: reason=%u reset_id=%llu event_id=%llu detail=%s",
+            static_cast<unsigned int>(reason),
+            static_cast<unsigned long long>(msg.reset_id),
+            static_cast<unsigned long long>(msg.event_id),
+            detail.c_str());
+    }
+
+    void markLocalizationInitialized(const std::string& detail) {
+        const bool wasInitialized =
+            LocInitSta == InitializedFlag::Initialized;
+        LocInitSta = InitializedFlag::Initialized;
+        if (!wasInitialized) {
+            publishMapResetEvent(
+                lvi_sam_msgs::msg::LocalizationReset::REASON_RELOCALIZATION,
+                true, true, detail);
+        }
+    }
+
+    void publishStructuredLocalizationStatus(bool force = false) {
+        if (!pubLocalizationStatus) return;
+
+        const auto now = this->now();
+        // MayLost is intentionally transient in the frozen algorithm: the
+        // same LiDAR callback immediately returns to NonInitialized. Latch it
+        // only for this status stream so consumers cannot miss the loss event.
+        const bool reportingLatchedLoss = localizationLossEventPending;
+        const uint8_t state = reportingLatchedLoss
+            ? lvi_sam_msgs::msg::LocalizationStatus::LOST
+            : structuredLocalizationState();
+        if (reportingLatchedLoss) localizationLossEventPending = false;
+        const bool stateChanged = state != lastStructuredLocalizationState;
+        if (stateChanged) {
+            previousStructuredLocalizationState = lastStructuredLocalizationState;
+            lastStructuredLocalizationState = state;
+            ++localizationStatusTransitionSequence;
+            localizationStateEnteredAt = now;
+            if (state == lvi_sam_msgs::msg::LocalizationStatus::TRACKING) {
+                lastValidLocalizationPoseAt = now;
+            }
+            if (state == lvi_sam_msgs::msg::LocalizationStatus::LOST) {
+                lastLocalizationLossAt = now;
+                ++localizationLossCount;
+            }
+        }
+
+        // `force` is intentionally only a publication hint. It never changes
+        // the underlying algorithm state; the timer publishes the same
+        // snapshot periodically as a low-rate heartbeat.
+        (void)force;
+        lvi_sam_msgs::msg::LocalizationStatus msg;
+        msg.header.stamp = toBuiltinTime(now);
+        msg.state = state;
+        msg.previous_state = previousStructuredLocalizationState;
+        msg.mode = LocEnableFlag
+            ? lvi_sam_msgs::msg::LocalizationStatus::MODE_LOCALIZATION
+            : lvi_sam_msgs::msg::LocalizationStatus::MODE_MAPPING;
+        msg.state_name = structuredLocalizationStateName(state);
+        msg.previous_state_name =
+            structuredLocalizationStateName(previousStructuredLocalizationState);
+        switch (state) {
+            case lvi_sam_msgs::msg::LocalizationStatus::MAPPING:
+                msg.reason = "mapping_mode";
+                break;
+            case lvi_sam_msgs::msg::LocalizationStatus::RELOCALIZING:
+                msg.reason = "relocalization_pending";
+                break;
+            case lvi_sam_msgs::msg::LocalizationStatus::TRACKING:
+                msg.reason = "legacy_localization_initialized";
+                break;
+            case lvi_sam_msgs::msg::LocalizationStatus::VERIFYING:
+                msg.reason = "awaiting_first_valid_scan_match";
+                break;
+            case lvi_sam_msgs::msg::LocalizationStatus::DEGRADED:
+                msg.reason = "scan_match_quality_degraded";
+                break;
+            case lvi_sam_msgs::msg::LocalizationStatus::LOST:
+                msg.reason = "legacy_bad_match_threshold";
+                break;
+            default:
+                msg.reason = "state_not_emitted_in_phase_1";
+                break;
+        }
+
+        const bool poseValid =
+            LocEnableFlag && LocInitSta == InitializedFlag::Initialized;
+        msg.pose_valid = poseValid;
+        msg.odometry_valid = LocEnableFlag
+            ? hasValidLocalizationOdometry
+            : hasProcessedLidar;
+        msg.sensors_ready =
+            hasValidLidarInput && hasImuInput && hasIncrementalOdomInput;
+        msg.map_ready = priorMapReady;
+        msg.relocalization_active =
+            state == lvi_sam_msgs::msg::LocalizationStatus::RELOCALIZING ||
+            state == lvi_sam_msgs::msg::LocalizationStatus::LOST;
+        msg.quality_degraded =
+            state == lvi_sam_msgs::msg::LocalizationStatus::DEGRADED;
+
+        // Quality metrics are reserved for a later phase. -1 is the explicit
+        // unknown sentinel and prevents consumers from mistaking a placeholder
+        // for a real matcher score or timing measurement.
+        msg.match_score = -1.0f;
+        msg.confidence = -1.0f;
+        msg.lidar_age = -1.0f;
+        msg.imu_age = -1.0f;
+        msg.odometry_age = -1.0f;
+        msg.consecutive_successes = localizationConsecutiveSuccesses;
+        msg.consecutive_failures =
+            static_cast<uint32_t>(std::max(0, localizationBadMatchCount));
+        msg.relocalization_attempts =
+            static_cast<uint32_t>(std::max(0, relocalizationAttemptCount));
+        msg.transition_sequence = localizationStatusTransitionSequence;
+        msg.loss_count = localizationLossCount;
+        msg.reset_id = static_cast<uint64_t>(std::max(0, imuPreintegrationResetId));
+        msg.last_valid_pose_stamp = toBuiltinTime(lastValidLocalizationPoseAt);
+        msg.state_enter_stamp = toBuiltinTime(localizationStateEnteredAt);
+        msg.last_lost_stamp = toBuiltinTime(lastLocalizationLossAt);
+        pubLocalizationStatus->publish(msg);
+    }
+
     void publishLocalizationState(bool force = false) {
-        if (!pubLocalizationState) return;
-
         const std::string state = localizationStateName();
-        static double lastPublishTime = -1.0;
-        const double now = this->now().seconds();
-        if (!force && state == lastPublishedLocalizationState && now - lastPublishTime < 1.0) return;
-
-        std_msgs::msg::String msg;
-        msg.data = state;
-        pubLocalizationState->publish(msg);
-        lastPublishedLocalizationState = state;
-        lastPublishTime = now;
+        if (pubLocalizationState) {
+            static double lastPublishTime = -1.0;
+            const double now = this->now().seconds();
+            if (force || state != lastPublishedLocalizationState ||
+                now - lastPublishTime >= 1.0) {
+                std_msgs::msg::String msg;
+                msg.data = state;
+                pubLocalizationState->publish(msg);
+                lastPublishedLocalizationState = state;
+                lastPublishTime = now;
+            }
+        }
     }
 
     void forceRelocalizeHandler(
@@ -511,10 +798,19 @@ public:
 
         LocInitSta = InitializedFlag::NonInitialized;
         localizationBadMatchCount = 0;
+        localizationConsecutiveSuccesses = 0;
+        // Do not erase a just-observed loss before the structured status
+        // heartbeat can publish it.  The force request still changes the
+        // algorithm state immediately; the status stream will report LOST
+        // once and then RELOCALIZING.
+        hasValidLocalizationOdometry = false;
         dynamicFilterFrameCount = 0;
         relocalizationAttemptCount = 0;
         rtkInitializationSamples.clear();
         resetInitialGuessSeed = true;
+        publishMapResetEvent(
+            lvi_sam_msgs::msg::LocalizationReset::REASON_FORCE_RELOCALIZATION,
+            true, true, "force_relocalize_service");
         publishLocalizationState(true);
 
         response->success = true;
@@ -540,9 +836,6 @@ public:
             declare_and_get_parameter<float>("Loc.rtkInitializationMaxSpread", rtkInitializationMaxSpread, 0.50f);
             declare_and_get_parameter<int>("Loc.rtkInitializationMinSamples", rtkInitializationMinSamples, 3);
             declare_and_get_parameter<std::string>("Loc.rtkExpectedFrame", rtkExpectedFrame, "");
-            rtkPositionBlend = std::clamp(rtkPositionBlend, 0.0f, 1.0f);
-            rtkInitializationMinSamples = std::max(1, rtkInitializationMinSamples);
-            rtkInitializationMaxSpread = std::max(0.0f, rtkInitializationMaxSpread);
             declare_and_get_parameter<bool>("Loc.dynamicFilterEnable", dynamicFilterEnable, false);
             declare_and_get_parameter<bool>("Loc.dynamicFilterPublishDebug", dynamicFilterPublishDebug, true);
             declare_and_get_parameter<float>("Loc.dynamicFilterMaxMapDistance", dynamicFilterMaxMapDistance, 0.80f);
@@ -553,7 +846,6 @@ public:
             declare_and_get_parameter<int>("Loc.dynamicFilterMinSurfPoints", dynamicFilterMinSurfPoints, 101);
             declare_and_get_parameter<bool>("Loc.lostDetectionEnable", lostDetectionEnable, true);
             declare_and_get_parameter<int>("Loc.lostBadMatchThreshold", lostBadMatchThreshold, 5);
-            lostBadMatchThreshold = std::max(1, lostBadMatchThreshold);
             declare_and_get_parameter<vector<double>>("Loc.init_guess", init_guess, vector<double>());
             declare_and_get_parameter<string>("Loc.loadPCDDirectory", loadPCDDirectory, "");
             if (!useSCReLoc && init_guess.size() != 6) {
@@ -562,83 +854,153 @@ public:
             }
             declare_and_get_parameter<float>("Loc.surroundingKeyframeSearchRadius", surroundingKeyframeSearchRadius, 20.0);
             declare_and_get_parameter<int>("Loc.surroundingKeyframeSearchMaxNum", surroundingKeyframeSearchMaxNum, 10);
+            if (!std::all_of(init_guess.begin(), init_guess.end(),
+                             [](const double value) {
+                                 return std::isfinite(value);
+                             })) {
+                throw std::runtime_error(
+                    "Loc.init_guess must contain only finite values");
+            }
+            if (!std::isfinite(rtkPositionBlend) || rtkPositionBlend < 0.0f ||
+                rtkPositionBlend > 1.0f || !std::isfinite(rtkMaxInnovation) ||
+                rtkMaxInnovation <= 0.0f ||
+                !std::isfinite(rtkMaxNormalizedInnovation) ||
+                rtkMaxNormalizedInnovation <= 0.0f ||
+                !std::isfinite(rtkYawVarianceThreshold) ||
+                rtkYawVarianceThreshold <= 0.0f ||
+                !std::isfinite(rtkInitializationMaxSpread) ||
+                rtkInitializationMaxSpread < 0.0f ||
+                rtkInitializationMinSamples <= 0) {
+                throw std::runtime_error(
+                    "Loc RTK blend/innovation/covariance/initialization parameters are invalid");
+            }
+            if (useRTKInitialization && !useRTKAssist) {
+                throw std::runtime_error(
+                    "Loc.useRTKInitialization requires Loc.useRTKAssist=true");
+            }
+            if (!std::isfinite(dynamicFilterMaxMapDistance) ||
+                !std::isfinite(dynamicFilterInitialMaxMapDistance) ||
+                !std::isfinite(dynamicFilterMinKeepRatio) ||
+                dynamicFilterMaxMapDistance <= 0.0f ||
+                dynamicFilterInitialMaxMapDistance <= 0.0f ||
+                dynamicFilterWarmupFrames < 0 ||
+                dynamicFilterMinKeepRatio <= 0.0f ||
+                dynamicFilterMinKeepRatio > 1.0f ||
+                dynamicFilterMinCornerPoints <= 0 ||
+                dynamicFilterMinSurfPoints <= 0 || lostBadMatchThreshold <= 0) {
+                throw std::runtime_error(
+                    "Loc dynamic-filter and loss-detection parameters are invalid");
+            }
+            if (loadPCDDirectory.empty() ||
+                !std::isfinite(surroundingKeyframeSearchRadius) ||
+                surroundingKeyframeSearchRadius <= 0.0f ||
+                surroundingKeyframeSearchMaxNum <= 0) {
+                throw std::runtime_error(
+                    "Loc prior-map directory/search parameters are invalid");
+            }
             LoadPriorMap();
+            priorMapReady = true;
             publishLocalizationState(true);
         }
     }
 
-    void validateMapManifest() {
+    bool validateMapManifest(const std::size_t loadedKeyframeCount) {
         const std::string manifestPath = loadPCDDirectory + "/map_manifest.yaml";
         std::ifstream manifest(manifestPath);
         if (!manifest.is_open()) {
             RCLCPP_WARN(
                 get_logger(),
                 "Prior map has no map_manifest.yaml; loading it as a legacy map");
-            return;
+            return false;
         }
 
         std::map<std::string, std::string> values;
+        const auto trim = [](std::string value) {
+            const std::size_t first = value.find_first_not_of(" \t\r");
+            if (first == std::string::npos) return std::string{};
+            const std::size_t last = value.find_last_not_of(" \t\r");
+            return value.substr(first, last - first + 1);
+        };
         std::string line;
         while (std::getline(manifest, line)) {
             const std::size_t separator = line.find(':');
             if (separator == std::string::npos) continue;
-            std::string key = line.substr(0, separator);
-            std::string value = line.substr(separator + 1);
-            key.erase(0, key.find_first_not_of(" \t"));
-            key.erase(key.find_last_not_of(" \t") + 1);
-            value.erase(0, value.find_first_not_of(" \t"));
-            value.erase(value.find_last_not_of(" \t\r") + 1);
-            values[key] = value;
+            const std::string key = trim(line.substr(0, separator));
+            const std::string value = trim(line.substr(separator + 1));
+            if (!key.empty()) values[key] = value;
         }
 
-        try {
-            const int schemaVersion = std::stoi(values.at("schema_version"));
-            if (schemaVersion > 1) {
+        const auto parseInteger = [&](const char* key) {
+            const auto found = values.find(key);
+            if (found == values.end()) {
                 throw std::runtime_error(
-                    "Prior map schema is newer than this executable: " +
-                    std::to_string(schemaVersion));
+                    "Prior map manifest is missing " + std::string(key) +
+                    ": " + manifestPath);
             }
-            if (values.count("scan_context_rings") != 0 &&
-                std::stoi(values.at("scan_context_rings")) !=
-                    scManager.PC_NUM_RING) {
+            try {
+                std::size_t parsedCharacters = 0;
+                const long long result =
+                    std::stoll(found->second, &parsedCharacters);
+                if (parsedCharacters != found->second.size())
+                    throw std::invalid_argument("trailing characters");
+                return result;
+            } catch (const std::exception&) {
                 throw std::runtime_error(
-                    "Prior map Scan Context ring count is incompatible");
+                    "Prior map manifest contains an invalid " +
+                    std::string(key) + ": " + manifestPath);
             }
-            if (values.count("scan_context_sectors") != 0 &&
-                std::stoi(values.at("scan_context_sectors")) !=
-                    scManager.PC_NUM_SECTOR) {
-                throw std::runtime_error(
-                    "Prior map Scan Context sector count is incompatible");
-            }
-            const auto requireMatchingFrame = [&](const char* key,
-                                                  const std::string& configured) {
-                const auto found = values.find(key);
-                if (found != values.end() && found->second != configured) {
-                    throw std::runtime_error(
-                        "Prior map " + std::string(key) + "=" + found->second +
-                        " is incompatible with configured frame=" + configured);
-                }
-            };
-            requireMatchingFrame("map_frame", mapFrame);
-            requireMatchingFrame("odometry_frame", odometryFrame);
-            requireMatchingFrame("lidar_frame", lidarFrame);
-        } catch (const std::out_of_range&) {
+        };
+
+        const long long schemaVersion = parseInteger("schema_version");
+        if (schemaVersion < 1 || schemaVersion > 1) {
             throw std::runtime_error(
-                "Prior map manifest is missing schema_version: " + manifestPath);
-        } catch (const std::invalid_argument&) {
-            throw std::runtime_error(
-                "Prior map manifest contains an invalid number: " + manifestPath);
+                "Unsupported prior map schema version: " +
+                std::to_string(schemaVersion));
         }
+        const long long declaredKeyframeCount = parseInteger("keyframe_count");
+        if (declaredKeyframeCount < 0 ||
+            static_cast<std::size_t>(declaredKeyframeCount) !=
+                loadedKeyframeCount) {
+            throw std::runtime_error(
+                "Prior map manifest keyframe_count does not match PCD data");
+        }
+        if (parseInteger("scan_context_rings") != scManager.PC_NUM_RING) {
+            throw std::runtime_error(
+                "Prior map Scan Context ring count is incompatible");
+        }
+        if (parseInteger("scan_context_sectors") != scManager.PC_NUM_SECTOR) {
+            throw std::runtime_error(
+                "Prior map Scan Context sector count is incompatible");
+        }
+        const auto requireMatchingFrame = [&](const char* key,
+                                              const std::string& configured) {
+            const auto found = values.find(key);
+            if (found == values.end()) {
+                throw std::runtime_error(
+                    "Prior map manifest is missing " + std::string(key) +
+                    ": " + manifestPath);
+            }
+            if (found->second != configured) {
+                throw std::runtime_error(
+                    "Prior map " + std::string(key) + "=" + found->second +
+                    " is incompatible with configured frame=" + configured);
+            }
+        };
+        requireMatchingFrame("map_frame", mapFrame);
+        requireMatchingFrame("odometry_frame", odometryFrame);
+        requireMatchingFrame("lidar_frame", lidarFrame);
+        return true;
     }
 
-    void writeMapManifest() const {
+    bool writeMapManifest() const {
         const std::string manifestPath = savePCDDirectory + "map_manifest.yaml";
-        std::ofstream manifest(manifestPath, std::ios::trunc);
+        const std::string temporaryPath = manifestPath + ".tmp";
+        std::ofstream manifest(temporaryPath, std::ios::trunc);
         if (!manifest.is_open()) {
             RCLCPP_ERROR(
                 get_logger(), "Unable to write map manifest: %s",
-                manifestPath.c_str());
-            return;
+                temporaryPath.c_str());
+            return false;
         }
         manifest << "schema_version: 1\n";
         manifest << "producer: lvi_sam_ros2_enhanced\n";
@@ -651,13 +1013,52 @@ public:
         manifest << "scan_context_distance_threshold: "
                  << scManager.SC_DIST_THRES << "\n";
         manifest << "visual_database_optional: VisualMap/visual_keyframes.yaml\n";
+        manifest.flush();
+        if (!manifest.good()) {
+            RCLCPP_ERROR(
+                get_logger(), "Unable to finish map manifest: %s",
+                temporaryPath.c_str());
+            manifest.close();
+            std::remove(temporaryPath.c_str());
+            return false;
+        }
+        manifest.close();
+        if (std::rename(temporaryPath.c_str(), manifestPath.c_str()) != 0) {
+            RCLCPP_ERROR(
+                get_logger(), "Unable to publish completed map manifest: %s",
+                manifestPath.c_str());
+            std::remove(temporaryPath.c_str());
+            return false;
+        }
+        const std::string markerPath =
+            savePCDDirectory + kMapWriteInProgressMarker;
+        if (std::remove(markerPath.c_str()) != 0) {
+            RCLCPP_ERROR(
+                get_logger(),
+                "Map manifest was committed but the incomplete marker could "
+                "not be removed: %s",
+                markerPath.c_str());
+            return false;
+        }
+        return true;
     }
 
     void LoadPriorMap() {
         if (loadPCDDirectory.empty()) {
             throw std::runtime_error("Loc.loadPCDDirectory must be set in localization mode");
         }
-        validateMapManifest();
+        if (loadPCDDirectory.front() != '/') {
+            throw std::runtime_error(
+                "Loc.loadPCDDirectory must be an absolute path: " +
+                loadPCDDirectory);
+        }
+        const std::string incompleteMarker =
+            loadPCDDirectory + "/" + kMapWriteInProgressMarker;
+        if (std::filesystem::exists(incompleteMarker)) {
+            throw std::runtime_error(
+                "Prior map was not serialized completely: " +
+                incompleteMarker);
+        }
         cloudKeyPoses6D->clear();
         cloudKeyPoses3D->clear();
         const int transformationsResult = pcl::io::loadPCDFile<PointTypePose>(
@@ -676,6 +1077,28 @@ public:
                 std::to_string(cloudKeyPoses6D->size()) + " trajectory=" +
                 std::to_string(cloudKeyPoses3D->size()));
         }
+        const bool hasValidatedManifest =
+            validateMapManifest(cloudKeyPoses6D->size());
+        for (std::size_t i = 0; i < cloudKeyPoses6D->size(); ++i) {
+            auto& pose = cloudKeyPoses6D->points[i];
+            auto& trajectoryPoint = cloudKeyPoses3D->points[i];
+            if (!std::isfinite(pose.x) || !std::isfinite(pose.y) ||
+                !std::isfinite(pose.z) || !std::isfinite(pose.roll) ||
+                !std::isfinite(pose.pitch) || !std::isfinite(pose.yaw) ||
+                !std::isfinite(pose.time) ||
+                !std::isfinite(trajectoryPoint.x) ||
+                !std::isfinite(trajectoryPoint.y) ||
+                !std::isfinite(trajectoryPoint.z)) {
+                throw std::runtime_error(
+                    "Prior map contains a non-finite keyframe pose at index " +
+                    std::to_string(i));
+            }
+            // Runtime containers address keyframes by vector index. Normalize
+            // legacy intensity fields once at the map boundary instead of
+            // relying on possibly stale serialized IDs throughout the graph.
+            pose.intensity = static_cast<float>(i);
+            trajectoryPoint.intensity = static_cast<float>(i);
+        }
         kdtreeSurroundingKeyPoses->setInputCloud(cloudKeyPoses3D);
 
         int count = cloudKeyPoses6D->size();
@@ -693,16 +1116,46 @@ public:
                                      std::ios::in | std::ios::binary | std::ios::ate);
             std::ifstream surfFile(surfPath,
                                    std::ios::in | std::ios::binary | std::ios::ate);
-            if (cornerFile.good() && cornerFile.tellg() > std::streampos(0)) {
-                pcl::io::loadPCDFile<PointType>(cornerPath, *cornerKeyFrame);
+            if (!cornerFile.good()) {
+                if (hasValidatedManifest) {
+                    throw std::runtime_error(
+                        "Manifest-backed map is missing corner keyframe: " +
+                        cornerPath);
+                }
+                RCLCPP_WARN(get_logger(), "Corner keyframe is missing: %s",
+                            cornerPath.c_str());
+            } else if (cornerFile.tellg() > std::streampos(0)) {
+                if (pcl::io::loadPCDFile<PointType>(
+                        cornerPath, *cornerKeyFrame) < 0) {
+                    throw std::runtime_error(
+                        "Unable to parse corner keyframe: " + cornerPath);
+                }
+                std::vector<int> validIndices;
+                pcl::removeNaNFromPointCloud(
+                    *cornerKeyFrame, *cornerKeyFrame, validIndices);
             } else {
-                RCLCPP_WARN(get_logger(), "Corner keyframe is missing or empty: %s",
+                RCLCPP_WARN(get_logger(), "Corner keyframe is empty: %s",
                             cornerPath.c_str());
             }
-            if (surfFile.good() && surfFile.tellg() > std::streampos(0)) {
-                pcl::io::loadPCDFile<PointType>(surfPath, *surfKeyFrame);
-            } else {
+            if (!surfFile.good()) {
+                if (hasValidatedManifest) {
+                    throw std::runtime_error(
+                        "Manifest-backed map is missing surface keyframe: " +
+                        surfPath);
+                }
                 RCLCPP_WARN(get_logger(), "Surface keyframe is missing: %s",
+                            surfPath.c_str());
+            } else if (surfFile.tellg() > std::streampos(0)) {
+                if (pcl::io::loadPCDFile<PointType>(surfPath, *surfKeyFrame) <
+                    0) {
+                    throw std::runtime_error(
+                        "Unable to parse surface keyframe: " + surfPath);
+                }
+                std::vector<int> validIndices;
+                pcl::removeNaNFromPointCloud(
+                    *surfKeyFrame, *surfKeyFrame, validIndices);
+            } else {
+                RCLCPP_WARN(get_logger(), "Surface keyframe is empty: %s",
                             surfPath.c_str());
             }
             loadedFeaturePointCount += cornerKeyFrame->size() + surfKeyFrame->size();
@@ -779,6 +1232,10 @@ public:
             return false;
         };
 
+        if (!std::isfinite(stamp2Sec(rtkOdom.header.stamp))) {
+            return reject("non-finite timestamp");
+        }
+
         const std::string& expectedFrame =
             LocEnableFlag && !rtkExpectedFrame.empty()
                 ? rtkExpectedFrame
@@ -822,16 +1279,17 @@ public:
 
     bool getLocalizationRTK(nav_msgs::msg::Odometry& rtkOdom) {
         std::lock_guard<std::mutex> lock(mtxGPS);
-        while (!gpsQueue.empty()) {
-            const double gpsTime = stamp2Sec(gpsQueue.front().header.stamp);
+        while (!localizationRtkQueue.empty()) {
+            const double gpsTime =
+                stamp2Sec(localizationRtkQueue.front().header.stamp);
             if (gpsTime < timeLaserInfoCur - gpsTimeTolerance) {
-                gpsQueue.pop_front();
+                localizationRtkQueue.pop_front();
                 continue;
             }
             if (gpsTime > timeLaserInfoCur + gpsTimeTolerance) return false;
 
-            rtkOdom = gpsQueue.front();
-            gpsQueue.pop_front();
+            rtkOdom = localizationRtkQueue.front();
+            localizationRtkQueue.pop_front();
             std::string reason;
             if (!validateMapAlignedRTK(rtkOdom, rtkUseHeading, &reason)) {
                 RCLCPP_WARN_THROTTLE(
@@ -917,7 +1375,7 @@ public:
         lastPoses3D.z = transformTobeMapped[5] = init_guess.size() >= 6 ? init_guess[5] : 0.0;
         lastPoses6D = trans2PointTypePose(transformTobeMapped);
         lastPoses6D.time = timeLaserInfoCur;
-        LocInitSta = InitializedFlag::Initialized;
+        markLocalizationInitialized("rtk_initialization");
         rtkInitializationSamples.clear();
         RCLCPP_INFO(get_logger(),
                     "Localization initialized from %d stable map-aligned RTK samples: x=%.3f y=%.3f yaw=%.3f heading=%s",
@@ -1087,7 +1545,7 @@ public:
 
         std::cout << "[ReLoc is OK] the pose loop is: x" << x << " y" << y << " z" << z << std::endl;
 
-        LocInitSta = InitializedFlag::Initialized;
+        markLocalizationInitialized("scan_context_icp_relocalization");
         publishLocalizationState(true);
     }
 
@@ -1096,9 +1554,16 @@ public:
     void laserCloudInfoHandler(const livox_ros_driver2::msg::CustomMsg::SharedPtr msgIn) {
         if (imageProjection.cloudHandler(msgIn) == false) return;
 
-        featureExtraction.FeatureExtractionHandler(imageProjection.cloudInfo);
+        if (!featureExtraction.FeatureExtractionHandler(
+                imageProjection.cloudInfo)) return;
 
         cloudInfo = featureExtraction.cloudInfo;
+
+        // The loop-closure worker snapshots these values while holding mtx.
+        // Keep their updates in the same critical section to avoid a data race.
+        std::lock_guard<std::mutex> lock(mtx);
+        hasValidLidarInput = true;
+        hasProcessedLidar = true;
 
         // extract time stamp
         timeLaserInfoStamp = cloudInfo.header.stamp;
@@ -1111,8 +1576,6 @@ public:
         laserCloudCornerLast = cloudInfo.cloud_corner;
         laserCloudSurfLast = cloudInfo.cloud_surface;
         laserCloudRaw = cloudInfo.cloud_deskewed;
-
-        std::lock_guard<std::mutex> lock(mtx);
 
         static double timeLastProcessing = -1;
         if (timeLaserInfoCur - timeLastProcessing >= mappingProcessInterval) {
@@ -1148,19 +1611,30 @@ public:
             if (LocEnableFlag) {
                 if (scanMatchOk) {
                     localizationBadMatchCount = 0;
+                    ++localizationConsecutiveSuccesses;
+                    hasValidLocalizationOdometry = true;
+                    lastValidLocalizationPoseAt = this->now();
                 } else {
+                    localizationConsecutiveSuccesses = 0;
+                    hasValidLocalizationOdometry = false;
                     ++localizationBadMatchCount;
                     RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
                                          "Localization scan-to-map failed, skip this odometry frame. bad_count=%d/%d",
                                          localizationBadMatchCount, lostBadMatchThreshold);
                     if (lostDetectionEnable && localizationBadMatchCount >= lostBadMatchThreshold) {
                         LocInitSta = InitializedFlag::MayLost;
+                        localizationLossEventPending = true;
                         publishLocalizationState(true);
                         LocInitSta = InitializedFlag::NonInitialized;
                         localizationBadMatchCount = 0;
+                        localizationConsecutiveSuccesses = 0;
+                        hasValidLocalizationOdometry = false;
                         dynamicFilterFrameCount = 0;
                         rtkInitializationSamples.clear();
                         resetInitialGuessSeed = true;
+                        publishMapResetEvent(
+                            lvi_sam_msgs::msg::LocalizationReset::REASON_RELOCALIZATION,
+                            true, true, "localization_lost");
                         RCLCPP_ERROR(get_logger(), "Localization lost, switch back to relocalizing");
                     }
                     return;
@@ -1186,6 +1660,7 @@ public:
             }
 
             publishOdometry();
+            publishRegisteredRawCloud();
 
             // This is an algorithm input for VIS depth registration, not an
             // RViz-only diagnostic topic.
@@ -1209,14 +1684,42 @@ public:
 
     void gpsHandler(const nav_msgs::msg::Odometry::SharedPtr gpsMsg) {
         std::lock_guard<std::mutex> lock(mtxGPS);
-        gpsQueue.push_back(*gpsMsg);
+        const double timestamp = stamp2Sec(gpsMsg->header.stamp);
+        if (!std::isfinite(timestamp) || timestamp <= lastGpsInputTime) {
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 2000,
+                "Discarding RTK/GPS sample with invalid or non-increasing timestamp");
+            return;
+        }
+        lastGpsInputTime = timestamp;
         const std::size_t queueLimit = static_cast<std::size_t>(
             std::max(1, gpsQueueSize));
+        if (useGpsFactor) gpsQueue.push_back(*gpsMsg);
         while (gpsQueue.size() > queueLimit) gpsQueue.pop_front();
+        if (LocEnableFlag && useRTKAssist)
+            localizationRtkQueue.push_back(*gpsMsg);
+        while (localizationRtkQueue.size() > queueLimit)
+            localizationRtkQueue.pop_front();
     }
 
     void externalPoseHandler(const nav_msgs::msg::Odometry::SharedPtr poseMsg) {
         std::lock_guard<std::mutex> lock(mtxExternalPose);
+        const double timestamp = stamp2Sec(poseMsg->header.stamp);
+        const auto& position = poseMsg->pose.pose.position;
+        const auto& orientation = poseMsg->pose.pose.orientation;
+        const double quaternionNorm = std::sqrt(
+            orientation.x * orientation.x + orientation.y * orientation.y +
+            orientation.z * orientation.z + orientation.w * orientation.w);
+        if (!std::isfinite(timestamp) || !std::isfinite(position.x) ||
+            !std::isfinite(position.y) || !std::isfinite(position.z) ||
+            !std::isfinite(quaternionNorm) || quaternionNorm < 1e-6 ||
+            (latestExternalPoseAvailable &&
+             timestamp <= stamp2Sec(latestExternalPose.header.stamp))) {
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 2000,
+                "Discarding external pose with invalid data or non-increasing timestamp");
+            return;
+        }
         externalPoseQueue.push_back(*poseMsg);
         while (externalPoseQueue.size() > 200) externalPoseQueue.pop_front();
         latestExternalPose = *poseMsg;
@@ -1345,17 +1848,43 @@ public:
             rate.sleep();
             if (LocEnableFlag == false) publishGlobalMap();  // 定位模式，不使用
         }
+    }
+
+    // Called by main only after the executor and all worker threads have
+    // stopped. This avoids serializing mutable graph/keyframe containers while
+    // loop closure is still updating them.
+    void saveMapOnShutdown() {
         if (savePCD == false) return;
+        const std::size_t keyframeCount = cloudKeyPoses3D->size();
+        if (keyframeCount == 0 || cloudKeyPoses6D->size() != keyframeCount ||
+            cornerCloudKeyFrames.size() != keyframeCount ||
+            surfCloudKeyFrames.size() != keyframeCount) {
+            RCLCPP_ERROR(
+                get_logger(),
+                "Refusing final map serialization: inconsistent keyframe containers "
+                "(pose3d=%zu pose6d=%zu corner=%zu surface=%zu)",
+                keyframeCount, cloudKeyPoses6D->size(),
+                cornerCloudKeyFrames.size(), surfCloudKeyFrames.size());
+            return;
+        }
+        if (mapArtifactWriteFailed) {
+            RCLCPP_ERROR(
+                get_logger(),
+                "Refusing final map serialization: one or more per-keyframe "
+                "PCD/SCD files failed to write during mapping");
+            return;
+        }
         cout << "****************************************************" << endl;
         cout << "Saving map to pcd files ..." << endl;
 
         const std::string kitti_format_pg_filename{savePCDDirectory + "optimized_poses.txt"};
         saveOptimizedVerticesKITTIformat(isamCurrentEstimate, kitti_format_pg_filename);
         savePath(globalPath, savePCDDirectory + "traj_tum.txt");
-        savePCDIfNotEmpty(savePCDDirectory + "trajectory.pcd", *cloudKeyPoses3D,
-                          false);
-        savePCDIfNotEmpty(savePCDDirectory + "transformations.pcd",
-                          *cloudKeyPoses6D, false);
+        const bool trajectorySaved = savePCDIfNotEmpty(
+            savePCDDirectory + "trajectory.pcd", *cloudKeyPoses3D, false);
+        const bool transformationsSaved = savePCDIfNotEmpty(
+            savePCDDirectory + "transformations.pcd", *cloudKeyPoses6D,
+            false);
         pcl::PointCloud<PointType>::Ptr globalCornerCloud(new pcl::PointCloud<PointType>());
         pcl::PointCloud<PointType>::Ptr globalCornerCloudDS(new pcl::PointCloud<PointType>());
         pcl::PointCloud<PointType>::Ptr globalSurfCloud(new pcl::PointCloud<PointType>());
@@ -1376,8 +1905,20 @@ public:
                           *globalSurfCloudDS);
         *globalMapCloud += *globalCornerCloud;
         *globalMapCloud += *globalSurfCloud;
-        savePCDIfNotEmpty(savePCDDirectory + "cloudGlobal.pcd", *globalMapCloud);
-        writeMapManifest();
+        const bool globalMapSaved = savePCDIfNotEmpty(
+            savePCDDirectory + "cloudGlobal.pcd", *globalMapCloud);
+        if (!trajectorySaved || !transformationsSaved || !globalMapSaved) {
+            RCLCPP_ERROR(
+                get_logger(),
+                "Map serialization failed; map_manifest.yaml was not updated");
+            return;
+        }
+        if (!writeMapManifest()) {
+            RCLCPP_ERROR(
+                get_logger(),
+                "Map data was written, but the manifest could not be completed");
+            return;
+        }
         cout << "****************************************************" << endl;
 
         cout << "Saving map to pcd files completed" << endl;
@@ -1462,6 +2003,8 @@ public:
                     *copy_cloudKeyPoses6D = *cloudKeyPoses6D;
                     copyCornerCloudKeyFrames = cornerCloudKeyFrames;
                     copySurfCloudKeyFrames = surfCloudKeyFrames;
+                    loopSnapshotStamp = timeLaserInfoStamp;
+                    loopSnapshotTime = timeLaserInfoCur;
                     snapshotAvailable = true;
                 }
             }
@@ -1475,9 +2018,11 @@ public:
     }
 
     void loopInfoHandler(const std_msgs::msg::Float64MultiArray::SharedPtr loopMsg) {
-        std::lock_guard<std::mutex> lock(mtxLoopInfo);
-        if (loopMsg->data.size() != 2) return;
+        if (loopMsg->data.size() != 2 ||
+            !std::isfinite(loopMsg->data[0]) ||
+            !std::isfinite(loopMsg->data[1])) return;
 
+        std::lock_guard<std::mutex> lock(mtxLoopInfo);
         loopInfoVec.push_back(*loopMsg);
 
         while (loopInfoVec.size() > 5) loopInfoVec.pop_front();
@@ -1497,7 +2042,7 @@ public:
             loopFindNearKeyframes(cureKeyframeCloud, loopKeyCur, 0);
             loopFindNearKeyframes(prevKeyframeCloud, loopKeyPre, historyKeyframeSearchNum);
             if (cureKeyframeCloud->size() < 300 || prevKeyframeCloud->size() < 1000) return;
-            if (pubHistoryKeyFrames->get_subscription_count() != 0) publishCloud(pubHistoryKeyFrames, prevKeyframeCloud, timeLaserInfoStamp, odometryFrame);
+            if (pubHistoryKeyFrames->get_subscription_count() != 0) publishCloud(pubHistoryKeyFrames, prevKeyframeCloud, loopSnapshotStamp, odometryFrame);
         }
 
         // ICP Settings
@@ -1520,7 +2065,7 @@ public:
         if (pubIcpKeyFrames->get_subscription_count() != 0) {
             pcl::PointCloud<PointType>::Ptr closed_cloud(new pcl::PointCloud<PointType>());
             pcl::transformPointCloud(*cureKeyframeCloud, *closed_cloud, icp.getFinalTransformation());
-            publishCloud(pubIcpKeyFrames, closed_cloud, timeLaserInfoStamp, odometryFrame);
+            publishCloud(pubIcpKeyFrames, closed_cloud, loopSnapshotStamp, odometryFrame);
         }
 
         // Get pose transformation
@@ -1624,7 +2169,7 @@ public:
             loopFindNearKeyframes(cureKeyframeCloud, loopKeyCur, 0);
             loopFindNearKeyframes(prevKeyframeCloud, loopKeyPre, historyKeyframeSearchNum);
             if (cureKeyframeCloud->size() < 300 || prevKeyframeCloud->size() < 1000) return;
-            if (pubHistoryKeyFrames->get_subscription_count() != 0) publishCloud(pubHistoryKeyFrames, prevKeyframeCloud, timeLaserInfoStamp, odometryFrame);
+            if (pubHistoryKeyFrames->get_subscription_count() != 0) publishCloud(pubHistoryKeyFrames, prevKeyframeCloud, loopSnapshotStamp, odometryFrame);
         }
 
         // ICP Settings
@@ -1678,7 +2223,7 @@ public:
         if (pubIcpKeyFrames->get_subscription_count() != 0) {
             pcl::PointCloud<PointType>::Ptr closed_cloud(new pcl::PointCloud<PointType>());
             pcl::transformPointCloud(*cureKeyframeCloud, *closed_cloud, bestIcp->getFinalTransformation());
-            publishCloud(pubIcpKeyFrames, closed_cloud, timeLaserInfoStamp, odometryFrame);
+            publishCloud(pubIcpKeyFrames, closed_cloud, loopSnapshotStamp, odometryFrame);
         }
 
         // Get pose transformation
@@ -1734,7 +2279,7 @@ public:
 
         for (int i = 0; i < (int)pointSearchIndLoop.size(); ++i) {
             int id = pointSearchIndLoop[i];
-            if (abs(copy_cloudKeyPoses6D->points[id].time - timeLaserInfoCur) > historyKeyframeSearchTimeDiff) {
+            if (abs(copy_cloudKeyPoses6D->points[id].time - loopSnapshotTime) > historyKeyframeSearchTimeDiff) {
                 loopKeyPre = id;
                 break;
             }
@@ -1749,16 +2294,18 @@ public:
     }
 
     bool detectLoopClosureExternal(int* latestID, int* closestID) {
-        // this function is not used yet, please ignore it
-        int loopKeyCur = -1;
-        int loopKeyPre = -1;
+        double loopTimeCur;
+        double loopTimePre;
+        {
+            std::lock_guard<std::mutex> lock(mtxLoopInfo);
+            if (loopInfoVec.empty()) return false;
+            loopTimeCur = loopInfoVec.front().data[0];
+            loopTimePre = loopInfoVec.front().data[1];
+            loopInfoVec.pop_front();
+        }
 
-        std::lock_guard<std::mutex> lock(mtxLoopInfo);
-        if (loopInfoVec.empty()) return false;
-
-        double loopTimeCur = loopInfoVec.front().data[0];
-        double loopTimePre = loopInfoVec.front().data[1];
-        loopInfoVec.pop_front();
+        if (!std::isfinite(loopTimeCur) || !std::isfinite(loopTimePre))
+            return false;
 
         if (abs(loopTimeCur - loopTimePre) < historyKeyframeSearchTimeDiff) return false;
 
@@ -1767,23 +2314,29 @@ public:
             copySurfCloudKeyFrames.size()}));
         if (cloudSize < 2) return false;
 
-        // latest key
-        loopKeyCur = cloudSize - 1;
-        for (int i = cloudSize - 1; i >= 0; --i) {
-            if (copy_cloudKeyPoses6D->points[i].time >= loopTimeCur)
-                loopKeyCur = round(copy_cloudKeyPoses6D->points[i].intensity);
-            else
-                break;
-        }
+        auto closest_key = [&](double timestamp) {
+            int best_index = -1;
+            double best_error = std::numeric_limits<double>::infinity();
+            for (int i = 0; i < cloudSize; ++i) {
+                const double error =
+                    std::abs(copy_cloudKeyPoses6D->points[i].time - timestamp);
+                if (error < best_error) {
+                    best_error = error;
+                    best_index = i;
+                }
+            }
+            return std::make_pair(best_index, best_error);
+        };
 
-        // previous key
-        loopKeyPre = 0;
-        for (int i = 0; i < cloudSize; ++i) {
-            if (copy_cloudKeyPoses6D->points[i].time <= loopTimePre)
-                loopKeyPre = round(copy_cloudKeyPoses6D->points[i].intensity);
-            else
-                break;
-        }
+        const auto current_match = closest_key(loopTimeCur);
+        const auto previous_match = closest_key(loopTimePre);
+        if (current_match.first < 0 || previous_match.first < 0 ||
+            current_match.second > externalLoopTimeTolerance ||
+            previous_match.second > externalLoopTimeTolerance)
+            return false;
+
+        const int loopKeyCur = current_match.first;
+        const int loopKeyPre = previous_match.first;
 
         if (loopKeyCur == loopKeyPre) return false;
 
@@ -1826,7 +2379,7 @@ public:
         // loop nodes
         visualization_msgs::msg::Marker markerNode;
         markerNode.header.frame_id = odometryFrame;
-        markerNode.header.stamp = timeLaserInfoStamp;
+        markerNode.header.stamp = loopSnapshotStamp;
         markerNode.action = visualization_msgs::msg::Marker::ADD;
         markerNode.type = visualization_msgs::msg::Marker::SPHERE_LIST;
         markerNode.ns = "loop_nodes";
@@ -1842,7 +2395,7 @@ public:
         // loop edges
         visualization_msgs::msg::Marker markerEdge;
         markerEdge.header.frame_id = odometryFrame;
-        markerEdge.header.stamp = timeLaserInfoStamp;
+        markerEdge.header.stamp = loopSnapshotStamp;
         markerEdge.action = visualization_msgs::msg::Marker::ADD;
         markerEdge.type = visualization_msgs::msg::Marker::LINE_LIST;
         markerEdge.ns = "loop_edges";
@@ -1956,7 +2509,7 @@ public:
                 lastPoses6D = trans2PointTypePose(transformTobeMapped);
                 lastPoses6D.time = timeLaserInfoCur;
 
-                LocInitSta = InitializedFlag::Initialized;
+                markLocalizationInitialized("configured_initial_guess");
             }
 
             lastImuTransformation = pcl::getTransformation(0, 0, 0, cloudInfo.imu_roll_init, cloudInfo.imu_pitch_init, cloudInfo.imu_yaw_init);
@@ -2964,7 +3517,11 @@ public:
         updatePath(thisPose6D);
 
         int curcnt = cloudKeyPoses3D->size() - 1;
-        if (loopClosureEnableFlag) {
+        // Persist Scan Context descriptors for every saved mapping session,
+        // even when online loop closure is disabled. Relocalization consumes
+        // these files later and must not depend on the mapping-time detector
+        // switch.
+        if (loopClosureEnableFlag || savePCD) {
             std::lock_guard<std::mutex> scanContextLock(mtxScanContext);
             // Scan Context loop detector - giseop
             // - SINGLE_SCAN_FULL: using downsampled original point cloud (/full_cloud_projected + downsampling)
@@ -2986,20 +3543,28 @@ public:
             if (savePCD) {
                 const auto& curr_scd = scManager.getConstRefRecentSCD();
                 std::string curr_scd_node_idx = padZeros(curcnt);
-                saveSCD(savePCDDirectory + "SCDs/" + curr_scd_node_idx + ".scd", curr_scd);
+                const std::string scdPath =
+                    savePCDDirectory + "SCDs/" + curr_scd_node_idx + ".scd";
+                if (!saveSCD(scdPath, curr_scd)) {
+                    mapArtifactWriteFailed = true;
+                    RCLCPP_ERROR(get_logger(), "Failed to save SCD: %s", scdPath.c_str());
+                }
             }
         }
 
         if (savePCD) {
-            savePCDIfNotEmpty(
+            const bool cornerSaved = savePCDIfNotEmpty(
                 savePCDDirectory + "CornerMap/" + std::to_string(curcnt) + ".pcd",
                 *thisCornerKeyFrame);
-            savePCDIfNotEmpty(
+            const bool surfaceSaved = savePCDIfNotEmpty(
                 savePCDDirectory + "SurfMap/" + std::to_string(curcnt) + ".pcd",
                 *thisSurfKeyFrame);
-            savePCDIfNotEmpty(
+            const bool scanSaved = savePCDIfNotEmpty(
                 savePCDDirectory + "Scans/" + std::to_string(curcnt) + ".pcd",
                 *laserCloudRawDS);
+            if (!cornerSaved || !surfaceSaved || !scanSaved) {
+                mapArtifactWriteFailed = true;
+            }
         }
     }
 
@@ -3029,6 +3594,13 @@ public:
             }
 
             aLoopIsClosed = false;
+            // Preserve the original LIO-SAM control path: only an accepted
+            // graph correction advances the reset generation consumed from
+            // mapping odometry. The event publisher remains passive.
+            ++imuPreintegrationResetId;
+            publishMapResetEvent(
+                lvi_sam_msgs::msg::LocalizationReset::REASON_MAP_CORRECTION,
+                true, true, "loop_closure_graph_correction");
         }
     }
 
@@ -3054,7 +3626,7 @@ public:
         nav_msgs::msg::Odometry laserOdometryROS;
         laserOdometryROS.header.stamp = timeLaserInfoStamp;
         laserOdometryROS.header.frame_id = odometryFrame;
-        laserOdometryROS.child_frame_id = "odom_mapping";
+        laserOdometryROS.child_frame_id = lidarFrame;
         laserOdometryROS.pose.pose.position.x = transformTobeMapped[3];
         laserOdometryROS.pose.pose.position.y = transformTobeMapped[4];
         laserOdometryROS.pose.pose.position.z = transformTobeMapped[5];
@@ -3063,6 +3635,9 @@ public:
         geometry_msgs::msg::Quaternion quat_msg;
         tf2::convert(quat_tf, quat_msg);
         laserOdometryROS.pose.pose.orientation = quat_msg;
+        laserOdometryROS.pose.covariance[
+            lvi_sam::internal_odom_metadata::mapping_correction::kResetId] =
+            static_cast<double>(imuPreintegrationResetId);
         pubLaserOdometryGlobal->publish(laserOdometryROS);
 
         // Publish TF
@@ -3072,7 +3647,7 @@ public:
         tf2::Stamped<tf2::Transform> temp_odom_to_lidar(t_odom_to_lidar, time_point, odometryFrame);
         geometry_msgs::msg::TransformStamped trans_odom_to_lidar;
         tf2::convert(temp_odom_to_lidar, trans_odom_to_lidar);
-        trans_odom_to_lidar.child_frame_id = "lidar_link";
+        trans_odom_to_lidar.child_frame_id = lidarFrame;
         if (publishMappingOdomTF) br->sendTransform(trans_odom_to_lidar);
 
         // Publish odometry for ROS (incremental)
@@ -3110,7 +3685,7 @@ public:
             }
             laserOdomIncremental.header.stamp = timeLaserInfoStamp;
             laserOdomIncremental.header.frame_id = odometryFrame;
-            laserOdomIncremental.child_frame_id = "odom_mapping";
+            laserOdomIncremental.child_frame_id = lidarFrame;
             laserOdomIncremental.pose.pose.position.x = x;
             laserOdomIncremental.pose.pose.position.y = y;
             laserOdomIncremental.pose.pose.position.z = z;
@@ -3119,12 +3694,39 @@ public:
             geometry_msgs::msg::Quaternion quat_msg;
             tf2::convert(quat_tf, quat_msg);
             laserOdomIncremental.pose.pose.orientation = quat_msg;
-            if (isDegenerate)
-                laserOdomIncremental.pose.covariance[0] = 1;
-            else
-                laserOdomIncremental.pose.covariance[0] = 0;
         }
+        // Internal correction metadata consumed by IMU preintegration.
+        // Keep it current even on the first publication and after loop/GPS
+        // graph corrections. The two fields intentionally have different
+        // semantics from the public Odometry covariance matrix.
+        laserOdomIncremental.pose.covariance[
+            lvi_sam::internal_odom_metadata::mapping_correction::kResetId] =
+            static_cast<double>(imuPreintegrationResetId);
+        laserOdomIncremental.pose.covariance[
+            lvi_sam::internal_odom_metadata::mapping_correction::kDegenerate] =
+            isDegenerate ? 1.0 : 0.0;
         pubLaserOdometryIncremental->publish(laserOdomIncremental);
+    }
+
+    // Publish the accepted, deskewed scan after applying the current
+    // LiDAR-to-odometry pose.  This is intentionally independent of RViz:
+    // downstream depth/registration stages use this topic as an algorithm
+    // input, not only as a visualization topic.
+    void publishRegisteredRawCloud() {
+        if (pubCloudRegisteredRaw->get_subscription_count() == 0) return;
+        if (!cloudInfo.cloud_deskewed || cloudInfo.cloud_deskewed->empty()) {
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 2000,
+                "Skipping cloud_registered_raw publication: accepted deskewed cloud is empty");
+            return;
+        }
+
+        PointTypePose currentPose = trans2PointTypePose(transformTobeMapped);
+        auto registeredCloud = transformPointCloud(cloudInfo.cloud_deskewed, &currentPose);
+        if (!registeredCloud || registeredCloud->empty()) return;
+
+        publishCloud(pubCloudRegisteredRaw, registeredCloud,
+                     cloudInfo.header.stamp, odometryFrame);
     }
 
     void publishFrames() {
@@ -3141,14 +3743,6 @@ public:
             *cloudOut += *transformPointCloud(laserCloudSurfLastDS, &thisPose6D);
             publishCloud(pubRecentKeyFrame, cloudOut, timeLaserInfoStamp, odometryFrame);
         }
-        // publish registered high-res raw cloud
-        // if (pubCloudRegisteredRaw->get_subscription_count() != 0) {
-        //     pcl::PointCloud<PointType>::Ptr cloudOut(new pcl::PointCloud<PointType>());
-        //     pcl::fromROSMsg(cloudInfo.cloud_deskewed, *cloudOut);
-        //     PointTypePose thisPose6D = trans2PointTypePose(transformTobeMapped);
-        //     *cloudOut = *transformPointCloud(cloudOut, &thisPose6D);
-        //     publishCloud(pubCloudRegisteredRaw, cloudOut, timeLaserInfoStamp, odometryFrame);
-        // }
         // publish path
         if (pubPath->get_subscription_count() != 0) {
             globalPath.header.stamp = timeLaserInfoStamp;
@@ -3162,16 +3756,20 @@ int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
 
     rclcpp::NodeOptions options;
-    options.use_intra_process_comms(true);
+    // The structured localization status publisher is transient-local so a
+    // late upper-layer subscriber receives the current state.  Humble rejects
+    // transient-local publishers when intra-process communication is enabled,
+    // so keep this node on DDS communication for QoS correctness.
+    options.use_intra_process_comms(false);
     rclcpp::executors::SingleThreadedExecutor exec;
 
-    auto MO = std::make_shared<mapOptimization>(options);
+    auto MO = std::make_shared<MapOptimization>(options);
     exec.add_node(MO);
 
     RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "\033[1;32m----> Map Optimization Started.\033[0m");
 
-    std::thread loopthread(&mapOptimization::loopClosureThread, MO);
-    std::thread visualizeMapThread(&mapOptimization::visualizeGlobalMapThread, MO);
+    std::thread loopthread(&MapOptimization::loopClosureThread, MO);
+    std::thread visualizeMapThread(&MapOptimization::visualizeGlobalMapThread, MO);
 
     exec.spin();
 
@@ -3179,6 +3777,7 @@ int main(int argc, char** argv) {
 
     loopthread.join();
     visualizeMapThread.join();
+    MO->saveMapOnShutdown();
 
     return 0;
 }

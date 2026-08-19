@@ -1,7 +1,6 @@
 #pragma once
 
 #include <rclcpp/rclcpp.hpp>
-#include "ament_index_cpp/get_package_share_directory.hpp"
 
 #include <eigen3/Eigen/Dense>
 #include <opencv2/opencv.hpp>
@@ -16,6 +15,7 @@
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "sensor_msgs/image_encodings.hpp"
 #include "nav_msgs/msg/odometry.hpp"
+#include "lvi_sam_msgs/msg/localization_reset.hpp"
 
 // TF2 for ROS 2
 #include <tf2/LinearMath/Quaternion.h>
@@ -58,7 +58,6 @@
 #include <thread>
 #include <mutex>
 
-using ament_index_cpp::get_package_share_directory;
 
 const int WINDOW_SIZE = 10;
 
@@ -75,6 +74,7 @@ extern int ESTIMATE_EXTRINSIC;
 
 extern double ACC_N, ACC_W;
 extern double GYR_N, GYR_W;
+extern double IMU_ACCELERATION_SCALE;
 
 extern std::vector<Eigen::Matrix3d> RIC;
 extern std::vector<Eigen::Vector3d> TIC;
@@ -84,9 +84,10 @@ extern double BIAS_ACC_THRESHOLD;
 extern double BIAS_GYR_THRESHOLD;
 extern double SOLVER_TIME;
 extern int NUM_ITERATIONS;
-extern std::string EX_CALIB_RESULT_PATH;
 extern std::string PROJECT_NAME;
 extern std::string IMU_TOPIC;
+extern std::string ODOM_TOPIC;
+extern std::string LOCALIZATION_RESET_TOPIC;
 extern double TD;
 extern double TR;
 extern int ESTIMATE_TD;
@@ -94,6 +95,7 @@ extern int ROLLING_SHUTTER;
 extern int ROW, COL;
 
 extern int USE_LIDAR;
+extern int USE_LIDAR_ODOMETRY_PRIOR;
 extern int ALIGN_CAMERA_LIDAR_COORDINATE;
 
 void readParameters(std::shared_ptr<rclcpp::Node> node);

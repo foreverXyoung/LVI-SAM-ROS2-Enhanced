@@ -9,7 +9,7 @@
 
 #include <ceres/ceres.h>
 
-class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>, public rclcpp::Node
+class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>
 {
   public:
 
@@ -17,7 +17,7 @@ class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>, public rclcpp
 
     IMUFactor() = delete;
     explicit IMUFactor(IntegrationBase* _pre_integration)
-        : Node("imu_factor"), pre_integration(_pre_integration) {}
+        : pre_integration(_pre_integration) {}
 
     // IMU对应的残差，需要自己计算jacobian
     // parameters[0~3]分别对应了4组优化变量的参数块
@@ -190,6 +190,12 @@ class IMUFactor : public ceres::SizedCostFunction<15, 7, 9, 7, 9>, public rclcpp
         }
 
         return true;
-    }   
+    }
+
+  private:
+    static rclcpp::Logger get_logger()
+    {
+        return rclcpp::get_logger("lvi_sam.visual_imu_factor");
+    }
 };
 

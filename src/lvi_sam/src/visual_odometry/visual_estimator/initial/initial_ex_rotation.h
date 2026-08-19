@@ -12,7 +12,7 @@ using namespace Eigen;
 #include "../utility/utility.h"
 
 /* This class help you to calibrate extrinsic rotation between imu and camera when your totally don't konw the extrinsic parameter */
-class InitialEXRotation : public rclcpp::Node
+class InitialEXRotation
 {
 public:
 	InitialEXRotation();
@@ -32,6 +32,11 @@ private:
     vector< Matrix3d > Rimu;
     vector< Matrix3d > Rc_g;
     Matrix3d ric;
+
+    static rclcpp::Logger get_logger()
+    {
+        return rclcpp::get_logger("lvi_sam.visual_initial_ex_rotation");
+    }
 };
 
 

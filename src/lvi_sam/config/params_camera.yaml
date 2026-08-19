@@ -2,21 +2,28 @@
    ros__parameters:
       # 注意：PROJECT_NAME 决定 VIS 发布话题前缀，即 /lvi_sam/vins/...
       #       LIS(fork) 话题：激光深度用绝对 /lio_sam/deskew/cloud_deskewed；
-      #       里程计先验 odomTopic 在 params.yaml 设为相对 "odometry/imu"，estimator 同话题订阅，无需 remap。
+      #       可选里程计先验由 launch 统一为绝对话题 "/odometry/imu"，无需 remap。
       PROJECT_NAME: "lvi_sam"
       # 与 LIS 共用同一条标准 sensor_msgs/Imu 数据，避免双 IMU 时间基准和噪声模型不一致。
       imu_topic: "/IMU_data"
-      image_topic: "/camera/image_raw"
+      odom_topic: "/odometry/imu"
+      image_topic: "/camera/color/image_raw"
       # 激光去畸变点云：对应 fork mapOptmization 发布的 /lio_sam/deskew/cloud_deskewed
       point_cloud_topic: "/lio_sam/deskew/cloud_deskewed"
 
       # Lidar Params
-      use_lidar: 1                     # whether use depth info from lidar or not
+      # Keep LiDAR depth injection disabled until lidar_to_cam_* is replaced
+      # with this robot's calibrated transform.  A wrong transform assigns
+      # incorrect depths to otherwise valid image features.
+      use_lidar: 0                     # enable only after LiDAR-camera calibration
+      # LIS odometry initialization also needs the same calibrated transform,
+      # but is independent from depth projection so either path can be tested.
+      use_lidar_odometry_prior: 0      # enable only after LiDAR-camera calibration
       lidar_skip: 3                    # skip this amount of scans
-      align_camera_lidar_estimation: 1 # align camera and lidar estimation for visualization
+      align_camera_lidar_estimation: 0 # enable together with calibrated lidar_to_cam_*
 
-      # LiDAR -> camera/body full SE(3), shared by depth registration and
-      # LiDAR-odometry initialization. Replace with the robot's calibration.
+      # 兼容原版参数名：物理 LiDAR -> vins_body_ros 虚拟深度帧的完整 SE(3)。
+      # 深度注册和 LiDAR 里程计初始化共享该标定；以下值必须换成实机标定结果。
       lidar_to_cam_tx: 0.05
       lidar_to_cam_ty: -0.07
       lidar_to_cam_tz: -0.07
@@ -25,36 +32,36 @@
       lidar_to_cam_rz: -0.04
 
       # camera model
-      model_type: "mei"
-      camera_name: "camera"
+      # 必须用实机 /camera/color/camera_info 与离线标定结果复核（640x400, plumb_bob）。
+      model_type: "pinhole"
+      camera_name: "camera_color"
 
       # Mono camera config
-      image_width: 720
-      image_height: 540
-      mirror_parameters:
-         xi: 1.9926618269451453
+      image_width: 640
+      image_height: 400
       distortion_parameters:
-         k1: -0.0399258932468764
-         k2: 0.15160828121223818
-         p1: 0.00017756967825777937
-         p2: -0.0011531239076798612
+         k1: -0.031267859041690826
+         k2: 0.034638021141290665
+         p1: 0.00011125089804409072
+         p2: 0.0003588180697988719
       projection_parameters:
-         gamma1: 669.8940458885896
-         gamma2: 669.1450614220616
-         u0: 377.9459252967363
-         v0: 279.63655686698144
-      fisheye_mask: "/config/fisheye_mask_720x540.jpg"
+         fx: 305.593505859735
+         fy: 305.7058330078125
+         cx: 318.81414794921875
+         cy: 199.78807067871094
 
-      #imu parameters       The more accurate parameters you provide, the worse performance
+      # IMU noise parameters must match the sensor data sheet or calibration.
+      # Incorrectly optimistic values can make the estimator overconfident.
       acc_n: 0.02         # accelerometer measurement noise standard deviation.
       gyr_n: 0.01         # gyroscope measurement noise standard deviation.
       acc_w: 0.002        # accelerometer bias random work noise standard deviation.
       gyr_w: 4.0e-5       # gyroscope bias random work noise standard deviation.
       g_norm: 9.805       #
+      imuAccelerationScale: 1.0  # overridden by the selected IMU profile
 
       # Extrinsic parameter between IMU and Camera. The values below must also
       # be replaced by the robot's calibrated camera/IMU transform.
-      estimate_extrinsic: 0   # 0  Have an accurate extrinsic parameters. We will trust the following imu^R_cam, imu^T_cam, don't change it.
+      estimate_extrinsic: 1   # refine the current initial guess; replace it with calibrated IMU-camera extrinsics as soon as available
                               # 1  Have an initial guess about extrinsic parameters. We will optimize around your initial guess.
                               # 2  Don't know anything about extrinsic parameters. You don't need to give R,T. We will try to calibrate it. Do some rotation movement at beginning. 
       #Rotation from camera frame to imu frame, imu^R_cam
@@ -70,11 +77,11 @@
       F_threshold: 1.0        # ransac threshold (pixel)
       show_track: 1           # publish tracking image as topic
       equalize: 1             # if image is too dark or light, trun on equalize to find enough features
-      fisheye: 1              # if using fisheye, trun on it. A circle mask will be loaded to remove edge noisy points
+      fisheye: 0              # plumb_bob pinhole camera; do not load a fisheye mask
 
       #optimization parameters
-      max_solver_time: 0.035   # max solver itration time (ms), to guarantee real time
-      max_num_iterations: 10   # max solver itrations, to guarantee real time
+      max_solver_time: 0.035   # maximum solver time in seconds, to preserve real-time operation
+      max_num_iterations: 10   # maximum solver iterations
       keyframe_parallax: 10.0  # keyframe selection threshold (pixel)
 
       #unsynchronization parameters
@@ -89,8 +96,12 @@
       loop_closure: 1                    # start loop closure
       skip_time: 0.0
       skip_dist: 0.0
+      loop_sync_tolerance: 0.02           # seconds, image/pose/point maximum timestamp error
+      loop_min_index_gap: 200             # exclude recent keyframes from DBoW2 queries
+      loop_primary_score_threshold: 0.05
+      loop_secondary_score_threshold: 0.015
       debug_image: 0                      # save raw image in loop detector for visualization prupose; you can close this function by setting 0 
       match_image_scale: 0.5
-      vocabulary_file: "/config/brief_k10L6.bin"
-      brief_pattern_file: "/config/brief_pattern.yaml"
-      vins_config_file: "/config/params_camera.yaml"
+      vocabulary_file: "config/brief_k10L6.bin"
+      brief_pattern_file: "config/brief_pattern.yaml"
+      vins_config_file: "config/params_camera.yaml"

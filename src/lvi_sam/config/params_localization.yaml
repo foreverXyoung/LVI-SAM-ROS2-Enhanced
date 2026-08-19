@@ -14,13 +14,13 @@
       lostDetectionEnable: true
       lostBadMatchThreshold: 5
       init_guess: [0.00000000, 0.00000000, -1.88647982, 6.21380055, 2.69203917, 0.00000000]   # [roll,pitch,yaw,x,y,z], generated from GNSS map_geo.yaml
-      useRviz: true
 
+    useRviz: true
 
     # Topics
     pointCloudTopic: "/livox/lidar"
     imuTopic: "/IMU_data"                         # IMU data
-    odomTopic: "odometry/imu"                    # IMU pre-preintegration odometry, same frequency as IMU
+    odomTopic: "/odometry/imu"                   # IMU pre-preintegration odometry, same frequency as IMU
     gpsTopic: "/gps_disabled_for_collect_points"
 
     # Frames
@@ -40,6 +40,7 @@
     useGpsFactor: false
     gpsCovThreshold: 0.5
     poseCovThreshold: 25.0
+    gpsVarianceFloor: 1.0
     gpsTimeTolerance: 0.2
     gpsInnovationThreshold: 10.0
     gpsUseRobustNoise: true
@@ -58,8 +59,9 @@
     # points. i.e., 16 = 64 / 4, 16 = 16 / 1
     lidarMinRange: 1.0
     lidarMaxRange: 70.0
-    # Self-filter box in lidarFrame/livox_frame. Enable after tuning in RViz.
-    selfFilterEnable: false
+    # Same raw-LiDAR self-filter contract as the paired mapping profile.
+    selfFilterEnable: true
+    selfFilterFrame: "lidar"
     selfFilterBoxMin: [-0.30, -0.30, -0.30]
     selfFilterBoxMax: [ 0.60,  0.30,  0.40]
 
@@ -71,6 +73,7 @@
 
     imuGravity: 9.80511
     imuRPYWeight: 0.01
+    imuAccelerationScale: 1.0
 
     # LiDAR/IMU extrinsic aligned with the current mobile-base URDF and
     # fast_lio/config/mid360.yaml.
@@ -103,7 +106,10 @@
 
     # CPU Params
     numberOfCores: 8                              # number of cores for mapping optimization
-    mappingProcessInterval: 0.10
+    # Process every accepted real-sensor frame. A 0.10 s gate can drop a
+    # nominal 10 Hz frame when the sensor timestamp period is slightly below
+    # 0.10 s; the actual rate remains bounded by scan-to-map compute time.
+    mappingProcessInterval: 0.0
 
     # Surrounding map
     surroundingkeyframeAddingDistThreshold: 0.2   # 2. meters, regulate keyframe adding threshold
@@ -125,6 +131,7 @@
     historyKeyframeSearchNum: 10                  # 25. number of hostory key frames will be fused into a
     # submap for loop closure
     historyKeyframeFitnessScore: 0.3              # icp threshold, the smaller the better alignment
+    externalLoopTimeTolerance: 0.2                # seconds, VIS candidate to LIS keyframe matching
 
     # Visualization
     globalMapVisualizationSearchRadius: 1000.0    # meters, global map visualization radius

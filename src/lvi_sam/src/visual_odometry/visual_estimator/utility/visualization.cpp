@@ -1,5 +1,10 @@
 #include "visualization.h"
 
+#include <mutex>
+
+#include "lvi_sam/topic_names.hpp"
+#include "lvi_sam/visual_frame_conventions.hpp"
+
 using namespace Eigen;
 rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_odometry, pub_latest_odometry, pub_latest_odometry_ros;
 rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pub_path;
@@ -17,10 +22,27 @@ CameraPoseVisualization cameraposevisual(0, 1, 0, 1);
 CameraPoseVisualization keyframebasevisual(0.0, 0.0, 1.0, 1.0);
 static double sum_of_path = 0;
 static Vector3d last_path(0.0, 0.0, 0.0);
+static double latest_align_time = -1.0;
+static double latest_path_save_time = -1.0;
+static geometry_msgs::msg::TransformStamped odom_world_tf;
+static bool has_odom_world_tf = false;
+static std::mutex visual_state_mutex;
 static std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster;
 static std::shared_ptr<tf2_ros::Buffer> tf_buffer;
 static std::shared_ptr<tf2_ros::TransformListener> tf_listener;
-static Eigen::Affine3d camera_from_lidar = Eigen::Affine3d::Identity();
+
+void resetVisualTfState()
+{
+    std::lock_guard<std::mutex> lock(visual_state_mutex);
+    latest_align_time = -1.0;
+    latest_path_save_time = -1.0;
+    has_odom_world_tf = false;
+    odom_world_tf = geometry_msgs::msg::TransformStamped();
+    path.poses.clear();
+    path.header = std_msgs::msg::Header();
+    sum_of_path = 0.0;
+    last_path.setZero();
+}
 
 void registerPub(std::shared_ptr<rclcpp::Node> n)
 {
@@ -28,31 +50,21 @@ void registerPub(std::shared_ptr<rclcpp::Node> n)
     tf_buffer = std::make_shared<tf2_ros::Buffer>(n->get_clock());
     tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
 
-    const double tx = n->get_parameter("lidar_to_cam_tx").as_double();
-    const double ty = n->get_parameter("lidar_to_cam_ty").as_double();
-    const double tz = n->get_parameter("lidar_to_cam_tz").as_double();
-    const double rx = n->get_parameter("lidar_to_cam_rx").as_double();
-    const double ry = n->get_parameter("lidar_to_cam_ry").as_double();
-    const double rz = n->get_parameter("lidar_to_cam_rz").as_double();
-    const Eigen::Quaterniond q_camera_lidar =
-        Eigen::AngleAxisd(rz, Eigen::Vector3d::UnitZ()) *
-        Eigen::AngleAxisd(ry, Eigen::Vector3d::UnitY()) *
-        Eigen::AngleAxisd(rx, Eigen::Vector3d::UnitX());
-    camera_from_lidar.linear() = q_camera_lidar.toRotationMatrix();
-    camera_from_lidar.translation() = Eigen::Vector3d(tx, ty, tz);
-
-    pub_latest_odometry     = n->create_publisher<nav_msgs::msg::Odometry>(PROJECT_NAME + "/vins/odometry/imu_propagate", 10);
-    pub_latest_odometry_ros = n->create_publisher<nav_msgs::msg::Odometry>(PROJECT_NAME + "/vins/odometry/imu_propagate_ros", 10);
-    pub_path                = n->create_publisher<nav_msgs::msg::Path>(PROJECT_NAME + "/vins/odometry/path", 10);
-    pub_odometry            = n->create_publisher<nav_msgs::msg::Odometry>(PROJECT_NAME + "/vins/odometry/odometry", 10);
-    pub_point_cloud         = n->create_publisher<sensor_msgs::msg::PointCloud>(PROJECT_NAME + "/vins/odometry/point_cloud", 10);
-    pub_margin_cloud        = n->create_publisher<sensor_msgs::msg::PointCloud>(PROJECT_NAME + "/vins/odometry/history_cloud", 10);
-    pub_key_poses           = n->create_publisher<visualization_msgs::msg::Marker>(PROJECT_NAME + "/vins/odometry/key_poses", 10);
-    pub_camera_pose         = n->create_publisher<nav_msgs::msg::Odometry>(PROJECT_NAME + "/vins/odometry/camera_pose", 10);
-    pub_camera_pose_visual  = n->create_publisher<visualization_msgs::msg::MarkerArray>(PROJECT_NAME + "/vins/odometry/camera_pose_visual", 10);
-    pub_keyframe_pose       = n->create_publisher<nav_msgs::msg::Odometry>(PROJECT_NAME + "/vins/odometry/keyframe_pose", 10);
-    pub_keyframe_point      = n->create_publisher<sensor_msgs::msg::PointCloud>(PROJECT_NAME + "/vins/odometry/keyframe_point", 10);
-    pub_extrinsic           = n->create_publisher<nav_msgs::msg::Odometry>(PROJECT_NAME + "/vins/odometry/extrinsic", 10);
+    const auto topic = [](const std::string_view suffix) {
+        return lvi_sam::topics::project_topic(PROJECT_NAME, suffix);
+    };
+    pub_latest_odometry = n->create_publisher<nav_msgs::msg::Odometry>(topic(lvi_sam::topics::kImuPropagate), 10);
+    pub_latest_odometry_ros = n->create_publisher<nav_msgs::msg::Odometry>(topic(lvi_sam::topics::kImuPropagateRos), 10);
+    pub_path = n->create_publisher<nav_msgs::msg::Path>(topic(lvi_sam::topics::kPath), 10);
+    pub_odometry = n->create_publisher<nav_msgs::msg::Odometry>(topic(lvi_sam::topics::kOdometry), 10);
+    pub_point_cloud = n->create_publisher<sensor_msgs::msg::PointCloud>(topic(lvi_sam::topics::kPointCloud), 10);
+    pub_margin_cloud = n->create_publisher<sensor_msgs::msg::PointCloud>(topic(lvi_sam::topics::kHistoryCloud), 10);
+    pub_key_poses = n->create_publisher<visualization_msgs::msg::Marker>(topic(lvi_sam::topics::kKeyPoses), 10);
+    pub_camera_pose = n->create_publisher<nav_msgs::msg::Odometry>(topic(lvi_sam::topics::kCameraPose), 10);
+    pub_camera_pose_visual = n->create_publisher<visualization_msgs::msg::MarkerArray>(topic(lvi_sam::topics::kCameraPoseVisual), 10);
+    pub_keyframe_pose = n->create_publisher<nav_msgs::msg::Odometry>(topic(lvi_sam::topics::kKeyframePose), 10);
+    pub_keyframe_point = n->create_publisher<sensor_msgs::msg::PointCloud>(topic(lvi_sam::topics::kKeyframePoint), 10);
+    pub_extrinsic = n->create_publisher<nav_msgs::msg::Odometry>(topic(lvi_sam::topics::kExtrinsic), 10);
 
     cameraposevisual.setScale(1);
     cameraposevisual.setLineWidth(0.05);
@@ -83,8 +95,7 @@ geometry_msgs::msg::TransformStamped transformConversion(const geometry_msgs::ms
 
 void pubLatestOdometry(const Eigen::Vector3d &P, const Eigen::Quaterniond &Q, const Eigen::Vector3d &V, const std_msgs::msg::Header &header, const int& failureId)
 {
-    static double last_align_time = -1;
-
+    std::lock_guard<std::mutex> lock(visual_state_mutex);
     // Quternion not normalized
     if (Q.norm() < 0.99)
         return;
@@ -106,44 +117,46 @@ void pubLatestOdometry(const Eigen::Vector3d &P, const Eigen::Quaterniond &Q, co
     odometry.twist.twist.linear.z = V.z();
     pub_latest_odometry->publish(odometry);
 
-    // Convert the VINS camera/body pose to the lidar pose with the same
-    // calibrated SE(3) used by the lidar-to-camera input path.
+    // Publish the virtual depth-projection frame: it shares the VINS
+    // camera/body origin but uses ROS/LiDAR-style axes. The calibrated physical
+    // LiDAR offset is applied to raw points by visual_feature, exactly once.
     odometry.pose.covariance[0] = static_cast<double>(failureId); // notify lidar odometry failure
     Eigen::Affine3d world_from_camera = Eigen::Affine3d::Identity();
     world_from_camera.linear() = Q.normalized().toRotationMatrix();
     world_from_camera.translation() = P;
-    const Eigen::Affine3d world_from_lidar =
-        world_from_camera * camera_from_lidar;
-    const Eigen::Quaterniond q_world_lidar(world_from_lidar.rotation());
-    odometry.pose.pose.position.x = world_from_lidar.translation().x();
-    odometry.pose.pose.position.y = world_from_lidar.translation().y();
-    odometry.pose.pose.position.z = world_from_lidar.translation().z();
-    odometry.pose.pose.orientation.x = q_world_lidar.x();
-    odometry.pose.pose.orientation.y = q_world_lidar.y();
-    odometry.pose.pose.orientation.z = q_world_lidar.z();
-    odometry.pose.pose.orientation.w = q_world_lidar.w();
+    const Eigen::Affine3d world_from_depth_frame =
+        world_from_camera *
+        lvi_sam::visual_frames::vins_camera_from_depth_frame();
+    Eigen::Quaterniond q_world_depth(world_from_depth_frame.rotation());
+    q_world_depth.normalize();
+    odometry.pose.pose.position.x = world_from_depth_frame.translation().x();
+    odometry.pose.pose.position.y = world_from_depth_frame.translation().y();
+    odometry.pose.pose.position.z = world_from_depth_frame.translation().z();
+    odometry.pose.pose.orientation.x = q_world_depth.x();
+    odometry.pose.pose.orientation.y = q_world_depth.y();
+    odometry.pose.pose.orientation.z = q_world_depth.z();
+    odometry.pose.pose.orientation.w = q_world_depth.w();
 
     pub_latest_odometry_ros->publish(odometry);
 
-    // TF of the lidar-aligned VINS body, used for depth registration.
+    // TF of the virtual depth frame used for depth registration.
     geometry_msgs::msg::TransformStamped tf_cam;
     tf_cam.header = header;
     tf_cam.child_frame_id = "vins_body_ros";
     tf_cam.header.frame_id = "vins_world";
-    tf_cam.transform.translation.x = world_from_lidar.translation().x();
-    tf_cam.transform.translation.y = world_from_lidar.translation().y();
-    tf_cam.transform.translation.z = world_from_lidar.translation().z();
+    tf_cam.transform.translation.x = world_from_depth_frame.translation().x();
+    tf_cam.transform.translation.y = world_from_depth_frame.translation().y();
+    tf_cam.transform.translation.z = world_from_depth_frame.translation().z();
     tf_cam.transform.rotation = odometry.pose.pose.orientation;
     tf_broadcaster->sendTransform(tf_cam);
 
     // Handle camera-lidar alignment
     if (ALIGN_CAMERA_LIDAR_COORDINATE)
     {
-        static geometry_msgs::msg::TransformStamped tf_odom_world;
-
         rclcpp::Time stamp = header.stamp;
 
-        if ((stamp.seconds() - last_align_time) > 1.0)
+        if (!has_odom_world_tf ||
+            (stamp.seconds() - latest_align_time) > 1.0)
         {
             try
             {
@@ -155,11 +168,12 @@ void pubLatestOdometry(const Eigen::Vector3d &P, const Eigen::Quaterniond &Q, co
                 tf2::fromMsg(tf_cam.transform, T_world_vins);
 
                 tf2::Transform T_odom_world = T_odom_baselink * T_world_vins.inverse();
-                tf_odom_world.header.stamp = header.stamp;
-                tf_odom_world.header.frame_id = "odom";
-                tf_odom_world.child_frame_id = "vins_world";
-                tf_odom_world.transform = tf2::toMsg(T_odom_world);
-                last_align_time = stamp.seconds();
+                odom_world_tf.header.stamp = header.stamp;
+                odom_world_tf.header.frame_id = "odom";
+                odom_world_tf.child_frame_id = "vins_world";
+                odom_world_tf.transform = tf2::toMsg(T_odom_world);
+                latest_align_time = stamp.seconds();
+                has_odom_world_tf = true;
             }
             catch (tf2::TransformException &ex)
             {
@@ -168,7 +182,8 @@ void pubLatestOdometry(const Eigen::Vector3d &P, const Eigen::Quaterniond &Q, co
             }
         }
 
-        tf_broadcaster->sendTransform(tf_odom_world);
+        if (has_odom_world_tf)
+            tf_broadcaster->sendTransform(odom_world_tf);
     }
     else
     {
@@ -188,6 +203,7 @@ void pubLatestOdometry(const Eigen::Vector3d &P, const Eigen::Quaterniond &Q, co
 
 void printStatistics(const Estimator &estimator, double t)
 {
+    std::lock_guard<std::mutex> lock(visual_state_mutex);
     if (estimator.solver_flag != Estimator::SolverFlag::NON_LINEAR)
         return;
     printf("position: %f, %f, %f\r", estimator.Ps[WINDOW_SIZE].x(), estimator.Ps[WINDOW_SIZE].y(), estimator.Ps[WINDOW_SIZE].z());
@@ -200,7 +216,6 @@ void printStatistics(const Estimator &estimator, double t)
         RCLCPP_DEBUG_STREAM(rclcpp::get_logger("estimator"), "extrinsic ric: " << Utility::R2ypr(estimator.ric[i]).transpose());
         if (ESTIMATE_EXTRINSIC)
         {
-            // cv::FileStorage fs(EX_CALIB_RESULT_PATH, cv::FileStorage::WRITE);
             Eigen::Matrix3d eigen_R;
             Eigen::Vector3d eigen_T;
             eigen_R = estimator.ric[i];
@@ -229,6 +244,7 @@ void printStatistics(const Estimator &estimator, double t)
 
 void pubOdometry(const Estimator &estimator, const std_msgs::msg::Header &header)
 {
+    std::lock_guard<std::mutex> lock(visual_state_mutex);
     if (estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR)
     {
         nav_msgs::msg::Odometry odometry;
@@ -249,10 +265,9 @@ void pubOdometry(const Estimator &estimator, const std_msgs::msg::Header &header
         odometry.twist.twist.linear.z = estimator.Vs[WINDOW_SIZE].z();
         pub_odometry->publish(odometry);
 
-        static double path_save_time = -1;
-        if (rclcpp::Time(header.stamp).seconds() - path_save_time > 0.5)
+        if (rclcpp::Time(header.stamp).seconds() - latest_path_save_time > 0.5)
         {
-            path_save_time = rclcpp::Time(header.stamp).seconds();
+            latest_path_save_time = rclcpp::Time(header.stamp).seconds();
             geometry_msgs::msg::PoseStamped pose_stamped;
             pose_stamped.header = header;
             pose_stamped.header.frame_id = "vins_world";
@@ -304,6 +319,7 @@ void pubKeyPoses(const Estimator &estimator, const std_msgs::msg::Header &header
 
 void pubCameraPose(const Estimator &estimator, const std_msgs::msg::Header &header)
 {
+    std::lock_guard<std::mutex> lock(visual_state_mutex);
     if (pub_camera_pose_visual->get_subscription_count() == 0)
         return;
 

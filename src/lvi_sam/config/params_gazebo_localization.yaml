@@ -17,11 +17,12 @@
       lostDetectionEnable: true
       lostBadMatchThreshold: 5
       init_guess: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-      useRviz: true
+
+    useRviz: true
 
     pointCloudTopic: "/livox/lidar"
     imuTopic: "/IMU_data"
-    odomTopic: "odometry/imu"
+    odomTopic: "/odometry/imu"
     gpsTopic: "/gps/unused"
     useExternalPoseFactor: false
     externalPoseOverride: false
@@ -45,6 +46,11 @@
     gpsInitialDistance: 0.0
     gpsFactorDistance: 0.0
     gpsVarianceFloor: 1.0e-6
+    gpsTimeTolerance: 0.2
+    gpsInnovationThreshold: 10.0
+    gpsUseRobustNoise: true
+    gpsRobustKernelScale: 2.0
+    gpsQueueSize: 500
     savePCD: false
     savePCDDirectory: "/tmp/lvi_sam_maps"
 
@@ -55,6 +61,7 @@
     lidarMinRange: 0.5
     lidarMaxRange: 40.0
     selfFilterEnable: false
+    selfFilterFrame: "lidar"
 
     imuAccNoise: 4.0e-3
     imuGyrNoise: 1.5e-3
@@ -62,6 +69,7 @@
     imuGyrBiasN: 3.6e-5
     imuGravity: 9.80511
     imuRPYWeight: 0.01
+    imuAccelerationScale: 1.0
 
     # IMU origin -> LiDAR origin, expressed in the Gazebo IMU axes.
     extrinsicTrans: [0.194406, 0.005998, -0.015194]
@@ -84,7 +92,9 @@
     z_tollerance: 1.0
     rotation_tollerance: 1.0
     numberOfCores: 4
-    mappingProcessInterval: 0.10
+    # Process every accepted frame; scan matching still determines the
+    # achievable output rate.
+    mappingProcessInterval: 0.0
     surroundingkeyframeAddingDistThreshold: 0.20
     surroundingkeyframeAddingAngleThreshold: 0.05
     surroundingKeyframeDensity: 1.0
@@ -92,6 +102,7 @@
     loopClosureEnableFlag: false
     scanContextLoopEnableFlag: false
     scanContextDistanceThreshold: 0.3
+    externalLoopTimeTolerance: 0.2
     globalMapVisualizationSearchRadius: 100.0
     globalMapVisualizationPoseDensity: 5.0
     globalMapVisualizationLeafSize: 0.5

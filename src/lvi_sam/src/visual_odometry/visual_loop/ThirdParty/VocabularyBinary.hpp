@@ -2,8 +2,10 @@
 #define VocabularyBinary_hpp
 
 #include <cstdint>
+#include <cstddef>
 #include <fstream>
 #include <string>
+#include <type_traits>
 
 namespace VINSLoop {
     
@@ -37,10 +39,19 @@ struct Vocabulary {
     void serialize(std::ofstream& stream);
     void deserialize(std::ifstream& stream);
     
-    inline static size_t staticDataSize() {
+    inline static constexpr std::size_t staticDataSize() {
         return sizeof(Vocabulary) - sizeof(Node*) - sizeof(Word*);
     }
 };
+
+// The legacy binary vocabulary format writes only the scalar prefix of this
+// structure. Keep the two owning pointers outside that serialized prefix on
+// every supported ABI; otherwise deserialization could overwrite live heap
+// addresses with pointer bytes stored in the vocabulary file.
+static_assert(std::is_standard_layout<Vocabulary>::value,
+              "Vocabulary must remain standard-layout");
+static_assert(offsetof(Vocabulary, nodes) == Vocabulary::staticDataSize(),
+              "Vocabulary binary header must end before owning pointers");
 
 }
 

@@ -32,7 +32,29 @@ void reduceVector(vector<int> &v, vector<uchar> status)
 
 
 FeatureTracker::FeatureTracker()
+    : cur_time(0.0), prev_time(0.0)
 {
+}
+
+void FeatureTracker::reset()
+{
+    mask.release();
+    prev_img.release();
+    cur_img.release();
+    forw_img.release();
+    n_pts.clear();
+    prev_pts.clear();
+    cur_pts.clear();
+    forw_pts.clear();
+    prev_un_pts.clear();
+    cur_un_pts.clear();
+    pts_velocity.clear();
+    ids.clear();
+    track_cnt.clear();
+    cur_un_pts_map.clear();
+    prev_un_pts_map.clear();
+    cur_time = 0.0;
+    prev_time = 0.0;
 }
 
 void FeatureTracker::setMask()

@@ -4,14 +4,21 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <atomic>
+#include <cstdint>
+#include <cmath>
 #include <functional>
+#include <limits>
+#include <memory>
 #include <rclcpp/rclcpp.hpp>
-#include <cv_bridge/cv_bridge.h>
 #include <opencv2/opencv.hpp>
+#include <lvi_sam_msgs/msg/localization_reset.hpp>
 
 #include "estimator.h"
+#include "lvi_sam/internal_odom_metadata.hpp"
 #include "parameters.h"
 #include "utility/visualization.h"
+#include "lvi_sam/topic_names.hpp"
 
 using std::placeholders::_1;
 
@@ -20,14 +27,19 @@ double current_time = -1;
 queue<sensor_msgs::msg::Imu::ConstSharedPtr> imu_buf; 
 queue<sensor_msgs::msg::PointCloud::ConstSharedPtr> feature_buf;
 
+constexpr std::size_t kMaxImuQueueSize = 10000;
+constexpr std::size_t kMaxFeatureQueueSize = 200;
+constexpr std::size_t kMaxOdomQueueSize = 10000;
+
 // global variable saving the lidar odometry
 deque<nav_msgs::msg::Odometry> odomQueue;
-odometryRegister *odomRegister;
+std::unique_ptr<OdometryRegister> odomRegister;
 
 std::mutex m_buf;
 std::mutex m_state;
 std::mutex m_estimator;
 std::mutex m_odom;
+std::mutex m_reset;
 
 double latest_time;
 Eigen::Vector3d tmp_P;
@@ -40,6 +52,100 @@ Eigen::Vector3d gyr_0;
 bool init_feature = 0;
 bool init_imu = 1;
 double last_imu_t = 0;
+double last_feature_t = -1;
+double last_odom_t = -1;
+std::atomic<std::uint64_t> reset_generation{0};
+std::uint64_t visualResetEventSequence = 0;
+std::uint64_t latestLidarResetId = 0;
+rclcpp::Publisher<lvi_sam_msgs::msg::LocalizationReset>::SharedPtr
+    pubLocalizationReset;
+
+using FeatureObservations =
+    map<int, vector<pair<int, Eigen::Matrix<double, 8, 1>>>>;
+
+bool decodeFeatureMessage(
+    const sensor_msgs::msg::PointCloud::ConstSharedPtr &feature_msg,
+    FeatureObservations &image)
+{
+    if (!std::isfinite(rclcpp::Time(feature_msg->header.stamp).seconds()) ||
+        feature_msg->channels.size() < 6)
+        return false;
+
+    for (std::size_t channel_index = 0; channel_index < 6; ++channel_index)
+    {
+        if (feature_msg->channels[channel_index].values.size() <
+            feature_msg->points.size())
+            return false;
+    }
+
+    for (std::size_t i = 0; i < feature_msg->points.size(); ++i)
+    {
+        const double encoded_id = feature_msg->channels[0].values[i];
+        if (!std::isfinite(encoded_id) || encoded_id < 0.0 ||
+            encoded_id > static_cast<double>(std::numeric_limits<int>::max()) - 0.5)
+            return false;
+
+        const int combined_id = static_cast<int>(encoded_id + 0.5);
+        const int feature_id = combined_id / NUM_OF_CAM;
+        const int camera_id = combined_id % NUM_OF_CAM;
+        const double x = feature_msg->points[i].x;
+        const double y = feature_msg->points[i].y;
+        const double z = feature_msg->points[i].z;
+        const double p_u = feature_msg->channels[1].values[i];
+        const double p_v = feature_msg->channels[2].values[i];
+        const double velocity_x = feature_msg->channels[3].values[i];
+        const double velocity_y = feature_msg->channels[4].values[i];
+        const double depth = feature_msg->channels[5].values[i];
+
+        if (combined_id < 0 || feature_id < 0 || camera_id < 0 ||
+            camera_id >= NUM_OF_CAM || !std::isfinite(x) ||
+            !std::isfinite(y) || !std::isfinite(z) ||
+            std::abs(z - 1.0) > 1e-6 || !std::isfinite(p_u) ||
+            !std::isfinite(p_v) || !std::isfinite(velocity_x) ||
+            !std::isfinite(velocity_y) || !std::isfinite(depth))
+            return false;
+
+        Eigen::Matrix<double, 8, 1> observation;
+        observation << x, y, z, p_u, p_v, velocity_x, velocity_y, depth;
+        image[feature_id].emplace_back(camera_id, observation);
+    }
+    return true;
+}
+
+bool validImuSequence(
+    const std::vector<sensor_msgs::msg::Imu::ConstSharedPtr> &imu_messages,
+    double image_time,
+    double integration_time)
+{
+    for (const auto &imu_msg : imu_messages)
+    {
+        const double imu_time = rclcpp::Time(imu_msg->header.stamp).seconds();
+        if (!std::isfinite(imu_time))
+            return false;
+
+        if (imu_time <= image_time)
+        {
+            if (integration_time < 0.0)
+                integration_time = imu_time;
+            const double dt = imu_time - integration_time;
+            if (!std::isfinite(dt) || dt < 0.0)
+                return false;
+            integration_time = imu_time;
+        }
+        else
+        {
+            const double dt_before_image = image_time - integration_time;
+            const double dt_after_image = imu_time - image_time;
+            if (!std::isfinite(dt_before_image) ||
+                !std::isfinite(dt_after_image) || dt_before_image < 0.0 ||
+                dt_after_image < 0.0 ||
+                dt_before_image + dt_after_image <= 0.0)
+                return false;
+            integration_time = image_time;
+        }
+    }
+    return true;
+}
 
 void predict(const sensor_msgs::msg::Imu::ConstSharedPtr &imu_msg, Estimator &estimator)
 {
@@ -51,6 +157,8 @@ void predict(const sensor_msgs::msg::Imu::ConstSharedPtr &imu_msg, Estimator &es
         return;
     }
     double dt = t - latest_time;
+    if (!std::isfinite(t) || !std::isfinite(dt) || dt <= 0.0)
+        return;
     latest_time = t;
 
     double dx = imu_msg->linear_acceleration.x;
@@ -97,7 +205,7 @@ void update(Estimator &estimator)
 }
 
 std::vector<std::pair<std::vector<sensor_msgs::msg::Imu::ConstSharedPtr>, sensor_msgs::msg::PointCloud::ConstSharedPtr>>
-getMeasurements(Estimator &estimator)
+getMeasurements(const double time_offset)
 {
     std::vector<std::pair<std::vector<sensor_msgs::msg::Imu::ConstSharedPtr>, sensor_msgs::msg::PointCloud::ConstSharedPtr>> measurements;
 
@@ -106,12 +214,12 @@ getMeasurements(Estimator &estimator)
         if (imu_buf.empty() || feature_buf.empty())
             return measurements;
 
-        if (!(rclcpp::Time(imu_buf.back()->header.stamp).seconds() > rclcpp::Time(feature_buf.front()->header.stamp).seconds() + estimator.td))
+        if (!(rclcpp::Time(imu_buf.back()->header.stamp).seconds() > rclcpp::Time(feature_buf.front()->header.stamp).seconds() + time_offset))
         {
             return measurements;
         }
 
-        if (!(rclcpp::Time(imu_buf.front()->header.stamp).seconds() < rclcpp::Time(feature_buf.front()->header.stamp).seconds() + estimator.td))
+        if (!(rclcpp::Time(imu_buf.front()->header.stamp).seconds() < rclcpp::Time(feature_buf.front()->header.stamp).seconds() + time_offset))
         {
             // RCLPCPP_WARN("throw img, only should happen at the beginning");
             feature_buf.pop();
@@ -121,7 +229,7 @@ getMeasurements(Estimator &estimator)
         feature_buf.pop();
 
         std::vector<sensor_msgs::msg::Imu::ConstSharedPtr> IMUs;
-        while (rclcpp::Time(imu_buf.front()->header.stamp).seconds() < rclcpp::Time(img_msg->header.stamp).seconds() + estimator.td)
+        while (rclcpp::Time(imu_buf.front()->header.stamp).seconds() < rclcpp::Time(img_msg->header.stamp).seconds() + time_offset)
         {
             IMUs.emplace_back(imu_buf.front());
             imu_buf.pop();
@@ -136,24 +244,45 @@ getMeasurements(Estimator &estimator)
 
 void imu_callback(const sensor_msgs::msg::Imu::ConstSharedPtr &imu_msg, Estimator &estimator)
 {
-    if (rclcpp::Time(imu_msg->header.stamp).seconds() <= last_imu_t)
+    const double imu_time = rclcpp::Time(imu_msg->header.stamp).seconds();
+    const auto &acceleration = imu_msg->linear_acceleration;
+    const auto &angular_velocity = imu_msg->angular_velocity;
+    if (!std::isfinite(imu_time) ||
+        !std::isfinite(acceleration.x) || !std::isfinite(acceleration.y) ||
+        !std::isfinite(acceleration.z) || !std::isfinite(angular_velocity.x) ||
+        !std::isfinite(angular_velocity.y) || !std::isfinite(angular_velocity.z))
+    {
+        RCLCPP_WARN(rclcpp::get_logger("visual_estimator"),
+                    "Discarding IMU sample with a non-finite timestamp or measurement");
+        return;
+    }
+    if (imu_time <= last_imu_t)
     {
         // ROS_WARN("imu message in disorder!");
         return;
     }
-    last_imu_t = rclcpp::Time(imu_msg->header.stamp).seconds();
+    last_imu_t = imu_time;
 
-    m_buf.lock();
-    imu_buf.push(imu_msg);
-    m_buf.unlock();
-    con.notify_one();
-
-    last_imu_t = rclcpp::Time(imu_msg->header.stamp).seconds();
+    // Livox MID-360 publishes acceleration in g. Normalize the selected IMU
+    // profile to sensor_msgs SI units before the message enters either the
+    // buffered estimator path or the real-time prediction path.
+    auto normalized_imu = std::make_shared<sensor_msgs::msg::Imu>(*imu_msg);
+    normalized_imu->linear_acceleration.x *= IMU_ACCELERATION_SCALE;
+    normalized_imu->linear_acceleration.y *= IMU_ACCELERATION_SCALE;
+    normalized_imu->linear_acceleration.z *= IMU_ACCELERATION_SCALE;
 
     {
-        std::lock_guard<std::mutex> lg(m_state);
-        predict(imu_msg, estimator);
-        std_msgs::msg::Header header = imu_msg->header;
+        std::lock_guard<std::mutex> lock(m_buf);
+        imu_buf.push(normalized_imu);
+        while (imu_buf.size() > kMaxImuQueueSize)
+            imu_buf.pop();
+    }
+    con.notify_one();
+
+    {
+        std::scoped_lock lock(m_estimator, m_state);
+        predict(normalized_imu, estimator);
+        std_msgs::msg::Header header = normalized_imu->header;
         if (estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR)
             pubLatestOdometry(tmp_P, tmp_Q, tmp_V, header, estimator.failureCount);
     }
@@ -161,44 +290,164 @@ void imu_callback(const sensor_msgs::msg::Imu::ConstSharedPtr &imu_msg, Estimato
 
 void odom_callback(const nav_msgs::msg::Odometry::ConstSharedPtr& odom_msg) 
 {
-    m_odom.lock();
+    const auto &position = odom_msg->pose.pose.position;
+    const auto &orientation = odom_msg->pose.pose.orientation;
+    const auto &velocity = odom_msg->twist.twist.linear;
+    const double quaternion_norm = std::sqrt(
+        orientation.x * orientation.x + orientation.y * orientation.y +
+        orientation.z * orientation.z + orientation.w * orientation.w);
+    bool covariance_is_finite = true;
+    for (std::size_t i = 0; i < 8; ++i)
+        covariance_is_finite = covariance_is_finite &&
+                               std::isfinite(odom_msg->pose.covariance[i]);
+    const double reset_id_value = odom_msg->pose.covariance[
+        lvi_sam::internal_odom_metadata::visual_prior::kResetId];
+    if (!std::isfinite(rclcpp::Time(odom_msg->header.stamp).seconds()) ||
+        !std::isfinite(position.x) || !std::isfinite(position.y) ||
+        !std::isfinite(position.z) || !std::isfinite(orientation.x) ||
+        !std::isfinite(orientation.y) || !std::isfinite(orientation.z) ||
+        !std::isfinite(orientation.w) || quaternion_norm < 1e-9 ||
+        !std::isfinite(velocity.x) || !std::isfinite(velocity.y) ||
+        !std::isfinite(velocity.z) || !covariance_is_finite ||
+        !std::isfinite(reset_id_value) || reset_id_value < 0.0 ||
+        std::abs(reset_id_value - std::round(reset_id_value)) > 1e-6)
+        return;
+    const std::uint64_t reset_id = static_cast<std::uint64_t>(
+        std::llround(reset_id_value));
+    {
+        std::lock_guard<std::mutex> lock(m_reset);
+        // DDS does not order messages across the reset and odometry topics.
+        // Once a map generation is known, reject late odometry from an older
+        // generation instead of reintroducing it after the queue was cleared.
+        if (reset_id < latestLidarResetId)
+            return;
+        if (reset_id > latestLidarResetId)
+            latestLidarResetId = reset_id;
+    }
+    std::lock_guard<std::mutex> lock(m_odom);
+    const double odom_time = rclcpp::Time(odom_msg->header.stamp).seconds();
+    if (last_odom_t >= 0.0 && odom_time <= last_odom_t)
+        return;
+    last_odom_t = odom_time;
     odomQueue.push_back(*odom_msg);
-    m_odom.unlock();
+    while (odomQueue.size() > kMaxOdomQueueSize)
+        odomQueue.pop_front();
 }
 
 void feature_callback(const sensor_msgs::msg::PointCloud::ConstSharedPtr &feature_msg)
 {
+    const double feature_time =
+        rclcpp::Time(feature_msg->header.stamp).seconds();
+    if (!std::isfinite(feature_time))
+        return;
     if (!init_feature)
     {
         //skip the first detected feature, which doesn't contain optical flow speed
         init_feature = 1;
         return;
     }
-    m_buf.lock();
-    feature_buf.push(feature_msg);
-    m_buf.unlock();
+    {
+        std::lock_guard<std::mutex> lock(m_buf);
+        if (last_feature_t >= 0.0 && feature_time <= last_feature_t)
+            return;
+        last_feature_t = feature_time;
+        feature_buf.push(feature_msg);
+        while (feature_buf.size() > kMaxFeatureQueueSize)
+            feature_buf.pop();
+    }
     con.notify_one();
 }
 
-void restart_callback(const std_msgs::msg::Bool::ConstSharedPtr &restart_msg, Estimator &estimator) 
+void resetEstimatorState(Estimator &estimator)
 {
-    if (restart_msg->data == true)
+    std::scoped_lock lock(m_buf, m_state, m_estimator, m_odom);
+    while (!feature_buf.empty())
+        feature_buf.pop();
+    while (!imu_buf.empty())
+        imu_buf.pop();
+    estimator.clearState();
+    estimator.setParameter();
+    current_time = -1;
+    latest_time = 0;
+    last_imu_t = 0;
+    last_feature_t = -1;
+    init_imu = true;
+    init_feature = false;
+    tmp_P.setZero();
+    tmp_Q.setIdentity();
+    tmp_V.setZero();
+    tmp_Ba.setZero();
+    tmp_Bg.setZero();
+    acc_0.setZero();
+    gyr_0.setZero();
+    reset_generation.fetch_add(1, std::memory_order_release);
+    odomQueue.clear();
+    last_odom_t = -1;
+    resetVisualTfState();
+}
+
+// Estimator::processImage() clears its own sliding-window state when VINS
+// failure detection fires.  This companion path clears only the ROS-side
+// queues and prediction/visualization anchors; it deliberately does not call
+// estimator.clearState() again while the process thread already owns
+// m_estimator.
+void resetEstimatorAuxiliaryStateAfterFailure()
+{
+    std::scoped_lock lock(m_buf, m_state, m_odom);
+    while (!feature_buf.empty())
+        feature_buf.pop();
+    while (!imu_buf.empty())
+        imu_buf.pop();
+    current_time = -1;
+    latest_time = 0;
+    last_imu_t = 0;
+    last_feature_t = -1;
+    init_imu = true;
+    init_feature = false;
+    tmp_P.setZero();
+    tmp_Q.setIdentity();
+    tmp_V.setZero();
+    tmp_Ba.setZero();
+    tmp_Bg.setZero();
+    acc_0.setZero();
+    gyr_0.setZero();
+    reset_generation.fetch_add(1, std::memory_order_release);
+    odomQueue.clear();
+    // Keep last_odom_t as a timestamp barrier.  This rejects delayed old
+    // odometry from the same map generation without rejecting a valid stream
+    // whose timestamps remain monotonic after the VINS-only restart.
+    resetVisualTfState();
+}
+
+void restart_callback(
+    const std_msgs::msg::Bool::ConstSharedPtr &restart_msg,
+    Estimator &estimator)
+{
+    if (restart_msg && restart_msg->data)
     {
-        // ROS_WARN("restart the estimator!");
-        m_buf.lock();
-        while(!feature_buf.empty())
-            feature_buf.pop();
-        while(!imu_buf.empty())
-            imu_buf.pop();
-        m_buf.unlock();
-        m_estimator.lock();
-        estimator.clearState();
-        estimator.setParameter();
-        m_estimator.unlock();
-        current_time = -1;
-        last_imu_t = 0;
+        resetEstimatorState(estimator);
+        con.notify_all();
     }
-    return;
+}
+
+void publishVisualResetEvent(
+    const std_msgs::msg::Header &header,
+    const std::uint64_t reset_id,
+    const std::string &detail)
+{
+    if (!pubLocalizationReset)
+        return;
+    ++visualResetEventSequence;
+    lvi_sam_msgs::msg::LocalizationReset reset_msg;
+    reset_msg.header = header;
+    reset_msg.event_id = visualResetEventSequence;
+    reset_msg.reset_id = reset_id;
+    reset_msg.reason = lvi_sam_msgs::msg::LocalizationReset::REASON_VINS_FAILURE;
+    reset_msg.source = "visual_estimator";
+    reset_msg.reset_imu = false;
+    reset_msg.restart_visual = true;
+    reset_msg.detail = detail;
+    pubLocalizationReset->publish(reset_msg);
 }
 
 // thread: visual-inertial odometry
@@ -207,30 +456,63 @@ void process(Estimator &estimator)
     while (rclcpp::ok())
     {
         std::vector<std::pair<std::vector<sensor_msgs::msg::Imu::ConstSharedPtr>, sensor_msgs::msg::PointCloud::ConstSharedPtr>> measurements;
+        std::uint64_t measurement_generation = 0;
+        bool auxiliary_reset_requested = false;
         std::unique_lock<std::mutex> lk(m_buf);
         con.wait(lk, [&]
                  {
-            return (measurements = getMeasurements(estimator)).size() != 0;
+            if (!rclcpp::ok())
+                return true;
+            double time_offset = 0.0;
+            {
+                std::lock_guard<std::mutex> estimator_lock(m_estimator);
+                time_offset = estimator.td;
+            }
+            measurements = getMeasurements(time_offset);
+            measurement_generation =
+                reset_generation.load(std::memory_order_acquire);
+            return !measurements.empty();
                  });
+        if (!rclcpp::ok())
+            break;
         lk.unlock();
 
-        m_estimator.lock();
+        {
+        std::lock_guard<std::mutex> estimator_lock(m_estimator);
+        if (measurement_generation !=
+            reset_generation.load(std::memory_order_acquire))
+            continue;
         for (auto &measurement : measurements)
         {
             auto img_msg = measurement.second;
+
+            FeatureObservations image;
+            if (!decodeFeatureMessage(img_msg, image))
+            {
+                RCLCPP_WARN(rclcpp::get_logger("visual_estimator"),
+                            "Discarding malformed feature cloud");
+                continue;
+            }
+
+            const double image_time =
+                rclcpp::Time(img_msg->header.stamp).seconds() + estimator.td;
+            if (!validImuSequence(measurement.first, image_time, current_time))
+            {
+                RCLCPP_WARN(rclcpp::get_logger("visual_estimator"),
+                            "Discarding feature frame with an invalid IMU time sequence");
+                continue;
+            }
 
             // 1. IMU pre-integration
             double dx = 0, dy = 0, dz = 0, rx = 0, ry = 0, rz = 0;
             for (auto &imu_msg : measurement.first)
             {
                 double t = rclcpp::Time(imu_msg->header.stamp).seconds();
-                double img_t = rclcpp::Time(img_msg->header.stamp).seconds() + estimator.td;
-                if (t <= img_t)
+                if (t <= image_time)
                 { 
                     if (current_time < 0)
                         current_time = t;
                     double dt = t - current_time;
-                    assert(dt >= 0);
                     current_time = t;
                     dx = imu_msg->linear_acceleration.x;
                     dy = imu_msg->linear_acceleration.y;
@@ -243,12 +525,9 @@ void process(Estimator &estimator)
                 }
                 else
                 {
-                    double dt_1 = img_t - current_time;
-                    double dt_2 = t - img_t;
-                    current_time = img_t;
-                    assert(dt_1 >= 0);
-                    assert(dt_2 >= 0);
-                    assert(dt_1 + dt_2 > 0);
+                    double dt_1 = image_time - current_time;
+                    double dt_2 = t - image_time;
+                    current_time = image_time;
                     double w1 = dt_2 / (dt_1 + dt_2);
                     double w2 = dt_1 / (dt_1 + dt_2);
                     dx = w1 * dx + w2 * imu_msg->linear_acceleration.x;
@@ -264,35 +543,42 @@ void process(Estimator &estimator)
 
             // 2. VINS Optimization
             // TicToc t_s;
-            map<int, vector<pair<int, Eigen::Matrix<double, 8, 1>>>> image;
-            for (unsigned int i = 0; i < img_msg->points.size(); i++)
-            {
-                int v = img_msg->channels[0].values[i] + 0.5;
-                int feature_id = v / NUM_OF_CAM;
-                int camera_id = v % NUM_OF_CAM;
-                double x = img_msg->points[i].x;
-                double y = img_msg->points[i].y;
-                double z = img_msg->points[i].z;
-                double p_u = img_msg->channels[1].values[i];
-                double p_v = img_msg->channels[2].values[i];
-                double velocity_x = img_msg->channels[3].values[i];
-                double velocity_y = img_msg->channels[4].values[i];
-                double depth = img_msg->channels[5].values[i];
-
-                assert(z == 1);
-                Eigen::Matrix<double, 8, 1> xyz_uv_velocity_depth;
-                xyz_uv_velocity_depth << x, y, z, p_u, p_v, velocity_x, velocity_y, depth;
-                image[feature_id].emplace_back(camera_id,  xyz_uv_velocity_depth);
-            }
-
             // Get initialization info from lidar odometry
             vector<float> initialization_info;
-            m_odom.lock();
-            initialization_info = odomRegister->getOdometry(odomQueue, rclcpp::Time(img_msg->header.stamp).seconds() + estimator.td);
-            m_odom.unlock();
+            {
+                std::lock_guard<std::mutex> lock(m_odom);
+                initialization_info = odomRegister->getOdometry(
+                    odomQueue,
+                    rclcpp::Time(img_msg->header.stamp).seconds() + estimator.td);
+            }
+
+            if (!initialization_info.empty() &&
+                std::isfinite(initialization_info[0]) &&
+                initialization_info[0] >= 0.0f &&
+                std::abs(initialization_info[0] -
+                         std::round(initialization_info[0])) < 1e-6f) {
+                std::lock_guard<std::mutex> lock(m_reset);
+                latestLidarResetId = static_cast<std::uint64_t>(
+                    std::llround(initialization_info[0]));
+            }
 
 
             estimator.processImage(image, initialization_info, img_msg->header);
+            if (estimator.failure_event_pending) {
+                std::uint64_t reset_id = 0;
+                {
+                    std::lock_guard<std::mutex> lock(m_reset);
+                    reset_id = latestLidarResetId;
+                }
+                publishVisualResetEvent(
+                    img_msg->header, reset_id,
+                    "vins_failure_detection");
+                auxiliary_reset_requested = true;
+                // Keep the original estimator flags untouched; consume only
+                // the new one-shot notification bit.
+                estimator.failure_event_pending = false;
+                break;
+            }
             // double whole_t = t_s.toc();
             // printStatistics(estimator, whole_t);
 
@@ -305,14 +591,14 @@ void process(Estimator &estimator)
             pubTF(estimator, header);
             pubKeyframe(estimator);
         }
-        m_estimator.unlock();
+        }
 
-        m_buf.lock();
-        m_state.lock();
+        if (auxiliary_reset_requested)
+            resetEstimatorAuxiliaryStateAfterFailure();
+
+        std::scoped_lock state_lock(m_buf, m_state, m_estimator);
         if (estimator.solver_flag == Estimator::SolverFlag::NON_LINEAR)
             update(estimator);
-        m_state.unlock();
-        m_buf.unlock();
     }
 }
 
@@ -332,13 +618,11 @@ int main(int argc, char **argv)
     RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Visual Odometry Estimator setParameter completed.\033[0m");
     registerPub(node);
     RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Visual Odometry Estimator registerPub completed.\033[0m");
-    odomRegister = new odometryRegister(node);
+    pubLocalizationReset =
+        node->create_publisher<lvi_sam_msgs::msg::LocalizationReset>(
+            LOCALIZATION_RESET_TOPIC, rclcpp::QoS(10).reliable());
+    odomRegister = std::make_unique<OdometryRegister>(node);
     RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Visual Odometry Estimator odometryRegister constructor completed.\033[0m");
-
-    // ros::Subscriber sub_imu     = n.subscribe(IMU_TOPIC,      5000, imu_callback,  ros::TransportHints().tcpNoDelay());
-    // ros::Subscriber sub_odom    = n.subscribe("odometry/imu", 5000, odom_callback);
-    // ros::Subscriber sub_image   = n.subscribe(PROJECT_NAME + "/vins/feature/feature", 1, feature_callback);
-    // ros::Subscriber sub_restart = n.subscribe(PROJECT_NAME + "/vins/feature/restart", 1, restart_callback);
 
     auto sub_imu = node->create_subscription<sensor_msgs::msg::Imu>(
         IMU_TOPIC, rclcpp::SensorDataQoS().keep_last(5000),
@@ -346,23 +630,21 @@ int main(int argc, char **argv)
             std::bind(imu_callback, std::placeholders::_1, std::ref(estimator))));
 
     auto sub_odom = node->create_subscription<nav_msgs::msg::Odometry>(
-        "odometry/imu", rclcpp::SensorDataQoS().keep_last(5000),
+        ODOM_TOPIC, rclcpp::SensorDataQoS().keep_last(5000),
         odom_callback);
+    if (!USE_LIDAR_ODOMETRY_PRIOR)
+        sub_odom.reset();
 
     auto sub_image = node->create_subscription<sensor_msgs::msg::PointCloud>(
-        PROJECT_NAME + std::string("/vins/feature/feature"), 1,
+        lvi_sam::topics::project_topic(PROJECT_NAME, lvi_sam::topics::kFeature), 1,
         feature_callback);
 
     auto sub_restart = node->create_subscription<std_msgs::msg::Bool>(
-        PROJECT_NAME + std::string("/vins/feature/restart"), 1,
+        lvi_sam::topics::project_topic(PROJECT_NAME, lvi_sam::topics::kFeatureRestart), 1,
         std::function<void(const std_msgs::msg::Bool::ConstSharedPtr&)>(
             std::bind(restart_callback, std::placeholders::_1, std::ref(estimator))));
 
     RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Visual Odometry Estimator Subscribers created.\033[0m");
-
-    if (!USE_LIDAR)
-        sub_odom.reset();
-    RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Visual Odometry Estimator reset done.\033[0m");
 
     std::thread measurement_process{process, std::ref(estimator)};
     RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Visual Odometry Estimator measurement_process created.\033[0m");
@@ -374,10 +656,11 @@ int main(int argc, char **argv)
     executor.spin();
     RCLCPP_INFO(node->get_logger(), "\033[1;32m----> Visual Odometry Estimator spin done.\033[0m");
 
-    // if (measurement_process.joinable())
-    //     measurement_process.join();
-
     rclcpp::shutdown();
+    con.notify_all();
+
+    if (measurement_process.joinable())
+        measurement_process.join();
 
     return 0;
 }

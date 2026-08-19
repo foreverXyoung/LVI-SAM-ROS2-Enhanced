@@ -78,7 +78,7 @@ class FeaturePerId
     int endFrame();
 };
 
-class FeatureManager : public rclcpp::Node
+class FeatureManager
 {
   public:
     FeatureManager(Matrix3d _Rs[]);
@@ -110,6 +110,10 @@ class FeatureManager : public rclcpp::Node
     double compensatedParallax2(const FeaturePerId &it_per_id, int frame_count);
     const Matrix3d *Rs;
     Matrix3d ric[NUM_OF_CAM];
+    static rclcpp::Logger get_logger()
+    {
+        return rclcpp::get_logger("lvi_sam.visual_feature_manager");
+    }
 };
 
 #endif

@@ -23,10 +23,11 @@
 #include <opencv2/core/eigen.hpp>
 
 
-class Estimator : public rclcpp::Node
+class Estimator
 {
   public:
     Estimator();
+    ~Estimator();
 
     void setParameter();
 
@@ -84,7 +85,7 @@ class Estimator : public rclcpp::Node
     Vector3d back_P0, last_P, last_P0;
     std_msgs::msg::Header Headers[(WINDOW_SIZE + 1)];
 
-    IntegrationBase *pre_integrations[(WINDOW_SIZE + 1)];
+    IntegrationBase *pre_integrations[(WINDOW_SIZE + 1)]{};
     Vector3d acc_0, gyr_0;
 
     vector<double> dt_buf[(WINDOW_SIZE + 1)];
@@ -101,6 +102,10 @@ class Estimator : public rclcpp::Node
     bool first_imu;
     bool is_valid, is_key;
     bool failure_occur;
+    // One-shot notification consumed by the ROS wrapper after the estimator
+    // has cleared its internal state. It is separate from failure_occur,
+    // which the original double2vector path still uses for frame alignment.
+    bool failure_event_pending;
 
     vector<Vector3d> point_cloud;
     vector<Vector3d> margin_cloud;
@@ -118,11 +123,16 @@ class Estimator : public rclcpp::Node
 
     int loop_window_index;
 
-    MarginalizationInfo *last_marginalization_info;
+    MarginalizationInfo *last_marginalization_info = nullptr;
     vector<double *> last_marginalization_parameter_blocks;
 
     map<double, ImageFrame> all_image_frame;
-    IntegrationBase *tmp_pre_integration;
+    IntegrationBase *tmp_pre_integration = nullptr;
 
     int failureCount;
+
+    static rclcpp::Logger get_logger()
+    {
+        return rclcpp::get_logger("lvi_sam.visual_estimator");
+    }
 };

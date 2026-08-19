@@ -14,16 +14,18 @@
 ## 0. 前置：把代码弄到 Orin 上
 
 ```bash
-# 方式 A：git clone（推荐，含子模块）
-git clone --recursive <your-repo-url> LVI-SAM-ROS2-Enhanced
+# 方式 A：git clone；已有并已 source 驱动时无需子模块
+git clone <your-repo-url> LVI-SAM-ROS2-Enhanced
 cd LVI-SAM-ROS2-Enhanced
 
-# 方式 B：U 盘 / scp 拷贝后，务必补子模块
-# git submodule update --init --recursive   # 若拷贝来的不是 --recursive
-git submodule status        # livox_ros_driver2 前应为空格（锁定 1.1.1），无 '+'/'-'
+# 仅在 ros2 pkg prefix livox_ros_driver2 查找失败时补子模块：
+# git submodule update --init --recursive
+# git submodule status
 ```
 
-> 子模块 `livox_ros_driver2` 是 **git submodule**，漏了会编译报 `custom_msg` 找不到。
+> 只要 `ros2 pkg prefix livox_ros_driver2` 和
+> `ros2 interface show livox_ros_driver2/msg/CustomMsg` 成功，就可直接复用现有驱动；
+> 二者失败且仓库内没有子模块时才会缺少 `CustomMsg`。
 
 ---
 
@@ -58,36 +60,40 @@ bash scripts/setup_orin.sh --apply   # 自检 + 建 swap（如缺）+ 设最大�
 
 ---
 
-## 3. OpenCV 冲突决策（Orin 头号坑）
+## 3. OpenCV 单一依赖策略
 
 JetPack 系统已自带 **CUDA 版 OpenCV（常 4.8 / 4.10）**；装 `ros-humble-desktop` 又会带 **4.5.4**。
-二者并存时，`cv_bridge` 与本项目节点若链接到**不同版本**，运行期会 **ABI 崩溃**（`cv::xxx` 符号未定义）。
+旧版 VIS 直接链接预编译 `cv_bridge`，如果项目同时选择另一套 OpenCV，同一进程会加载两套
+ABI，可能出现链接警告、`cv::xxx` 符号错误或运行期崩溃。
 
-`setup_orin.sh` 第 3 步已打印系统 OpenCV 与 cv_bridge 链接版本。
+当前版本已使用工程内图像适配层替代 VIS 对 `cv_bridge` 的直接依赖。相机输入仍是标准
+`sensor_msgs/msg/Image`，但 LVI-SAM 所有目标只链接一次 `find_package(OpenCV)` 的结果。
+其他 ROS 进程继续使用系统 `cv_bridge` 不受影响。
 
-**默认策略（推荐，零额外操作）**：使用 ROS 预编译 `cv_bridge` 所对应的发行版 OpenCV。
-项目 CMake 会优先选择 `/usr/lib/<multiarch>/cmake/opencv4`，避免把 ROS 的 OpenCV 4.5 与
-`/usr/local` 的 4.8/4.10 链入同一个节点。当前 VIS 代码使用 CPU OpenCV API，因此默认方案
-不会关闭一条已经启用的 CUDA 图像处理路径。
+**默认策略（推荐，零额外操作）**：让 CMake 使用目标机器默认可见的 OpenCV。当前实机的
+`/usr/lib/cmake/opencv4/OpenCVConfig.cmake` 对应 4.8；标准 Ubuntu 22.04/ROS Humble 环境
+通常会使用发行版 OpenCV 4.5。代码只使用兼容的 CPU OpenCV 4.x API。
 
-**仅激光首测（强烈推荐）**：完全不构建 VIS/cv_bridge，缩短编译并隔离相机 ABI：
+**仅激光首测**：不构建 VIS，缩短编译和排障链路：
 ```bash
 bash scripts/build.sh --lidar-only --clean
 ```
 
-**高级选项**：若确实需要 `/usr/local` 的 CUDA OpenCV，必须先把 `cv_bridge` 用同一 OpenCV
-重新编译，再显式执行：
+**多套 OpenCV 时显式选择**：仅在默认配置不符合预期时执行：
 ```bash
-KEEP_SYSTEM=1 OpenCV_DIR=/usr/local/lib/cmake/opencv4 bash scripts/build.sh --clean
+OpenCV_DIR=/usr/lib/cmake/opencv4 bash scripts/build.sh --clean
 ```
 
 **通过标志**（编译后 / 运行前）：
 ```bash
-# 一个可执行文件中只能出现一套 OpenCV ABI（例如全部为 4.5d）
-ldd install/lvi_sam/lib/lvi_sam/visual_feature_node | grep opencv | sort -u
+# 不应输出 libcv_bridge；OpenCV 库应全部属于同一个 ABI 系列（例如全部为 .408）
+for node in visual_feature_node visual_estimator_node visual_loop_node; do
+  echo "===== $node ====="
+  ldd "install/lvi_sam/lib/lvi_sam/$node" | grep -E 'cv_bridge|opencv' | sort -u
+done
 ```
-若链接器再次提示 `libopencv_*.so.4.5d may conflict with libopencv_*.so.408`，不要启动 VIS；
-清理缓存并按默认策略重编译。
+若仍看到 `libcv_bridge`，说明运行的是旧构建产物；使用 `--cmake-clean-cache` 或
+`bash scripts/build.sh --clean` 后重新构建。若同一节点仍出现两套 OpenCV，则检查其余第三方库。
 
 ---
 
@@ -99,10 +105,10 @@ bash scripts/install_deps.sh
 
 脚本会自动：
 - 装 apt / ROS 依赖；
-- 源码编译 **GTSAM 4.0.3**（已锁版本；Orin 上并行度自动限 4 + 建议 swap，防 OOM）；
+- 优先复用兼容 **GTSAM 4.x**；未发现时源码构建 4.0.3（Orin 上并行度自动限 4，并建议配置 swap）；
 - 源码编译 **Livox-SDK2** 到 `/usr/local/lib`；
 - 装 Python 依赖 + `rosdep`（跳过 gtsam）；
-- Orin 上做 OpenCV 冲突自检提示。
+- Orin 上打印项目将使用的 OpenCV 配置，并说明内部图像适配层状态。
 
 **通过标志**：
 ```bash
@@ -122,7 +128,9 @@ bash scripts/build.sh
 # 重编：bash scripts/build.sh --clean
 ```
 
-`build.sh` 在 Orin 上已自动：OpenCV 匹配（`OpenCV_DIR`）、ccache 启动器、并行度限 4。
+`build.sh` 在 Orin 上自动启用可用的 ccache 并把 colcon 并行度限制为 4；OpenCV 默认由
+CMake 选择，只有多版本环境选择不符合预期时才显式设置标准变量 `OpenCV_DIR`。仓库若位于
+现有 `<workspace>/src` 下，脚本会自动在上层工作区编译，并优先复用其已安装 Livox 驱动。
 
 **通过标志**：
 ```bash
@@ -141,7 +149,8 @@ ls install/lvi_sam/lib/lvi_sam/
 
 ## 6. 启动激光驱动（livox_ros_driver2）—— 单独终端
 
-`run.sh` **只拉 lvi_sam 的 5 个节点，不含激光驱动**，需另起终端先起 MID360 驱动：
+`run.sh` 启动 lvi_sam 的 5 个算法节点，并默认附带 RViz2，但**不含激光驱动**；需另起终端
+先启动 MID360 驱动。无图形远程会话请传入 `enable_rviz:=false`：
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -167,7 +176,7 @@ bash scripts/run.sh
 # 仿真：      bash scripts/run.sh use_sim_time:=true lidar_params_file:=.../params_gazebo_localization.yaml
 ```
 
-**通过标志**：launch 拉起 5 个节点无报错；RViz 能看到点云 / 轨迹。
+**通过标志**：launch 拉起 5 个算法节点无报错；有图形环境时 RViz2 同时启动并能看到点云/轨迹。
 
 ---
 
@@ -177,7 +186,7 @@ bash scripts/run.sh
 
 | # | 接线 | 发布方 | 订阅方 | 验证命令 |
 |---|------|--------|--------|----------|
-| ① | `odometry/imu`（LIS→VIS 位姿/尺度先验） | `lvi_sam_imuPreintegration` | `visual_estimator_node` | `ros2 topic hz /odometry/imu` 有数据 |
+| ① | `odometry/imu`（LIS→VIS 可选初始化先验） | `lvi_sam_imuPreintegration` | `visual_estimator_node`（需 `use_lidar_odometry_prior=1`） | `ros2 topic hz /odometry/imu` 有数据 |
 | ② | `/lio_sam/deskew/cloud_deskewed`（LIS→VIS 激光深度） | `lvi_sam_mapOptimization` | `visual_feature_node` | `ros2 topic hz /lio_sam/deskew/cloud_deskewed` 有数据 |
 | ③b | `/lvi_sam/vins/loop/match_frame` → remap → `lio_loop/loop_closure_detection`（VIS→LIS 回环候选） | `visual_loop_node` | `lvi_sam_mapOptimization` | 触发回环后看 mapOpt 日志 `performLoopClosure` |
 
@@ -211,7 +220,7 @@ sudo tegrastats --interval 2000   # 看温度（CPU/GPU）、频率、内存
 | 现象 | 原因 | 解决 |
 |------|------|------|
 | 编译 GTSAM OOM / 卡死 | Orin 内存小 + 并行度满 | `bash scripts/setup_orin.sh --apply` 建 swap；build 已限并行 4 |
-| 运行期 `cv::` 符号错误 / ABI 崩溃 | OpenCV 版本冲突 | 回到 §3 切 `KEEP_SYSTEM=0` 用 4.5.4，或确认 `OpenCV_DIR` 指向系统 CUDA 版 |
+| 运行期 `cv::` 符号错误 / ABI 崩溃 | 旧构建缓存或其他第三方库仍引入第二套 OpenCV | 按 §3 清理重编并用 `ldd` 检查三个 VIS 节点 |
 | `Could NOT find GTSAM` | 未装 / 未 ldconfig | 重跑 `install_deps.sh`，`sudo ldconfig` |
 | `liblivox_lidar_sdk_shared.so: cannot open` | Livox-SDK2 未装 | 重跑 `install_deps.sh` 第 3 步 |
 | `custom_msg` 找不到 | 子模块未初始化 | `git submodule update --init --recursive` |
@@ -233,19 +242,21 @@ docker run -it --rm --net=host --privileged -v /dev:/dev lvi-sam-orin bash
 ```
 > ⚠️ 切勿用 x86 的 `ros:humble` 镜像在 Orin 上构建（架构不匹配）。
 > 免登录社区镜像：`dustynv/ros:humble-ros-base-l4t-r36.4`（标签与 L4T 对齐）。
-> Docker 内仍需注意 OpenCV（基础镜像自带 CUDA 版）与 cv_bridge 一致性——若报错按 §3 思路处理。
+> Docker 内也应按 §3 用 `ldd` 确认每个 VIS 节点只加载一套 OpenCV。
 
 ---
 
 ## 12. 部署完成检查清单
 
 - [ ] `setup_orin.sh --apply` 通过（L4T 6.x / ROS Humble / swap / 性能模式）
-- [ ] `install_deps.sh` 通过（GTSAM 4.0.3 / Livox-SDK2 / rosdep）
+- [ ] `install_deps.sh` 通过（兼容 GTSAM 4.x / Livox-SDK2 / rosdep）
+- [ ] `validate_config.py` 通过（LIS/VIS 话题、帧、外参数组与 BRIEF pattern 一致）
 - [ ] `build.sh` 通过（5 节点编译成功）
-- [ ] MID360 驱动起，`/livox/lidar` + 标准 IMU 有数据；非 `/IMU_data` 时通过 `imu_topic` 覆盖
-- [ ] `run.sh` 起 5 节点无报错
+- [ ] MID360 驱动起，`/livox/lidar` + 所选 IMU 有数据；外置 IMU 用
+      `imu_source:=external`，内置 IMU 用 `imu_source:=mid360`
+- [ ] `run.sh` 起 5 个算法节点且无报错；有图形环境时 RViz2 同时启动
 - [ ] 话题接线 ①②③b 全部 `ros2 topic hz` 有数据
-- [ ] OpenCV 版本一致（或已按 §3 处理）
+- [ ] 三个 VIS 节点均不链接 `cv_bridge`，且各自只加载一套 OpenCV
 - [ ] 长时间运行 `tegrastats` 温度/频率正常
 
 ---
@@ -256,7 +267,8 @@ docker run -it --rm --net=host --privileged -v /dev:/dev lvi-sam-orin bash
 |------|------|
 | `scripts/setup_orin.sh`（新增） | Orin 前置自检 + `--apply` 建 swap / 性能模式 / OpenCV 自检 |
 | `scripts/install_deps.sh` | 加 ccache；GTSAM Orin 并行限 4；aarch64 检测与 OpenCV 自检 |
-| `scripts/build.sh` | aarch64 自动 OpenCV 匹配（`OpenCV_DIR`）+ ccache + 并行限 4；`KEEP_SYSTEM` 开关 |
+| `scripts/build.sh` | 支持显式 `OpenCV_DIR` + ccache + Orin 并行限 4；旧 `KEEP_SYSTEM` 仅提示弃用 |
 | `src/lvi_sam/launch/run.launch.py` | 修复 `Loc.loadPCDDirectory` 嵌套覆盖（旧扁平写法无效，导致 Orin 地图路径指向 `/home/lighter/...`） |
-| `src/lvi_sam/CMakeLists.txt` | 接受现有 GTSAM 4.0/4.1；脚本与 Docker 的可复现默认版本仍为 4.0.3。 |
+| `src/lvi_sam/CMakeLists.txt` | 接受 GTSAM 4.0/4.1；移除 VIS 的 `cv_bridge` 链接并加入图像转换单元测试。 |
+| `src/lvi_sam/include/lvi_sam/image_conversion.hpp` | 安全、可迁移的 ROS Image/OpenCV 内部适配层。 |
 | `docs/DEPLOY_ORIN.md`（本文件） | 一步步 Orin 部署手册 |

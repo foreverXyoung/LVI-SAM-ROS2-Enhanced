@@ -1,7 +1,6 @@
 #pragma once
 
 #include <rclcpp/rclcpp.hpp>
-#include "ament_index_cpp/get_package_share_directory.hpp"
 #include <opencv2/highgui/highgui.hpp>
 
 #include "std_msgs/msg/header.hpp"
@@ -12,9 +11,9 @@
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "sensor_msgs/image_encodings.hpp"
 #include "nav_msgs/msg/odometry.hpp"
+#include "lvi_sam_msgs/msg/localization_reset.hpp"
 
 #include <opencv2/opencv.hpp>
-#include <cv_bridge/cv_bridge.h>
 #include <eigen3/Eigen/Dense>
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/eigen.hpp>
@@ -61,7 +60,6 @@
 #include <cassert>
 
 using namespace std;
-using ament_index_cpp::get_package_share_directory;
 using std::placeholders::_1;
 
 typedef pcl::PointXYZI PointType;
@@ -77,6 +75,7 @@ extern std::string PROJECT_NAME;
 extern std::string IMAGE_TOPIC;
 extern std::string IMU_TOPIC;
 extern std::string POINT_CLOUD_TOPIC;
+extern std::string LOCALIZATION_RESET_TOPIC;
 
 extern int USE_LIDAR;
 extern int LIDAR_SKIP;

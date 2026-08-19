@@ -41,7 +41,7 @@
   需降级到 ROS 2 Galactic 或自行源码编译 Humble——**部署前务必 `head -n1 /etc/nv_tegra_release` 确认 L4T 版本**。
 
 ### 2.2 GTSAM（源码编译）—— 两地差异最大的一处
-工程 `CMakeLists.txt:32` 为 `find_package(GTSAM REQUIRED)`，**无版本约束**（见 §4 修订项）。
+工程使用 `find_package(GTSAM 4.0 REQUIRED)`：接受兼容的 4.0/4.1 系列，拒绝未来不兼容的主版本。
 Ubuntu 22.04 无 GTSAM apt 包，须源码编译（脚本/ Docker 均从 `borglab/gtsam` 编译）。
 
 | 风险点 | x86 笔记本 | AGX Orin |
@@ -62,19 +62,17 @@ Ubuntu 22.04 无 GTSAM apt 包，须源码编译（脚本/ Docker 均从 `borgla
 - **风险**：低~中。中风险点在于 **`liblivox_lidar_sdk_shared.so` 必须先在系统层就位**，若忘了装 SDK，编译 `livox_ros_driver2` 会找不到头/库——脚本已用文件存在性检测跳过已装情况，但仍需**先装 SDK 再 colcon build**。
 - **⚠️ 网络**：SDK 与 driver 从 GitHub clone，`--depth 1` 已减小体积；Orin 上若 GitHub 访问不稳定，建议预先镜像或离线拷贝。
 
-### 2.4 OpenCV 版本冲突（**Orin 特有高危坑**）
+### 2.4 OpenCV 版本并存与项目内隔离
 - **x86**：apt 装 `ros-humble-desktop` 会拉取 Ubuntu 的 `libopencv-dev 4.5.4`，系统干净，无冲突。
 - **Orin (JetPack 6)**：系统**已预装 NVIDIA 定制版 OpenCV（常 4.8 / 4.10，带 CUDA 支持）**。
-  当你再 `apt install ros-humble-desktop` 或 `libopencv-dev` 时，可能出现：
-  - 版本并存导致 `cv_bridge` 链接的 OpenCV 与实际运行的不一致 → 运行期 `cv::xxx` 符号未定义 / ABI 崩溃；
-  - 已知案例（Autoware on Orin 指南）明确要求**卸载 JetPack 自带 OpenCV、降级到 4.5.4** 才能编译通过。
-- **默认应对**：保持两套安装不动，但让本项目优先链接 ROS `cv_bridge` 对应的 apt OpenCV；
-  首轮激光测试用 `bash scripts/build.sh --lidar-only --clean`，完全不构建/链接 `cv_bridge`。
-- **CUDA OpenCV 备选**：只有在用同一 CUDA OpenCV 重编了 `cv_bridge` 后，才能将本项目显式指向
-  `/usr/local` 的 OpenCV 配置。
-- **风险**：高（Orin 上最常见的"编得过跑不起来"元凶）。
-- 当前 VIS 实现使用 CPU OpenCV API，没有已经启用的 `cv::cuda` 路径，因此 ROS ABI 一致性优先于
-  保留 `/usr/local` 版本的潜在 CUDA 能力。
+  当你再安装 ROS Humble 时，系统中可能同时保留 OpenCV 4.5 与 4.8。
+- **当前应对**：VIS 使用工程内 `sensor_msgs/Image ↔ cv::Mat` 适配层，不直接链接预编译
+  `cv_bridge`。LVI-SAM 每个进程只加载 CMake 选择的一套 OpenCV，其他 ROS 进程仍可独立使用
+  Humble 的 `cv_bridge`。
+- **迁移行为**：x86/ARM 均按目标机可见的 OpenCV 4.x 重新编译；存在多个配置时用
+  `OpenCV_DIR=/path/to/opencv4` 显式选择，不需要重编 `cv_bridge` 或建立额外 overlay。
+- **剩余风险**：其他直接链接进 LVI-SAM 的第三方库仍可能携带另一套 OpenCV，因此正式运行前
+  应使用 `ldd` 检查三个 VIS 节点。当前 VIS 使用 CPU OpenCV API，没有启用 `cv::cuda` 路径。
 
 ### 2.5 CUDA / cuDNN / TensorRT
 - **Orin**：JetPack 已预装，路径在 `/usr/local/cuda`。**容器**内若用 L4T 镜像（`nvcr.io/nvidia/l4t-*`）则自带；
@@ -124,7 +122,7 @@ Ubuntu 22.04 无 GTSAM apt 包，须源码编译（脚本/ Docker 均从 `borgla
 |---|---|---|
 | 算法调通 / 参数 / 话题联调 | x86 笔记本（或台式） | 编译快、内存足、调试方便；用仿真 bag / 录像验证 VIS↔LIS 接线 |
 | 最小验证闭环（M1+M2+部分 M3） | x86 为主，Orin 并行 | 先在 x86 把编译与话题接线跑通，再上 Orin 验证实时性 |
-| 真实车/站场部署 | AGX Orin | 边缘算力 + 低功耗；需处理 §2.4 OpenCV 冲突 + §2.8 限频 |
+| 真实车/站场部署 | AGX Orin | 边缘算力 + 低功耗；需验证 §2.4 单一 OpenCV 链接 + §2.8 限频 |
 
 **不建议**直接用 Orin 做首次全量编译验证（耗时 + OOM 风险高）。
 
@@ -137,21 +135,19 @@ Ubuntu 22.04 无 GTSAM apt 包，须源码编译（脚本/ Docker 均从 `borgla
 | 1 | Dockerfile 硬编码 `FROM ros:humble`（x86） | 高 | `FROM` 参数化为 `BASE_IMAGE`，Orin 用 L4T 镜像 + 加构建注释 | `Dockerfile` |
 | 2 | `install_deps.sh` 无 swap 检测，Orin 编 GTSAM 易 OOM | 高 | 新增 swap 检测：内存 <16GB 且无 swap 时告警并给出 32GB 创建命令 | `scripts/install_deps.sh` |
 | 3 | GTSAM 版本兼容 | 中 | 构建接受机器人现有的 4.0/4.1，脚本/Docker 默认安装 4.0.3；升级更高版本前应重新编译验证 | `src/lvi_sam/CMakeLists.txt` |
-| 4 | OpenCV 冲突未在任何脚本处理 | 高（Orin） | 在 `docs/ENVIRONMENT.md` 与本文 §2.4 写明应对，运行时人工拍板 | 文档 |
-
-> 第 3 项（CMake 版本约束）属于代码改动，影响编译行为；本次先写入文档与计划，
-> 经你在 Orin 上确认 OpenCV 方案后再一并改，避免在未验证环境改出编译失败。
+| 4 | `cv_bridge` 与项目 OpenCV ABI 冲突 | 高（Orin） | 改为工程内图像适配层；脚本只选择一套 OpenCV，并提供 `ldd` 验证 | CMake / C++ / 脚本 / 文档 |
 
 ---
 
 ## 5. 待真机验证清单（⚠️）
 
 - [ ] Orin 实际 L4T 版本（`head -n1 /etc/nv_tegra_release`），据此选容器标签。
-- [ ] OpenCV 冲突：决定保持系统 CUDA 版还是降级 4.5.4（影响 VIS 性能）。
+- [ ] 用 `ldd` 确认三个 VIS 节点不含 `libcv_bridge` 且各自只有一套 OpenCV。
 - [ ] GTSAM 在 Orin 上编译内存峰值 + 实际时长（确认 32GB swap 是否够）。
 - [ ] `colcon build` 在 Orin 全量编译耗时与是否需 `ccache`。
 - [ ] 实时性：满载时 LIO-SAM 单帧时延、`nvpmodel`/`jetson_clocks` 后的稳定性。
-- [ ] livox_ros_driver2 + Livox-SDK2 在 Orin 的 MID360 实际出数（`/livox/lidar` + 标准 `sensor_msgs/Imu`，并用 `imu_topic` 统一接入）。
+- [ ] livox_ros_driver2 + Livox-SDK2 在 Orin 的 MID360 实际出数（`/livox/lidar` +
+      `/livox/imu`），并用 `imu_source:=mid360` 验证单位转换和 IMU profile。
 - [ ] VIS 三节点在 Orin 的 CPU 占用与温度（长时间运行 `tegrastats`）。
 
 ---

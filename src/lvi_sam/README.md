@@ -13,18 +13,20 @@ src/lvi_sam/
 ├── CMakeLists.txt          # 5 个 executable：LIS 2 + VIS 3
 ├── package.xml
 ├── config/                 # 【外层配置，集中摆放】
-│   ├── params.yaml                      # LIS 通用（已修硬编码路径）
+│   ├── params_mapping.yaml              # LIS 通用建图配置
+│   ├── params_localization.yaml         # LIS 通用先验地图定位配置
 │   ├── params_*_{localization,mapping}.yaml   # 场景/模式变体（gazebo/charging）
-│   ├── params_camera.yaml               # VIS 参数（来自 LVI-SAM-ROS2）
-│   ├── brief_k10L6.bin                  # DBoW2 词表（代码按 pkg_path+/config/ 拼接）
+│   ├── params_imu_{external,mid360}.yaml      # 两套 IMU 话题/单位/噪声/外参 profile
+│   ├── params_camera.yaml               # 外置 IMU 的 VIS 参数
+│   ├── params_camera_mid360.yaml        # 内置 IMU + 实机雷达相机标定
+│   ├── brief_k10L6.bin                  # DBoW2 词表（统一资源解析器加载）
 │   ├── brief_pattern.yaml
 │   ├── fisheye_mask_720x540.jpg
 │   ├── rviz2.rviz
-│   └── (vocab/ 为空残留目录，可删，不影响构建)
 ├── launch/
 │   ├── run.launch.py                    # 总入口：启动 5 节点 + 接线 remap
 │   └── include/module_sam_reference.py  # fork 原 launch 参考
-├── include/                 # 公共头（激光）
+├── include/                 # 公共头（激光 + 跨模块接口/资源适配）
 │   ├── utility.hpp                     # ParamServer（激光参数集中声明）
 │   ├── file_tools.hpp
 │   └── sc/                             # Scan Context 库
@@ -42,6 +44,8 @@ src/lvi_sam/
 ```
 
 源码严格二分：**`lidar_odometry/` = 激光**，**`visual_odometry/` = 视觉**；配置全部置于包根的 `config/`（外层集中，随 `install(DIRECTORY config)` 部署到 `share/lvi_sam/config`）。
+配置选择、修改边界和预检命令见 [`config/README.md`](config/README.md)；完整改动记录见
+根目录 [`docs/CHANGE_SUMMARY.md`](../../docs/CHANGE_SUMMARY.md)。
 
 ---
 
@@ -61,13 +65,14 @@ src/lvi_sam/
 
 | 耦合点 | 方向 | 话题 | 接线方式 |
 |---|---|---|---|
-| ① 位姿/尺度先验 | LIS→VIS | `lio_sam/odometry/imu` → estimator 订阅 `odometry/imu` | **launch remap**（estimator） |
-| ② 激光深度 | LIS→VIS | `lio_sam/deskew/cloud_deskewed` | `params_camera.yaml` 的 `point_cloud_topic` 已设为该绝对路径 |
+| ① 可选初始化先验 | LIS→VIS | `/odometry/imu` | launch 统一话题；`use_lidar_odometry_prior=1` 时 VIS 订阅 |
+| ② 激光深度 | LIS→VIS | `lio_sam/deskew/cloud_deskewed` | 两套 `params_camera*.yaml` 的 `point_cloud_topic` 已设为该绝对路径；MID-360 实机 profile 已启用 |
 | ③b 视觉回环候选 | VIS→LIS | VIS 发布 `/lvi_sam/vins/loop/match_frame`（Float64MultiArray=[cur_ts, old_ts]） | **launch remap**：mapOptimization 的 `lio_loop/loop_closure_detection` → `/lvi_sam/vins/loop/match_frame` |
 | ③a 前端初值 | VIS→LIS | `/lvi_sam/vins/odometry/imu_propagate_ros` | fork 前端未订阅，**最小闭环暂不接**（可选增强） |
 
 > VIS 内部话题（`/lvi_sam/vins/feature/feature`、`/restart`、`/odometry/...`）自动连通。
-> `match_frame` 与 fork `detectLoopClosureExternal` 期望的 `data=[cur_ts, pre_ts]` **格式同构**，直接 remap 即可，零 C++ 改动。
+> `match_frame` 与 `detectLoopClosureExternal` 约定的 `data=[cur_ts, pre_ts]` 格式一致；
+> LIS 会先执行时间容差映射，再通过点云 ICP 几何验证后才加入因子图。
 
 ---
 
@@ -75,14 +80,18 @@ src/lvi_sam/
 
 ```bash
 # 依赖（Linux/ROS2 humble 环境）：
-#   ament 系统包：rclcpp cv_bridge pcl_ros pcl_conversions tf2* visualization_msgs nav_msgs
-#   非 apt（需源码/二进制）：GTSAM、Ceres、Boost、OpenCV、Eigen3、livox_ros_driver2
+#   ament 系统包：rclcpp pcl_conversions tf2* visualization_msgs nav_msgs
+#   原生依赖：GTSAM 4.x、Ceres、Boost、OpenCV、Eigen3、PCL
 #   （已修正 LVI-SAM-ROS2 原版 Eigen3_DIR 硬编码 /opt/eigen；改用 find_package(Eigen3)）
 
 cd LVI-SAM-ROS2-Enhanced
-colcon build --packages-select lvi_sam
+bash scripts/build.sh
 source install/setup.bash
 ```
+
+视觉节点通过 `include/lvi_sam/image_conversion.hpp` 完成 ROS 图像与 OpenCV 的转换，
+不直接依赖 `cv_bridge`。输入支持 `rgb8`、`bgr8`、`rgba8`、`bgra8`、`mono8`
+和 `8UC1`；未知编码、非法 `step` 或数据长度不足的图像会被安全丢弃并限频告警。
 
 > ⚠️ 本工程在 Windows 下无法编译（ROS2 + VINS 依赖链需 Linux）。上述为在目标 Linux/ROS2 环境下的构建命令。
 
@@ -97,20 +106,34 @@ ros2 launch lvi_sam run.launch.py \
   pcd_directory:=/tmp/lvi_sam_maps
 ```
 
-常用参数：`lidar_params_file`（场景/模式 yaml）、`camera_params_file`、`pcd_directory`（覆盖先验地图/输出目录）、`use_sim_time`、`publish_map_odom_static`。
-`imu_topic` 会同时覆盖 LIS 与 VIS 的标准 `sensor_msgs/Imu` 输入，默认 `/IMU_data`。
+常用参数：`lidar_params_file`（场景/模式 yaml）、`imu_source:=external|mid360`、
+`imu_params_file`（自定义新 IMU profile）、`mount_params_file`（机器人
+`base_link→LiDAR` 安装标定）、`camera_params_file`、`pcd_directory`
+（覆盖先验地图/输出目录）、`use_sim_time`、`project_name`、`odom_topic` 和
+`publish_map_odom_static`。`imu_source` 会同时选择 LIS 与 VIS 的话题、加速度单位和噪声；
+`imu_topic` 只作为临时高级覆盖，不用于在两种物理 IMU 之间切换。
+
+完整接口、依赖与稳定性约束见根目录
+[`docs/INTERFACES_AND_STABILITY.md`](../../docs/INTERFACES_AND_STABILITY.md)。
 
 ---
 
 ## 6. 实机部署前必须确认
 
-1. **IMU 接口**：LIS 与 VIS 现统一订阅 `/IMU_data`，类型为标准 `sensor_msgs/Imu`；若驱动实际发布其他话题或消息类型，须在驱动侧 remap/转换后再接入。
-2. **相机-IMU-激光外参标定**：`params_camera.yaml` 里的 `extrinsicRotation/Translation`、`lidar_to_cam_*` 为示例值，须按实机标定填入（阶段 4）。
-3. **时间同步**：图像/IMU/雷达时间戳对齐（MID360 已 IMU-雷达硬同步，相机需对齐）。
-4. **先验地图/输出目录**：`pcd_directory` 默认 `/tmp/lvi_sam_maps`；实机请指向实际地图目录（launch 已覆盖 yaml 默认）。
-5. **对称环境误闭环门控**：站场高度对称，建议给外部回环加 RTK/先验地图一致性门控（LVI-SAM 原版没有，可作创新点）。
-6. **`config/vocab/` 空残留目录**：无害，可删。
+1. **IMU 接口**：外置 IMU 使用 `imu_source:=external`，MID-360 内置 IMU 使用
+   `imu_source:=mid360`；两者均为 `sensor_msgs/Imu`，但话题、加速度单位、噪声和外参不同。
+   MID-360 视觉联调会自动选择 `params_camera_mid360.yaml`；其中 LiDAR-camera 已使用实机
+   `T_cam_radar`，相机—内置 IMU 平移仍需在精度验收前核对准确杆臂。
+2. **安装与传感器标定**：`params_mount_robot.yaml` 只保存机器人到 LiDAR 的安装位姿；
+   `params_imu_*.yaml` 保存所选 IMU 到 LiDAR 的标定。更换 IMU 不应修改安装 profile。
+3. **相机-IMU-激光外参标定**：MID-360 的 `lidar_to_cam_*` 已由实机 `T_cam_radar` 转换；外置 IMU 文件仍是示例值，MID-360 的精确 IMU 杆臂也仍需核对。
+4. **时间同步**：图像/IMU/雷达时间戳对齐（MID360 已 IMU-雷达硬同步，相机需对齐）。
+5. **先验地图/输出目录**：`pcd_directory` 默认 `/tmp/lvi_sam_maps`；实机请指向实际地图目录（launch 已覆盖 yaml 默认）。建图输出必须使用新目录或空目录，避免旧地图文件混入新地图。
+6. **对称环境误闭环门控**：站场高度对称，建议给外部回环加 RTK/先验地图一致性门控（LVI-SAM 原版没有，可作创新点）。
 7. **livox_ros_driver2 依赖包**：需放入本工作区 `src/`（或从系统/其它 workspace 提供），否则 LIS 无法编译。
+
+物理外参全部来自上述 YAML。启用相关融合功能却缺少对应参数时节点会直接报错；核心估计器
+不会从 TF tree、单位矩阵或零平移推断传感器安装关系。
 
 ---
 

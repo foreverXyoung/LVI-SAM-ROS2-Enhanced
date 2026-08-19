@@ -1,12 +1,17 @@
 #include "utility.hpp"
 
+#include <algorithm>
+
 struct smoothness_t {
     float value;
     size_t ind;
 };
 
 struct by_value {
-    bool operator()(smoothness_t const &left, smoothness_t const &right) { return left.value < right.value; }
+    bool operator()(smoothness_t const& left,
+                    smoothness_t const& right) const noexcept {
+        return left.value < right.value;
+    }
 };
 
 class FeatureExtraction : public ParamServer {
@@ -21,27 +26,50 @@ public:
     std_msgs::msg::Header cloudHeader;
 
     std::vector<smoothness_t> cloudSmoothness;
-    float *cloudCurvature;
-    int *cloudNeighborPicked;
-    int *cloudLabel;
+    std::vector<float> cloudCurvature;
+    std::vector<int> cloudNeighborPicked;
+    std::vector<int> cloudLabel;
 
-    FeatureExtraction() : ParamServer("FeatureExtractionParamServer") { initializationValue(); }
+    explicit FeatureExtraction(const rclcpp::NodeOptions& options)
+        : ParamServer("FeatureExtractionParamServer", options) {
+        initializationValue();
+    }
 
     void initializationValue() {
         cloudSmoothness.resize(N_SCAN * Horizon_SCAN);
+        cloudCurvature.resize(N_SCAN * Horizon_SCAN);
+        cloudNeighborPicked.resize(N_SCAN * Horizon_SCAN);
+        cloudLabel.resize(N_SCAN * Horizon_SCAN);
         downSizeFilter.setLeafSize(odometrySurfLeafSize, odometrySurfLeafSize, odometrySurfLeafSize);
-
-        cloudCurvature = new float[N_SCAN * Horizon_SCAN];
-        cloudNeighborPicked = new int[N_SCAN * Horizon_SCAN];
-        cloudLabel = new int[N_SCAN * Horizon_SCAN];
     }
 
-    void FeatureExtractionHandler(CloudInfo &msgIn) {
+    bool FeatureExtractionHandler(CloudInfo &msgIn) {
         // cloudInfo = std::move(msgIn);                                // new cloud info
         cloudInfo = msgIn;
         cloudHeader = cloudInfo.header;  // new cloud header
         extractedCloud = cloudInfo.cloud_deskewed;
         // pcl::fromROSMsg(cloudInfo.cloud_deskewed, *extractedCloud);  // new cloud for extraction
+
+        const std::size_t cloudSize = extractedCloud->size();
+        // ImageProjection preallocates these metadata arrays to range-image
+        // capacity. Only the first cloudSize entries describe this scan.
+        if (cloudSize < 11 || cloudSize > cloudCurvature.size() ||
+            cloudInfo.point_range.size() < cloudSize ||
+            cloudInfo.point_col_ind.size() < cloudSize ||
+            cloudInfo.start_ring_index.size() !=
+                static_cast<std::size_t>(N_SCAN) ||
+            cloudInfo.end_ring_index.size() !=
+                static_cast<std::size_t>(N_SCAN)) {
+            RCLCPP_WARN_THROTTLE(
+                get_logger(), *get_clock(), 2000,
+                "Discarding malformed projected cloud: points=%zu capacity=%zu",
+                cloudSize, cloudCurvature.size());
+            return false;
+        }
+
+        std::fill(cloudCurvature.begin(), cloudCurvature.end(), 0.0f);
+        std::fill(cloudNeighborPicked.begin(), cloudNeighborPicked.end(), 0);
+        std::fill(cloudLabel.begin(), cloudLabel.end(), 0);
 
         calculateSmoothness();
 
@@ -50,6 +78,7 @@ public:
         extractFeatures();
 
         publishFeatureCloud();
+        return true;
     }
 
     void calculateSmoothness() {
@@ -123,9 +152,14 @@ public:
                 int sp = (cloudInfo.start_ring_index[i] * (6 - j) + cloudInfo.end_ring_index[i] * j) / 6;
                 int ep = (cloudInfo.start_ring_index[i] * (5 - j) + cloudInfo.end_ring_index[i] * (j + 1)) / 6 - 1;
 
-                if (sp >= ep) continue;
+                if (sp >= ep || sp < 5 ||
+                    ep + 5 >= static_cast<int>(extractedCloud->size()))
+                    continue;
 
-                std::sort(cloudSmoothness.begin() + sp, cloudSmoothness.begin() + ep, by_value());
+                std::sort(
+                    cloudSmoothness.begin() + sp,
+                    cloudSmoothness.begin() + ep + 1,
+                    by_value());
 
                 int largestPickedNum = 0;
                 for (int k = ep; k >= sp; k--) {

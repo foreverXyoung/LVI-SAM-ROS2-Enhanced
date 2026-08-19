@@ -32,9 +32,11 @@ WORKDIR /ws
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential cmake git wget curl ca-certificates \
     libpcl-dev libopencv-dev libeigen3-dev libboost-all-dev libceres-dev \
-    python3-pip python3-rosdep python3-colcon-common-extensions \
+    python3-yaml python3-pyproj python3-rosdep python3-colcon-common-extensions \
     ros-${ROS_DISTRO}-desktop ros-${ROS_DISTRO}-pcl-ros \
-    ros-${ROS_DISTRO}-pcl-conversions ros-${ROS_DISTRO}-tf2* \
+    ros-${ROS_DISTRO}-pcl-conversions ros-${ROS_DISTRO}-tf2 \
+    ros-${ROS_DISTRO}-tf2-ros ros-${ROS_DISTRO}-tf2-eigen \
+    ros-${ROS_DISTRO}-tf2-geometry-msgs \
     ros-${ROS_DISTRO}-robot-state-publisher ros-${ROS_DISTRO}-xacro \
  && rm -rf /var/lib/apt/lists/*
 
@@ -58,7 +60,7 @@ COPY . /ws
 
 # ---------- 5) rosdep（跳过 gtsam） + 编译 ----------
 RUN . /opt/ros/${ROS_DISTRO}/setup.sh \
- && rosdep update 2>/dev/null || true \
+ && (rosdep update 2>/dev/null || true) \
  && rosdep install --from-paths src --ignore-src -y --skip-keys gtsam \
  && colcon build --symlink-install --packages-up-to lvi_sam \
     --cmake-args -DCMAKE_BUILD_TYPE=Release
