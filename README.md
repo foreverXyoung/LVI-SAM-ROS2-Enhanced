@@ -17,12 +17,13 @@
 
 建议按以下顺序阅读：
 
-1. [`docs/CHANGE_SUMMARY.md`](docs/CHANGE_SUMMARY.md)：本轮改动、未改动逻辑、兼容性结论和证据边界；
-2. [`src/lvi_sam/config/README.md`](src/lvi_sam/config/README.md)：场景、IMU、安装外参和相机配置入口；
-3. [`docs/USAGE.md`](docs/USAGE.md)：日常建图/定位/视觉启动流程；
-4. [`docs/LOCALIZATION_STATUS_INTERFACE.md`](docs/LOCALIZATION_STATUS_INTERFACE.md) 与
+1. [`docs/TECHNICAL_IMPROVEMENT_REPORT_ZH.md`](docs/TECHNICAL_IMPROVEMENT_REPORT_ZH.md)：面向第三方专家的正式技术改进说明；
+2. [`docs/CHANGE_SUMMARY.md`](docs/CHANGE_SUMMARY.md)：内部改动记录、兼容性结论和排障证据；
+3. [`src/lvi_sam/config/README.md`](src/lvi_sam/config/README.md)：场景、IMU、安装外参和相机配置入口；
+4. [`docs/USAGE.md`](docs/USAGE.md)：日常建图/定位/视觉启动流程；
+5. [`docs/LOCALIZATION_STATUS_INTERFACE.md`](docs/LOCALIZATION_STATUS_INTERFACE.md) 与
    [`docs/LOCALIZATION_RESET_INTERFACE.md`](docs/LOCALIZATION_RESET_INTERFACE.md)：上层状态机和复位事件契约；
-5. [`docs/LOCALIZATION_ACCEPTANCE_MATRIX.md`](docs/LOCALIZATION_ACCEPTANCE_MATRIX.md)：状态输出、事件边界和原算法不受干预的实机验收顺序。
+6. [`docs/LOCALIZATION_ACCEPTANCE_MATRIX.md`](docs/LOCALIZATION_ACCEPTANCE_MATRIX.md)：状态输出、事件边界和原算法不受干预的实机验收顺序。
 
 当前文档不会把“能够编译”写成“已经完成实机验收”。完整 ROS 2、GTSAM、PCL、Ceres 构建和
 真实传感器运行仍以 Orin 的命令输出为准。
@@ -218,6 +219,7 @@ ros2 launch lvi_sam run.launch.py \
 
 | 文件 | 用途 |
 |------|------|
+| [`docs/TECHNICAL_IMPROVEMENT_REPORT_ZH.md`](docs/TECHNICAL_IMPROVEMENT_REPORT_ZH.md) | **第三方专家技术报告**：比较基线、总体架构、关键改进、算法影响边界、接口、验证证据和待量化风险。 |
 | [`src/lvi_sam/config/README.md`](src/lvi_sam/config/README.md) | **统一配置入口**：场景/模式选择矩阵、参数覆盖优先级、标定分组、接口清单和修改后预检。 |
 | [`docs/CHANGE_SUMMARY.md`](docs/CHANGE_SUMMARY.md) | **完整改动与复审记录**：模块级改动、原逻辑兼容性、有意变化、已修问题、验证状态和已知边界。 |
 | [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) | **详细环境配置**：Ubuntu 22.04 + ROS 2 Humble、apt 依赖、GTSAM 源码编译、Livox-SDK2 安装、子模块、rosdep、Docker 替代方案、版本核验。 |
